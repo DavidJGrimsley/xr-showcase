@@ -2,7 +2,7 @@
 
 Date: 2026-10-08 (America/New_York). Implementation and automated checks complete; revised native UI and cancellation acceptance pending.
 
-Latest revision: [reactive buttons, full-width controls, and native info scrolling](#follow-up-reactive-buttons-and-native-scrolling), correcting the preceding [header info modal](#follow-up-header-info-modal) and [disabled guesses, vector labels, sizing, and centering](#follow-up-disabled-guesses-labels-and-sizing) deliveries. Historical descriptions below preserve their original validation evidence.
+Latest revision: [even control spacing and bounded info width](#follow-up-even-control-spacing-and-bounded-info-width), following [reactive buttons, full-width controls, and native info scrolling](#follow-up-reactive-buttons-and-native-scrolling). Historical descriptions below preserve their original validation evidence.
 
 ## Delivery
 
@@ -154,3 +154,31 @@ Opt-in device acceptance for these corrections:
 - [ ] Verify offline/retry recovery, tracking loss, native press feedback and VoiceOver disabled announcements. Repeat scrolling/layout/disabled-state checks with TalkBack on Android after iPhone.
 
 References: [Expo SDK 57 native ScrollView](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/scrollview/), [Host](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/host/), [BottomSheet](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/bottomsheet/), and [React Compiler memoization](https://react.dev/learn/react-compiler/introduction). Layout behavior was also inspected in the pinned package's native and universal implementations.
+
+## Follow-up: even control spacing and bounded info width
+
+Starting HEAD: `4a5f83857f30e439092f39c2c512a1a2556865d1`. Tested implementation HEAD: `76fc9e027e9d05d0960c9656dfa3b73a8d15d635` (`fix: evenly space qubit controls and bound info sheet width`). The following documentation commit records this validation. Both commits are being delivered to the existing remote `phase-4-qubit` branch.
+
+The owner supplied iPhone screenshots showing that the selector occupied most of the control row and that the now-scrollable info body extended beyond both screen edges. The selector no longer receives the row's remaining width: it keeps its natural width, followed by two equal flexible spacers separating the selector, minus, and plus across the full row. Larger text and narrow layouts retain the centered stacked fallback. Guess and Reset availability/appearance are unchanged.
+
+The info body previously relied on percentage width with a 560-point maximum inside `RNHostView matchContents`. The pinned iOS implementation takes that bridge's size from the Yoga child; it does not constrain content to SwiftUI's proposed sheet width. The native sheet column now reports its actual viewport width using iOS `onGeometryChange` or Android `onSizeChanged`. Header, scroll viewport, and body receive an explicit width capped by the measured viewport, window, and 560-point reading limit. The body retains natural height inside the native vertical ScrollView. The circuit diagram also uses the actual content width to select its layout. No fixed body height, nested scroll owner, or clipping workaround was added.
+
+Final MDS validation timestamp: `2026-10-08T17:09:14.377Z` (13:09 EDT).
+
+| Check | Result |
+| --- | --- |
+| `npm test` through MDS CI | Exit 0; lint, Prettier, TypeScript, 14 AR tests and 101 Qubit tests passed: 115 total. No implementation-mirroring tests added for these layout-only edits. |
+| Expo Doctor | Exit 0; 21/21 passed. |
+| MDS Doctor CI | `doctor_scan_project(projectPath: assigned worktree, mode: "ci", runScripts: true)` passed: score 99, zero errors, one existing warning category, 15 passed, four intentional skips. React Doctor: zero errors, seven unchanged warnings outside Qubit, score 98. All non-pass results were explained through MDS. |
+| iOS JavaScript export through MDS CI | Exit 0; 2,321 modules, 28 assets. Hermes bundle `entry-c073cc9e3d6e5ffe473246200bf28df3.hbc`, 5,156,293 bytes. The documented intermittent Windows exporter exit crash did not recur. |
+| Git whitespace and scope | Implementation staged diff check passed. Only the feature's two native UI files changed. SDK 57, dependencies/lockfile, shared AR interface, navigation, quantum transport, controller, Viro scene, roadmap, and sibling experiences are unchanged. |
+
+Dependency installation was not repeated; existing advisories remain. No live quantum jobs, credential changes, native build, EAS deployment, PR, or merge were performed. Automated checks and JavaScript export do not establish native sheet bounds or control spacing on an iPhone.
+
+Opt-in device acceptance:
+
+- [ ] Reload on iPhone and verify Simulator and Hardware each keep a compact selector, with equal gaps between selector, minus, and plus across the row. Verify guesses and actions remain centered and gray disabled guesses still reverse with Reset.
+- [ ] Scroll from The game through the final API link, release at the bottom, and verify every paragraph and panel remains inside the screen with side padding. Repeat in landscape and with larger Dynamic Type; confirm the diagram wraps within the actual sheet width.
+- [ ] Verify Done/swipe dismissal, VoiceOver, and preserved sphere placement/size. Repeat bounds and layout checks on Android after iPhone.
+
+References: [Expo SDK 57 RNHostView](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/rnhostview/), [Spacer](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/spacer/), [SwiftUI geometry modifiers](https://docs.expo.dev/versions/v57.0.0/sdk/ui/swift-ui/modifiers/), and [Compose size modifiers](https://docs.expo.dev/versions/v57.0.0/sdk/ui/jetpack-compose/modifiers/). Native measurement behavior was inspected in the installed `@expo/ui` 57.0.22 implementation.
