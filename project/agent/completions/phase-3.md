@@ -2,6 +2,10 @@
 
 Date: 2026-10-08 (America/New_York).
 
+The [floating placement and Transform controls update](phase-3-device-feedback.md)
+supersedes the controls and device checklist described in this original delivery
+record. Physical acceptance of the updated viewer remains pending.
+
 **Available implementation delivered; physical acceptance remains pending.** This
 report does not mark the roadmap or the entire phase complete. The immutable
 bootstrap handoff and both TODO copies were left unchanged.
