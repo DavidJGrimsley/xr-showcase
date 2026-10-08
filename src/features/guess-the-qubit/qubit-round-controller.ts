@@ -5,6 +5,7 @@ import type {
   QuantumJob,
   QuantumRuntime,
 } from '../../services/quantum-api';
+import type { QubitCleanup } from './qubit-job-cleanup';
 
 export type QubitMode = 'simulator' | 'hardware';
 export type RoundPhase =
@@ -71,9 +72,16 @@ export class QubitRoundController {
   private timer: unknown;
   private getRuntime: () => QuantumRuntime | null;
   private clock: QuantumClock;
-  constructor(getRuntime: () => QuantumRuntime | null, clock = defaultClock) {
+  private cleanup?: QubitCleanup;
+  private uncertainRounds = new Set<number>();
+  constructor(
+    getRuntime: () => QuantumRuntime | null,
+    clock = defaultClock,
+    cleanup?: QubitCleanup
+  ) {
     this.getRuntime = getRuntime;
     this.clock = clock;
+    this.cleanup = cleanup;
   }
   getSnapshot = () => this.snapshot;
   getSessionId = () => this.snapshot.sessionId;
@@ -128,8 +136,13 @@ export class QubitRoundController {
   deferUntil(retryAt: number) {
     this.update({ retryAt: Math.max(this.snapshot.retryAt, retryAt) });
   }
+  clearCancellationNotice() {
+    if (this.snapshot.cancellationNotice) this.update({ cancellationNotice: '' });
+  }
   setMode(mode: QubitMode) {
-    if (this.snapshot.phase !== 'idle') return;
+    if (!['idle', 'complete', 'error'].includes(this.snapshot.phase)) return;
+    if (this.snapshot.mode === mode) return;
+    this.reset();
     this.update({ mode });
   }
   canGuess(now = this.clock.now()) {
@@ -146,7 +159,10 @@ export class QubitRoundController {
     );
   }
   acknowledgeUnknown() {
-    if (this.snapshot.phase === 'idle') this.update({ uncertainSubmission: false });
+    if (this.snapshot.phase === 'idle') {
+      this.uncertainRounds.clear();
+      this.update({ uncertainSubmission: false, cancellationNotice: '' });
+    }
   }
   guess(bit: Bit) {
     if ((bit !== 0 && bit !== 1) || !this.canGuess()) return;
@@ -172,10 +188,8 @@ export class QubitRoundController {
       outcome: null,
       jobId: null,
       jobStatus: null,
-      message:
-        this.snapshot.mode === 'hardware'
-          ? 'Submitting one hardware shot…'
-          : 'Preparing π/2 and measuring…',
+      message: this.snapshot.mode === 'hardware' ? 'Submitting…' : 'Measuring…',
+      cancellationNotice: '',
     });
     if (this.snapshot.mode === 'hardware') void this.submit(round);
     else void this.measure(round);
@@ -206,6 +220,13 @@ export class QubitRoundController {
   private retireLateJob(round: Round, job: QuantumJob) {
     round.job = job;
     round.terminal = ['succeeded', 'failed', 'cancelled'].includes(job.status);
+    this.uncertainRounds.delete(round.id);
+    this.update({ uncertainSubmission: this.uncertainRounds.size > 0 });
+    if (round.terminal) {
+      void this.cleanup?.settle(job.jobId).catch(() => {});
+      return;
+    }
+    if (this.cleanup) this.update({ hardwareReady: false });
     this.cancel(round);
   }
   private async acceptJob(round: Round, job: QuantumJob) {
@@ -217,25 +238,41 @@ export class QubitRoundController {
     round.job = job;
     round.terminal = ['succeeded', 'failed', 'cancelled'].includes(job.status);
     this.update({ jobId: job.jobId, jobStatus: job.status });
+    if (this.cleanup) {
+      if (round.terminal) void this.cleanup.settle(job.jobId).catch(() => {});
+      else {
+        try {
+          await this.cleanup.track(job.jobId);
+        } catch {
+          if (this.current(round)) {
+            this.cancel(round);
+            this.update({
+              phase: 'error',
+              message: 'Could not save job cleanup. Cancellation requested.',
+              hardwareReady: false,
+            });
+          }
+          return;
+        }
+      }
+    }
+    if (!this.current(round)) return;
     if (job.status === 'succeeded') {
       const measurement = await round.api.result(job.jobId, round.abort.signal);
       if (this.current(round)) this.acceptMeasurement(measurement);
     } else if (job.status === 'failed' || job.status === 'cancelled') {
       this.update({
         phase: 'error',
-        message:
-          job.status === 'failed'
-            ? 'Hardware job failed. Reset to try a new round.'
-            : 'Hardware job was cancelled. Reset to start a new round.',
+        message: job.status === 'failed' ? 'Job failed. Reset Qubit to retry.' : 'Job cancelled.',
       });
     } else {
       this.update({
         message:
           job.status === 'cancelling'
-            ? 'Hardware cancellation is pending…'
+            ? 'Cancelling…'
             : job.status === 'running'
-              ? 'Hardware is running. Waiting for one measurement…'
-              : 'Hardware job is queued. Checking every 15 seconds…',
+              ? 'Running…'
+              : 'Queued…',
       });
       this.schedulePoll(round);
     }
@@ -264,9 +301,10 @@ export class QubitRoundController {
       this.clock.now() < this.snapshot.retryAt
     )
       return;
+    this.clearTimer();
     this.update({
       phase: this.snapshot.introDone ? 'waiting' : 'intro',
-      message: 'Resuming the existing hardware job…',
+      message: 'Reconnecting…',
     });
     void this.poll(round);
   }
@@ -280,31 +318,48 @@ export class QubitRoundController {
       !round.job &&
       !['credentials', 'rate_limit', 'request_failed'].includes(data.code ?? '');
     if (!round.job && !uncertain) round.submitted = false;
-    const resumable = !!round.job && data.code !== 'invalid_result';
+    if (uncertain) this.uncertainRounds.add(round.id);
+    const resumable =
+      !!round.job && !['invalid_result', 'credentials', 'request_failed'].includes(data.code ?? '');
     const message = uncertain
-      ? 'Submission outcome is unknown. A hardware job may still run. Check with the owner before authorizing another shot.'
+      ? 'Submission interrupted before confirmation. The job may still run. Reset Qubit to retry.'
       : data.code === 'credentials'
-        ? 'The demo service denied access. Reset or try again later.'
+        ? 'Service unavailable. Reset Qubit to retry.'
         : data.code === 'rate_limit'
-          ? 'Rate limited. Wait, then resume the existing job or reset.'
+          ? 'Reconnecting…'
           : data.code === 'invalid_result'
-            ? 'Invalid measurement or job response. No result was accepted. Reset to recover.'
+            ? 'Invalid result. Reset Qubit to retry.'
             : resumable
-              ? 'Connection interrupted. Resume checks the same job without submitting another shot.'
-              : 'The measurement request failed. Check your connection, then Reset.';
+              ? 'Reconnecting…'
+              : 'Connection interrupted. Reset Qubit to retry.';
     this.update({
       phase: resumable ? 'paused' : 'error',
       message,
       retryAt: Number.isFinite(data.retryAt) ? data.retryAt! : 0,
       uncertainSubmission: this.snapshot.uncertainSubmission || uncertain,
+      ...(uncertain ? { hardwareReady: false } : {}),
+      ...(data.code === 'credentials' ? { simulatorReady: false, hardwareReady: false } : {}),
+      ...(!round.submitted && ['network', 'timeout', 'unavailable'].includes(data.code ?? '')
+        ? { simulatorReady: false }
+        : {}),
+      ...(!resumable && round.job && !round.terminal ? { hardwareReady: false } : {}),
     });
+    if (resumable) {
+      this.timer = this.clock.schedule(
+        () => {
+          this.timer = undefined;
+          if (this.current(round)) this.resume();
+        },
+        Math.max(15000, this.snapshot.retryAt - this.clock.now())
+      );
+    } else if (round.job && !round.terminal) this.cancel(round);
   }
   private acceptMeasurement(measurement: Bit) {
     if (measurement !== 0 && measurement !== 1) {
       if (this.round) this.fail(this.round, { code: 'invalid_result' });
       return;
     }
-    this.update({ measurement, message: 'Measurement received. Finishing the preparation…' });
+    this.update({ measurement, message: 'Measuring…' });
     this.collapseWhenReady();
   }
   finishIntro(sessionId: number, roundId: number) {
@@ -330,7 +385,7 @@ export class QubitRoundController {
     ) {
       this.update({
         phase: 'collapsing',
-        message: `Collapsing to |${this.snapshot.measurement}⟩…`,
+        message: 'Measuring…',
       });
     }
   }
@@ -347,30 +402,37 @@ export class QubitRoundController {
     this.update({
       phase: 'complete',
       outcome: won ? 'won' : 'lost',
-      message: `${won ? 'You Won' : 'You Lost'} — measured ${this.snapshot.measurement}. Reset to play again.`,
+      message: `${won ? 'You Won' : 'You Lost'} · ${this.snapshot.measurement}`,
     });
   }
   private cancel(round: Round) {
     if (!round.job || round.terminal || round.cancelAttempted) return;
     round.cancelAttempted = true;
     // Independent request: the round's signal was deliberately aborted before cancellation.
-    void round.api.cancel(round.job.jobId).catch(() => {
-      /* Best effort; local teardown must always finish. */
-    });
+    const job = round.job;
+    void (this.cleanup ? this.cleanup.cancel(round.api, job) : round.api.cancel(job.jobId))
+      .then(() => {
+        if (!this.round && this.cleanup && !this.cleanup.hasPending())
+          this.clearCancellationNotice();
+      })
+      .catch(() => {
+        if (!this.round)
+          this.update({ cancellationNotice: 'Cancellation pending. Retrying when connected.' });
+      });
   }
   reset() {
     const round = this.round;
     this.round = null;
     this.clearTimer();
     const uncertain = this.snapshot.uncertainSubmission || !!(round?.submitted && !round.job);
+    if (round?.submitted && !round.job) this.uncertainRounds.add(round.id);
     let notice = this.snapshot.cancellationNotice;
     if (round) {
       round.abort.abort();
       if (round.job && !round.terminal) {
         this.cancel(round);
-        notice = 'Cancellation requested. Remote cancellation is not guaranteed.';
-      } else if (round.submitted && !round.job)
-        notice = 'Submission stopped locally. A late job ID will be cancelled if received.';
+        notice = 'Cancelling…';
+      } else if (round.submitted && !round.job) notice = '';
     }
     this.update({
       roundId: ++this.sequence,
@@ -386,6 +448,7 @@ export class QubitRoundController {
         : 'Place the Bloch sphere on a table.',
       uncertainSubmission: uncertain,
       cancellationNotice: notice,
+      ...(this.cleanup && round?.job && !round.terminal ? { hardwareReady: false } : {}),
     });
   }
 }

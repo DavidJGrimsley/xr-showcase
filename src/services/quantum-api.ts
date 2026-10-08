@@ -268,7 +268,7 @@ export class QuantumApiClient implements QuantumRuntime {
         ),
       (data) => parseJob(data),
       onLateJob,
-      30000
+      60000
     );
   }
   status(jobId: string, signal: AbortSignal) {

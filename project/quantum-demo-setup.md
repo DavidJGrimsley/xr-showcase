@@ -1,6 +1,6 @@
 # Quantum hackathon demo setup
 
-Guess the Qubit uses `@mr.dj2u/quantum-api@0.1.2`. Players open the game, place the sphere, and guess; there is no API-key entry or configuration screen. The game checks connectivity automatically and offers Reconnect on failure.
+Guess the Qubit uses `@mr.dj2u/quantum-api@0.1.2`. Players open the game, place the sphere, and guess; there is no API-key entry or configuration screen. Connection checks and interrupted job polling reconnect automatically without resubmitting hardware work.
 
 ## Configure once before building
 
@@ -21,6 +21,12 @@ Expo reads explicit `process.env.EXPO_PUBLIC_*` property accesses during bundlin
 
 ## Verify on the development build
 
-Enter the game and confirm it connects without setup. Test live simulator guesses, placement/readability, Reduce Motion, Reset, Home, background/resume, and camera handoff. Hardware remains an intentional user-selected one-shot action; connectivity checking never submits a job. Opt in to a hardware guess and check queue/result/cancellation behavior when ready. Automated tests use mock transport and do not prove native AR or real IBM execution.
+Enter the game and confirm it connects without setup. Before placement, only the placement caption appears in the HUD. After placement, Simulator has no caption; Hardware Jobs has a short waiting/cancellation caption. Controls are `0`, `1`, `Reset Qubit`, and `Restart AR`, with native pressed feedback and disabled states. Test placement/readability, Dynamic Type, VoiceOver, Reduce Motion, live simulator guesses, and camera handoff.
 
-If the build omits the key or has an invalid service URL, the game reports that the demo service is not configured and disables guesses. It never asks the player for credentials. Correct the build environment and rebuild.
+Hardware remains an intentional user-selected one-shot action; connectivity checking never submits a job. Opt in to a hardware guess and check queue/result/cancellation behavior when ready. Reset Qubit, Restart AR, surface loss, navigating away, and backgrounding stop the round and request cancellation of known unfinished jobs. Failed or incomplete cancellations are retried automatically; only job IDs are saved locally so reopening can cancel outstanding jobs before enabling hardware again.
+
+A submission interrupted before the service returns a job ID shows one yellow message. A later acknowledgement is used only for cancellation. Reset Qubit requires confirmation before permitting another hardware submission. Hardware submission waits up to 60 seconds; polling is sequential every 15 seconds and respects Retry-After.
+
+Cancellation is a request to the service, not proof that the provider stopped a job. An immediate force quit, loss of connectivity, or termination before a job ID arrives can prevent client cleanup. Guaranteed unattended-job expiry requires a server-side lease, which the current API does not expose. The caption therefore says leaving **requests cancellation**. Automated tests and JavaScript export do not prove native behavior or actual IBM cancellation.
+
+If the build omits the key or has an invalid service URL, the placed HUD reports `Demo service unavailable.` and disables guesses. It never asks the player for credentials. Correct the build environment and rebuild.

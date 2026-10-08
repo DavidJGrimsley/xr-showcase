@@ -14,6 +14,7 @@ import {
   ViroTrackingStateConstants,
 } from '@reactvision/react-viro';
 import type { ARSceneContext } from '@/features/ar/ar-session-types';
+import { PLACEMENT_CAPTION } from './qubit-presentation';
 import {
   ARROW_TRIANGLES,
   ARROW_VERTICES,
@@ -246,8 +247,8 @@ export default function QubitScene({
         context.onInstruction(
           normal
             ? selected.current
-              ? 'Sphere placed. Walk around it to explore the axes.'
-              : 'Move slowly, then tap a highlighted table to place the sphere.'
+              ? ''
+              : PLACEMENT_CAPTION
             : 'Tracking is limited. Move slowly in a well-lit space.'
         );
       }}>
@@ -259,15 +260,13 @@ export default function QubitScene({
         onPlaneSelected={(plane) => {
           selected.current = plane.anchorId;
           controller.setPlaced(context.sessionId, true);
-          context.onInstruction(
-            'Sphere placed. Reset keeps its position; Restart AR chooses another surface.'
-          );
+          context.onInstruction('');
         }}
         onPlaneRemoved={(id) => {
           if (selected.current === id) {
             selected.current = null;
             controller.setPlaced(context.sessionId, false);
-            context.onInstruction('Surface lost. Scan and tap another table.');
+            context.onInstruction(PLACEMENT_CAPTION);
           }
         }}>
         <BlochSphere context={context} controller={controller} />

@@ -173,7 +173,7 @@ for (const status of ['running', 'cancelling', 'failed', 'cancelled'])
     h.controller.reset();
     assert.equal(h.pending.size, 0);
   });
-test('failed polling pauses; Resume observes the same job and respects Retry-After', async () => {
+test('failed polling reconnects automatically to the same job and respects Retry-After', async () => {
   let attempt = 0;
   const h = harness(
     {
@@ -190,12 +190,10 @@ test('failed polling pauses; Resume observes the same job and respects Retry-Aft
   h.advance(15000);
   await flush();
   assert.equal(h.controller.getSnapshot().phase, 'paused');
-  assert.equal(h.pending.size, 0);
+  assert.equal(h.pending.size, 1);
   h.controller.resume();
   assert.equal(h.calls.status.length, 1);
   h.advance(45000);
-  h.controller.resume();
-  h.controller.resume();
   await flush();
   assert.equal(h.calls.status.length, 2);
   assert.equal(h.calls.submit.length, 1);
@@ -238,6 +236,8 @@ for (const code of ['credentials', 'network', 'timeout', 'invalid_result'])
     assert.equal(h.controller.getSnapshot().outcome, null);
     assert.equal(h.controller.getSnapshot().message.includes('untrusted'), false);
     h.controller.reset();
+    assert.equal(h.controller.canGuess(), code === 'invalid_result');
+    h.controller.setAvailability(true, true);
     assert.equal(h.controller.canGuess(), true);
   });
 test('mismatched hardware status is rejected and the original job remains cancellable', async () => {
@@ -264,6 +264,8 @@ test('known submission rejection does not turn into an unknown-outcome warning a
   await flush();
   h.controller.reset();
   assert.equal(h.controller.getSnapshot().uncertainSubmission, false);
+  assert.equal(h.controller.canGuess(), false);
+  h.controller.setAvailability(true, true);
   assert.equal(h.controller.canGuess(), true);
 });
 test('ambiguous submission failure never retries and needs explicit acknowledgement after Reset', async () => {
@@ -284,6 +286,8 @@ test('ambiguous submission failure never retries and needs explicit acknowledgem
   h.controller.guess(1);
   assert.equal(h.calls.submit.length, 1);
   assert.equal(h.controller.getSnapshot().uncertainSubmission, true);
+  h.controller.setAvailability(true, true);
+  assert.equal(h.controller.canGuess(), false);
   h.controller.acknowledgeUnknown();
   assert.equal(h.controller.canGuess(), true);
 });
@@ -319,12 +323,14 @@ for (const teardown of ['reset', 'home', 'background', 'replacement', 'surface-l
     assert.equal(h.controller.getSnapshot().measurement, null);
     assert.equal(h.calls.cancel.length, 1);
   });
-for (const teardown of ['reset', 'home'])
+for (const teardown of ['reset', 'home', 'background', 'replacement', 'surface-loss'])
   test(`${teardown} during submission cancels the eventual job ID without accepting it`, async () => {
     const submission = deferred();
     const h = harness({ submit: () => submission.promise }, 'hardware');
     h.controller.guess(0);
     if (teardown === 'reset') h.controller.reset();
+    else if (teardown === 'replacement') h.controller.attach(2);
+    else if (teardown === 'surface-loss') h.controller.setPlaced(1, false);
     else h.controller.detach(1);
     assert.equal(h.calls.submit[0][0].aborted, true);
     submission.resolve({ jobId: 'late-job', status: 'queued' });

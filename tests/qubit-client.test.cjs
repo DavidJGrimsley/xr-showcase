@@ -235,6 +235,31 @@ test('network errors and non-JSON successes expose no raw private text', async (
   );
   await assert.rejects(invalid.measure(new AbortController().signal), { code: 'invalid_result' });
 });
+test('hardware submission can finish after 30 seconds without timing out or repeating', async () => {
+  const pending = deferred();
+  const c = clock();
+  let calls = 0;
+  let signal;
+  const client = new QuantumApiClient(
+    async (_, init) => {
+      calls++;
+      signal = init.signal;
+      return pending.promise;
+    },
+    credentials,
+    c
+  );
+  const result = client.submit(new AbortController().signal, () =>
+    assert.fail('Unexpected late job')
+  );
+  c.advance(45000);
+  assert.equal(signal.aborted, false);
+  pending.resolve(response({ job_id: 'slow-job', status: 'queued' }));
+  assert.deepEqual(await result, { jobId: 'slow-job', status: 'queued' });
+  assert.equal(calls, 1);
+  assert.equal(c.pending.size, 0);
+});
+
 test('timeouts abort transport and preserve a late submission ID for cancellation', async () => {
   const pending = deferred();
   const c = clock();
@@ -252,7 +277,7 @@ test('timeouts abort transport and preserve a late submission ID for cancellatio
   );
   const result = client.submit(new AbortController().signal, (job) => late.push(job));
   const rejection = assert.rejects(result, { code: 'timeout' });
-  c.advance(30000);
+  c.advance(60000);
   await rejection;
   assert.equal(signal.aborted, true);
   pending.resolve(response({ job_id: 'late', status: 'queued' }));

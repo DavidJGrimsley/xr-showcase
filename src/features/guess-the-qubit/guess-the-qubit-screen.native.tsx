@@ -1,77 +1,129 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Text, useWindowDimensions, View } from 'react-native';
-import { Button, Column, Host, Picker, Row } from '@expo/ui';
+import { ActivityIndicator, Alert, Platform, Text, useWindowDimensions, View } from 'react-native';
+import { Button, Column, Host, Picker, Row, Text as NativeText } from '@expo/ui';
+import { Stack } from 'expo-router/stack';
 import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useQubitConfiguration } from './use-qubit-configuration.native';
-
+import { qubitPresentation } from './qubit-presentation';
 import type { QubitSnapshot } from './qubit-round-controller';
 
 const QubitNavigator = lazy(() => import('./qubit-navigator.native'));
 type Configuration = ReturnType<typeof useQubitConfiguration>;
 
+function resetQubit(controller: Configuration['controller']) {
+  if (!controller.getSnapshot().uncertainSubmission) {
+    controller.reset();
+    return;
+  }
+  Alert.alert(
+    'Submission interrupted',
+    'The service did not confirm the job. It may still run. Start a new round?',
+    [
+      { text: 'Wait', style: 'cancel' },
+      {
+        text: 'Reset Qubit',
+        onPress: () => {
+          controller.reset();
+          controller.acknowledgeUnknown();
+        },
+      },
+    ]
+  );
+}
+
 function QubitStatus({
-  state,
-  busy,
-  message,
-  instruction,
-  coolUntil,
-  now,
+  display,
+  outcome,
 }: {
-  state: QubitSnapshot;
-  busy: boolean;
-  message: string;
-  instruction: string;
-  coolUntil: number;
-  now: number;
+  display: ReturnType<typeof qubitPresentation>;
+  outcome: QubitSnapshot['outcome'];
 }) {
-  const statusColor =
-    state.outcome === 'won' ? '#86efac' : state.outcome === 'lost' ? '#fca5a5' : '#fff1da';
+  if (!display.status) return null;
+  const outcomeColor = outcome && { won: '#86efac', lost: '#fca5a5' }[outcome];
+  const color = display.warning ? '#fde68a' : outcomeColor || '#e2e8f0';
   return (
-    <>
-      <Text className="text-sm" style={{ color: '#cbd5e1' }}>
-        {instruction}
+    <View className="flex-row items-center gap-2">
+      {display.spinning ? (
+        <ActivityIndicator accessibilityLabel="Waiting for the result" color="#93f5c5" />
+      ) : null}
+      <Text accessibilityLiveRegion="polite" className="flex-1 text-base" style={{ color }}>
+        {display.status}
       </Text>
-      <Text
-        accessibilityLiveRegion="polite"
-        className="text-lg font-semibold"
-        style={{ color: statusColor }}>
-        {state.message}
-      </Text>
-      {state.guess !== null ? (
-        <Text className="text-sm" style={{ color: '#fff1da' }}>
-          Your guess: {state.guess} ·{' '}
-          {state.mode === 'hardware' ? `Hardware: ${state.jobStatus ?? 'submitting'}` : 'Simulator'}
-        </Text>
-      ) : null}
-      {busy || ['intro', 'waiting', 'collapsing'].includes(state.phase) ? (
-        <ActivityIndicator
-          accessibilityLabel={busy ? 'Connecting to the service' : 'Round in progress'}
-          color="#ff08a1"
-        />
-      ) : null}
-      {state.phase === 'idle' ? (
-        <Text className="text-sm" style={{ color: '#cbd5e1' }}>
-          {message}
-        </Text>
-      ) : null}
-      {coolUntil > now ? (
-        <Text className="text-sm" style={{ color: '#fde68a' }}>
-          Retry available in {Math.ceil((coolUntil - now) / 1000)} seconds.
-        </Text>
-      ) : null}
-      {state.cancellationNotice ? (
-        <Text className="text-sm" style={{ color: '#fde68a' }}>
-          {state.cancellationNotice}
-        </Text>
-      ) : null}
-      {state.uncertainSubmission ? (
-        <Text className="text-sm" style={{ color: '#fde68a' }}>
-          A prior submission may still run. Check its outcome with the owner before enabling another
-          hardware shot.
-        </Text>
-      ) : null}
-    </>
+    </View>
+  );
+}
+
+function QubitControls({
+  controller,
+  state,
+  context,
+}: {
+  controller: Configuration['controller'];
+  state: QubitSnapshot;
+  context: ARActiveOverlayContext;
+}) {
+  const { fontScale, width } = useWindowDimensions();
+  const disabled = !controller.canGuess();
+  const resetDisabled = state.phase === 'idle' && !state.uncertainSubmission;
+  const actionHeight = Math.max(48, 17 * fontScale + 20);
+  const guessWidth = Math.max(80, 24 * fontScale + 40);
+  // SwiftUI's explicit point size needs scaling; Compose's sp already follows fontScale.
+  const guessFontSize = Platform.OS === 'ios' ? 24 * fontScale : 24;
+  const Actions = fontScale > 1.3 || width < 360 ? Column : Row;
+  const Guesses = 2 * guessWidth + 24 > width - 72 ? Column : Row;
+  const restart = () => {
+    if (controller.getSessionId() !== context.sessionId) return;
+    controller.detach(context.sessionId);
+    context.restartAR();
+  };
+  return (
+    <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor="#93f5c5">
+      <Column spacing={10}>
+        <Picker
+          testID="qubit-mode"
+          selectedValue={state.mode}
+          enabled={['idle', 'complete', 'error'].includes(state.phase)}
+          onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
+          <Picker.Item label="Simulator" value="simulator" />
+          <Picker.Item label="Hardware Jobs" value="hardware" />
+        </Picker>
+        <Guesses spacing={24}>
+          {[0, 1].map((bit) => (
+            <Button
+              key={bit}
+              testID={`qubit-guess-${bit}`}
+              disabled={disabled}
+              variant={disabled && state.guess !== bit ? 'outlined' : 'filled'}
+              onPress={() => controller.guess(bit as 0 | 1)}
+              style={{
+                height: Math.max(48, 24 * fontScale + 20),
+                width: guessWidth,
+                opacity: disabled && state.guess !== bit ? 0.4 : 1,
+              }}>
+              <NativeText textStyle={{ fontSize: guessFontSize, fontWeight: 'bold' }}>
+                {String(bit)}
+              </NativeText>
+            </Button>
+          ))}
+        </Guesses>
+        <Actions spacing={10}>
+          <Button
+            label="Reset Qubit"
+            disabled={resetDisabled}
+            variant="outlined"
+            onPress={() => resetQubit(controller)}
+            style={{ height: actionHeight, opacity: resetDisabled ? 0.4 : 1 }}
+          />
+          <Button
+            label="Restart AR"
+            variant="outlined"
+            onPress={restart}
+            style={{ height: actionHeight }}
+          />
+        </Actions>
+      </Column>
+    </Host>
   );
 }
 
@@ -82,144 +134,54 @@ function QubitHUD({
   context: ARActiveOverlayContext;
   configuration: Configuration;
 }) {
-  const { controller, configured, busy, message, retryAt, check, cancelCheck } = configuration;
+  const { controller, busy, message } = configuration;
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [now, setNow] = useState(() => Date.now());
-  const { fontScale, width } = useWindowDimensions();
-  const coolUntil = Math.max(retryAt, state.retryAt);
   useEffect(() => {
-    if (Date.now() >= coolUntil) return;
+    if (Date.now() >= state.retryAt) return;
     const timer = setInterval(() => {
       const time = Date.now();
       setNow(time);
-      if (time >= coolUntil) clearInterval(timer);
+      if (time >= state.retryAt) clearInterval(timer);
     }, 1000);
     return () => clearInterval(timer);
-  }, [coolUntil]);
-  useEffect(() => {
-    void check();
-    return () => cancelCheck();
-  }, [context.sessionId, check, cancelCheck]);
-  const disabled = busy || !controller.canGuess(now) || now < coolUntil;
-  const idle = state.phase === 'idle';
-  const buttonStyle = {
-    height: Math.max(48, 22 * fontScale + 26),
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#93f5c5',
-    borderRadius: 10,
-    backgroundColor: '#15232a',
-  };
-  const leave = (action: () => void) => {
-    cancelCheck();
-    controller.detach(context.sessionId);
-    action();
-  };
-  const guessButtons = (
-    <>
-      <Button
-        label="Guess 0"
-        disabled={disabled}
-        onPress={() => controller.guess(0)}
-        style={buttonStyle}
-      />
-      <Button
-        label="Guess 1"
-        disabled={disabled}
-        onPress={() => controller.guess(1)}
-        style={buttonStyle}
-      />
-    </>
-  );
+  }, [state.retryAt]);
+  const display = qubitPresentation(state, message, busy, now);
+  if (!state.placed)
+    return (
+      <View className="rounded-2xl px-4 py-3" style={{ backgroundColor: '#10191fe6' }}>
+        <Text className="text-base" style={{ color: '#e2e8f0' }}>
+          {display.caption}
+        </Text>
+      </View>
+    );
   return (
-    <View
-      className="gap-3 rounded-xl border p-4"
-      style={{ backgroundColor: '#10191fee', borderColor: '#365d58' }}>
-      <QubitStatus
-        state={state}
-        busy={busy}
-        message={message}
-        instruction={context.instruction}
-        coolUntil={coolUntil}
-        now={now}
-      />
-      <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor="#93f5c5">
-        <Column spacing={8}>
-          <Picker
-            selectedValue={state.mode}
-            enabled={idle && !busy}
-            onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
-            <Picker.Item label="Simulator" value="simulator" />
-            <Picker.Item label="Hardware Jobs" value="hardware" />
-          </Picker>
-          {fontScale > 1.3 || width < 360 ? (
-            <Column spacing={8}>{guessButtons}</Column>
-          ) : (
-            <Row spacing={12}>{guessButtons}</Row>
-          )}
-          {state.phase === 'paused' ? (
-            <Button
-              label="Resume existing job"
-              disabled={coolUntil > now}
-              onPress={() => controller.resume()}
-              style={buttonStyle}
-            />
-          ) : null}
-          {idle && state.uncertainSubmission ? (
-            <Button
-              label="I checked — allow another hardware shot"
-              onPress={() => controller.acknowledgeUnknown()}
-              style={buttonStyle}
-            />
-          ) : null}
-          <Button
-            label="Reset round"
-            onPress={() => {
-              cancelCheck();
-              controller.reset();
-            }}
-            variant="outlined"
-            style={buttonStyle}
-          />
-          {idle ? (
-            <Button
-              label="Reconnect"
-              disabled={busy || !configured || coolUntil > now}
-              onPress={() => void check()}
-              variant="outlined"
-              style={buttonStyle}
-            />
-          ) : null}
-          <Button
-            label="Restart AR"
-            onPress={() => leave(context.restartAR)}
-            variant="text"
-            style={buttonStyle}
-          />
-          <Button
-            label="Home"
-            onPress={() => leave(context.home)}
-            variant="text"
-            style={buttonStyle}
-          />
-        </Column>
-      </Host>
+    <View className="gap-3 rounded-2xl p-4" style={{ backgroundColor: '#10191fe6' }}>
+      {display.caption ? (
+        <Text className="text-sm" style={{ color: '#cbd5e1' }}>
+          {display.caption}
+        </Text>
+      ) : null}
+      <QubitStatus display={display} outcome={state.outcome} />
+      <QubitControls controller={controller} state={state} context={context} />
     </View>
   );
 }
 export default function GuessTheQubitScreen() {
   const configuration = useQubitConfiguration();
   return (
-    <ARSessionBoundary
-      renderNavigator={(context) => (
-        <Suspense fallback={null}>
-          <QubitNavigator context={context} controller={configuration.controller} />
-        </Suspense>
-      )}
-      renderActiveOverlay={(context) => (
-        <QubitHUD key={context.sessionId} context={context} configuration={configuration} />
-      )}
-    />
+    <>
+      <Stack.Screen options={{ headerRight: () => null, headerBackButtonDisplayMode: 'minimal' }} />
+      <ARSessionBoundary
+        renderNavigator={(context) => (
+          <Suspense fallback={null}>
+            <QubitNavigator context={context} controller={configuration.controller} />
+          </Suspense>
+        )}
+        renderActiveOverlay={(context) => (
+          <QubitHUD key={context.sessionId} context={context} configuration={configuration} />
+        )}
+      />
+    </>
   );
 }
