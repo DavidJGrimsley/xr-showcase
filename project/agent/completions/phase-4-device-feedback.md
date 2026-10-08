@@ -2,7 +2,7 @@
 
 Date: 2026-10-08 (America/New_York). Implementation and automated checks complete; revised native UI and cancellation acceptance pending.
 
-Latest revision: [disabled guesses, vector labels, sizing, and centering](#follow-up-disabled-guesses-labels-and-sizing). That revision supersedes the selected-guess appearance and four-button-only layout described in the initial feedback delivery below.
+Latest revision: [the header info modal](#follow-up-header-info-modal), following [disabled guesses, vector labels, sizing, and centering](#follow-up-disabled-guesses-labels-and-sizing). The sizing revision supersedes the selected-guess appearance and four-button-only layout described in the initial feedback delivery below.
 
 ## Delivery
 
@@ -93,3 +93,32 @@ Additional opt-in acceptance:
 - [ ] Pinch inward/outward, then use `−` / `+`; verify both methods share the current size and remain centered beside the selector at ordinary text sizes. Verify bounds, largest Dynamic Type, and VoiceOver.
 - [ ] Resize during simulator measurement and while a hardware job is queued/running; verify no extra submission, polling restart, lost guess, or animation restart. Test Reset, Restart AR, surface loss, and background/resume.
 - [ ] Repeat native label/gesture/layout acceptance on Android after iPhone. JavaScript export and mock tests do not prove device gesture performance or label quality.
+
+## Follow-up: header info modal
+
+Starting HEAD: `07608a16689db9cb5e37cd7a312d36addf62845b`. Tested implementation HEAD: `5d1f7950faaf0f0e0d5041accd006e26041e1f79` (`feat: explain Guess the Qubit in an info modal`). The subsequent documentation commit delivers these results; retrieve its SHA using the report-path Git command above.
+
+The header now has an outlined circled **i**, using the native SF Symbol `info.circle` on iOS and a scalable SVG with a 48-point touch target on Android. It opens an Expo UI native modal sheet with three sections: **The game**, **The Bloch sphere**, and **The circuit**. A cyan/magenta legend explains the reference guides and state vector. The text explains the poles, equator labels, illustrated preparation/collapse, guess/result comparison, and simulator versus IBM hardware execution. A small gate diagram shows `|0⟩ → Ry(π/2) → Z measurement`. The Quantum API link points to the exact owner-provided public page.
+
+The sheet scrolls, respects native safe-area layout, supports Dynamic Type, and stacks the circuit diagram for narrow screens or larger text. Section headings and the diagram have screen-reader labels. Done, swipe dismissal, Android back, and the VoiceOver escape gesture close it. The placed sphere and selected size are preserved. Opening info during an active or paused hardware round invokes the existing Reset cancellation path: requests/timers are invalidated, known unfinished jobs receive bounded cancellation requests, and late submission acknowledgements are used only for cancellation. The unknown-submission guard remains intact. Opening info never submits a circuit. Simulator rounds and completed results are preserved.
+
+Final validation timestamp: `2026-10-08T16:22:17.316Z` (12:22 EDT).
+
+| Check | Result |
+| --- | --- |
+| `npm test`, direct and final MDS CI | Exit 0; lint, formatting, TypeScript, 14 AR tests and 97 Qubit tests passed: 111 total. Existing reset, cancellation and late-acknowledgement tests exercise the controller path used by the info action. |
+| Expo Doctor | Exit 0; 21/21 passed. |
+| Final MDS Doctor CI | Score 99; zero errors, one existing warning category, 15 passed, four existing skips. React Doctor: zero errors, seven unchanged warnings outside Qubit, score 98. |
+| iOS JavaScript export | Direct `npm run build` and final MDS CI both exited 0; 2,317 modules, 28 assets. Hermes bundle `entry-390668a8f9b0935b74ae9543abda9dd0.hbc`, 5,139,680 bytes. |
+| Git whitespace and preservation | Staged implementation diff passed. SDK 57, dependencies, lockfile, quantum transport, shared AR interface, navigation layout, roadmap, and sibling experiences are unchanged. |
+
+The first MDS CI run wrote the same iOS export but exited with Windows access-violation code `3221225477`, a failure previously documented in the SDK refactor report. A direct export and an identical MDS CI retry passed without code or build-script changes. The intermittent exit crash remains unexplained; it was not counted as a successful first run. The seven existing React Doctor warnings and four intentional skips are unchanged. No dependency installation, native build, protected API calls, live jobs, credentials, EAS submission, push, or merge were performed for this UI revision. Viro scene code is unchanged; its previous static validation remains applicable.
+
+Implementation references: [Expo SDK 57 BottomSheet](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/bottomsheet/), [Expo SDK 57 Stack](https://docs.expo.dev/versions/v57.0.0/sdk/router/stack/), [IBM RY gate definition](https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.RYGate), and [Quantum API](https://davidjgrimsley.com/public-facing/api/quantum). Circuit copy also matches the existing typed service payloads in this worktree.
+
+Additional opt-in device acceptance:
+
+- [ ] On iPhone, open info before and after placement. Check the circled icon, dark sheet, section hierarchy, legend, gate diagram, scrolling, Done, and swipe dismissal. Confirm placement and size remain after closing.
+- [ ] Check largest Dynamic Type, VoiceOver section navigation/diagram/link, escape dismissal, and landscape layout. Follow the Quantum API link and return to the app; confirm normal camera handoff/background recovery.
+- [ ] If opting into hardware, open info during submission, queued/running work, and paused recovery. Verify no resubmission, known-job cancellation, late-acknowledgement cancellation, and the uncertainty guard when no job ID was returned. Verify completed results remain visible after dismissal.
+- [ ] Repeat modal and TalkBack/back-button checks on Android after iPhone. Automated checks and JavaScript export do not establish native modal appearance, touch handling, or live cancellation acceptance.
