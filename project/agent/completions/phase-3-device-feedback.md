@@ -2,6 +2,10 @@
 
 Date: 2026-10-08 (America/New_York).
 
+The [shared medical/qubit Transform update](phase-3-qubit-transform-update.md)
+supersedes this record's one-foot default and documents the current two-foot
+defaults, shared widget, and latest validation.
+
 Implemented on `phase-3-medical`, based on `7d78dfc538d5c352d2e583d716f70a9eb3878dda`.
 Implementation commit: `5e14c4c851fa1dcaa2d0fce7f550ea7e05bb343b`
 (`feat: add floating medical model and transform controls`).

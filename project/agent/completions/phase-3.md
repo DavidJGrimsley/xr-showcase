@@ -2,6 +2,9 @@
 
 Date: 2026-10-08 (America/New_York).
 
+Latest update: [shared medical/qubit Transform controls and two-foot defaults](phase-3-qubit-transform-update.md).
+That report supersedes the earlier one-foot placement and controls descriptions.
+
 The [floating placement and Transform controls update](phase-3-device-feedback.md)
 supersedes the controls and device checklist described in this original delivery
 record. Physical acceptance of the updated viewer remains pending.
