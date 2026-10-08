@@ -149,6 +149,21 @@ export function QubitInfoModal({
                     result. Your guess doesn’t change the circuit.
                   </Text>
                 </InfoSection>
+                <InfoSection title="AR controls">
+                  <Text style={styles.body}>
+                    Tap a highlighted surface to place the sphere. It starts floating two feet above
+                    that surface. Transform opens Scale, Rotate, and Height sliders; Done returns to
+                    the game. Scale ranges from half to three times the original size, and Height
+                    ranges from surface level to five feet. Pinch to resize or twist two fingers to
+                    rotate the display. These changes do not change the quantum circuit.
+                  </Text>
+                  <Text style={styles.body}>
+                    Reposition, inside Transform, keeps your display settings and lets you choose
+                    another surface. It ends the current round and requests cancellation on
+                    hardware. Reset Qubit keeps the display settings; Restart AR restores the
+                    original size and orientation, floating two feet above the surface.
+                  </Text>
+                </InfoSection>
                 <InfoSection title="The Bloch sphere">
                   <Text style={styles.body}>
                     This sphere is a map of one qubit’s state. The direction of the magenta arrow

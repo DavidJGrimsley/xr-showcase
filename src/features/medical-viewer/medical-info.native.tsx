@@ -87,7 +87,7 @@ export function MedicalInfoModal({
                 onAccessibilityEscape={onDismiss}>
                 <Text className="text-base leading-6 text-slate-200">
                   Move your phone slowly, then tap a highlighted table or floor. The skull starts
-                  floating one foot above that surface. Pinch to resize it and twist two fingers to
+                  floating two feet above that surface. Pinch to resize it and twist two fingers to
                   rotate it. Labels reveals the anatomy markers.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
@@ -98,7 +98,7 @@ export function MedicalInfoModal({
                 <Text className="text-base leading-6 text-slate-200">
                   Reposition, inside Transform, lets you choose another surface while keeping your
                   size, rotation, height, and labels. Restart AR starts fresh tracking with the
-                  original size and orientation, floating one foot above the surface.
+                  original size and orientation, floating two feet above the surface.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
                   This skull was segmented from CT images in 3D Slicer and simplified for the

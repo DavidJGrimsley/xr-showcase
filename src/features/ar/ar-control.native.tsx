@@ -1,7 +1,7 @@
 import { Button, Host, Text as NativeText } from '@expo/ui';
 import { Platform, useWindowDimensions, View } from 'react-native';
 
-export function MedicalControl({
+export function ARControl({
   label,
   accessibilityLabel = label,
   hint,

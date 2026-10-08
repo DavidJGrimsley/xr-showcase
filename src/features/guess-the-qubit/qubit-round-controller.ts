@@ -6,18 +6,36 @@ import type {
   QuantumRuntime,
 } from '../../services/quantum-api';
 import type { QubitCleanup } from './qubit-job-cleanup';
+import {
+  clampARHeight,
+  clampARScale,
+  DEFAULT_AR_HEIGHT,
+  normalizeYaw,
+} from '../ar/ar-transform.ts';
+export {
+  MIN_AR_SCALE as MIN_SPHERE_SCALE,
+  MAX_AR_SCALE as MAX_SPHERE_SCALE,
+  DEFAULT_AR_HEIGHT as DEFAULT_SPHERE_HEIGHT,
+} from '../ar/ar-transform.ts';
 
 export type QubitMode = 'simulator' | 'hardware';
-export const MIN_SPHERE_SCALE = 0.5;
-export const MAX_SPHERE_SCALE = 3;
-const SPHERE_SCALE_STEP = 0.25;
+export interface QubitTransformScope {
+  sessionId: number;
+  placementRevision: number;
+  roundId: number;
+}
 export type RoundPhase =
   'idle' | 'intro' | 'waiting' | 'collapsing' | 'complete' | 'paused' | 'error';
 export interface QubitSnapshot {
   sessionId: number | null;
   roundId: number;
   placed: boolean;
+  placementRevision: number;
   sphereScale: number;
+  sphereYaw: number;
+  sphereHeight: number;
+  pinching: boolean;
+  rotating: boolean;
   tracking: boolean;
   mode: QubitMode;
   phase: RoundPhase;
@@ -47,6 +65,9 @@ export function canGuessQubit(state: QubitSnapshot, now: number) {
       : state.hardwareReady && !state.uncertainSubmission)
   );
 }
+export function canManipulateQubit(state: QubitSnapshot) {
+  return state.sessionId !== null && state.placed && state.tracking;
+}
 interface Round {
   id: number;
   sessionId: number;
@@ -67,7 +88,12 @@ export class QubitRoundController {
     sessionId: null,
     roundId: 0,
     placed: false,
+    placementRevision: 0,
     sphereScale: 1,
+    sphereYaw: 0,
+    sphereHeight: DEFAULT_AR_HEIGHT,
+    pinching: false,
+    rotating: false,
     tracking: false,
     mode: 'simulator',
     phase: 'idle',
@@ -92,7 +118,8 @@ export class QubitRoundController {
   private clock: QuantumClock;
   private cleanup?: QubitCleanup;
   private uncertainRounds = new Set<number>();
-  private pinch: { sessionId: number; startScale: number } | null = null;
+  private pinchStart: number | null = null;
+  private rotationStart: number | null = null;
   constructor(
     getRuntime: () => QuantumRuntime | null,
     clock = defaultClock,
@@ -125,71 +152,130 @@ export class QubitRoundController {
     if (this.timer !== undefined) this.clock.cancel(this.timer);
     this.timer = undefined;
   }
+  private currentTransform(scope: QubitTransformScope) {
+    return (
+      this.snapshot.sessionId === scope.sessionId &&
+      this.snapshot.placementRevision === scope.placementRevision &&
+      this.snapshot.roundId === scope.roundId &&
+      canManipulateQubit(this.snapshot)
+    );
+  }
+  private clearGestures() {
+    this.pinchStart = this.rotationStart = null;
+  }
   attach(sessionId: number) {
     if (this.snapshot.sessionId === sessionId) return;
     this.reset();
-    this.update({ sessionId, placed: false, tracking: false });
+    this.update({
+      sessionId,
+      placed: false,
+      tracking: false,
+      placementRevision: this.snapshot.placementRevision + 1,
+    });
   }
   detach(sessionId: number) {
     if (this.snapshot.sessionId !== sessionId) return;
     this.reset();
-    this.update({ sessionId: null, placed: false, tracking: false });
+    this.update({
+      sessionId: null,
+      placed: false,
+      tracking: false,
+      placementRevision: this.snapshot.placementRevision + 1,
+    });
+  }
+  restart(sessionId: number) {
+    if (this.snapshot.sessionId !== sessionId) return;
+    this.update({ sphereScale: 1, sphereYaw: 0, sphereHeight: DEFAULT_AR_HEIGHT });
+    this.detach(sessionId);
   }
   setTracking(sessionId: number, tracking: boolean) {
-    if (this.snapshot.sessionId === sessionId && this.snapshot.tracking !== tracking)
-      this.update({ tracking });
+    if (this.snapshot.sessionId !== sessionId || this.snapshot.tracking === tracking) return;
+    if (!tracking) this.clearGestures();
+    this.update({ tracking, ...(!tracking ? { pinching: false, rotating: false } : {}) });
   }
-  setPlaced(sessionId: number, placed: boolean) {
-    if (this.snapshot.sessionId !== sessionId) return;
+  setPlaced(sessionId: number, placed: boolean, revision = this.snapshot.placementRevision) {
+    if (
+      this.snapshot.sessionId !== sessionId ||
+      revision !== this.snapshot.placementRevision ||
+      this.snapshot.placed === placed
+    )
+      return;
     if (!placed) this.reset();
     this.update({
       placed,
+      ...(!placed ? { placementRevision: this.snapshot.placementRevision + 1 } : {}),
       message: placed
         ? 'Choose a mode, then guess the measurement.'
         : 'Surface lost. Scan and tap another table.',
     });
   }
+  reposition(scope: QubitTransformScope) {
+    if (
+      this.snapshot.sessionId !== scope.sessionId ||
+      this.snapshot.placementRevision !== scope.placementRevision ||
+      this.snapshot.roundId !== scope.roundId
+    )
+      return;
+    this.setPlaced(scope.sessionId, false, scope.placementRevision);
+  }
   setAvailability(simulatorReady: boolean, hardwareReady: boolean) {
     this.update({ simulatorReady, hardwareReady });
   }
-  private setSphereScale(sessionId: number, scale: number) {
-    if (
-      this.snapshot.sessionId !== sessionId ||
-      !this.snapshot.placed ||
-      !Number.isFinite(scale) ||
-      scale <= 0
-    )
-      return;
-    const sphereScale = Math.max(MIN_SPHERE_SCALE, Math.min(MAX_SPHERE_SCALE, scale));
+  setSphereScale(scope: QubitTransformScope, value: number) {
+    if (!this.currentTransform(scope) || this.snapshot.pinching || !Number.isFinite(value)) return;
+    const sphereScale = clampARScale(value);
     if (sphereScale !== this.snapshot.sphereScale) this.update({ sphereScale });
   }
-  adjustSphereScale(sessionId: number, direction: -1 | 1) {
-    if (
-      this.snapshot.sessionId !== sessionId ||
-      !this.snapshot.placed ||
-      (direction !== -1 && direction !== 1)
-    )
-      return;
-    this.pinch = null;
-    this.setSphereScale(sessionId, this.snapshot.sphereScale + direction * SPHERE_SCALE_STEP);
+  setSphereYaw(scope: QubitTransformScope, value: number) {
+    if (!this.currentTransform(scope) || this.snapshot.rotating || !Number.isFinite(value)) return;
+    const sphereYaw = normalizeYaw(value);
+    if (sphereYaw !== this.snapshot.sphereYaw) this.update({ sphereYaw });
   }
-  pinchSphere(sessionId: number, gesture: number, factor: number) {
-    if (
-      this.snapshot.sessionId !== sessionId ||
-      !this.snapshot.placed ||
-      !Number.isFinite(factor) ||
-      factor <= 0
-    )
-      return;
-    if (gesture === 1) {
-      this.pinch = { sessionId, startScale: this.snapshot.sphereScale };
+  setSphereHeight(scope: QubitTransformScope, value: number) {
+    if (!this.currentTransform(scope) || !Number.isFinite(value)) return;
+    const sphereHeight = clampARHeight(value);
+    if (sphereHeight !== this.snapshot.sphereHeight) this.update({ sphereHeight });
+  }
+  pinchSphere(scope: QubitTransformScope, gesture: number, factor: number) {
+    if (!this.currentTransform(scope) || ![1, 2, 3].includes(gesture)) return;
+    if (!Number.isFinite(factor) || factor <= 0) {
+      if (gesture === 3) {
+        this.pinchStart = null;
+        this.update({ pinching: false });
+      }
       return;
     }
-    if (!this.pinch || this.pinch.sessionId !== sessionId || (gesture !== 2 && gesture !== 3))
-      return;
+    if (gesture === 1) {
+      this.pinchStart = this.snapshot.sphereScale;
+      this.update({ pinching: true });
+    }
+    if (this.pinchStart === null) return;
     // Viro reports a factor relative to gesture start, not to the previous callback.
-    this.setSphereScale(sessionId, this.pinch.startScale * factor);
-    if (gesture === 3) this.pinch = null;
+    this.update({ sphereScale: clampARScale(this.pinchStart * factor) });
+    if (gesture === 3) {
+      this.pinchStart = null;
+      this.update({ pinching: false });
+    }
+  }
+  rotateSphere(scope: QubitTransformScope, gesture: number, degrees: number) {
+    if (!this.currentTransform(scope) || ![1, 2, 3].includes(gesture)) return;
+    if (!Number.isFinite(degrees)) {
+      if (gesture === 3) {
+        this.rotationStart = null;
+        this.update({ rotating: false });
+      }
+      return;
+    }
+    if (gesture === 1) {
+      this.rotationStart = this.snapshot.sphereYaw;
+      this.update({ rotating: true });
+    }
+    if (this.rotationStart === null) return;
+    this.update({ sphereYaw: normalizeYaw(this.rotationStart - degrees) });
+    if (gesture === 3) {
+      this.rotationStart = null;
+      this.update({ rotating: false });
+    }
   }
   deferUntil(retryAt: number) {
     this.update({ retryAt: Math.max(this.snapshot.retryAt, retryAt) });
@@ -216,6 +302,7 @@ export class QubitRoundController {
     if ((bit !== 0 && bit !== 1) || !this.canGuess()) return;
     const api = this.getRuntime();
     if (!api || this.snapshot.sessionId === null) return;
+    this.clearGestures();
     const round: Round = {
       id: ++this.sequence,
       sessionId: this.snapshot.sessionId,
@@ -229,6 +316,8 @@ export class QubitRoundController {
     this.round = round;
     this.update({
       roundId: round.id,
+      pinching: false,
+      rotating: false,
       phase: 'intro',
       guess: bit,
       measurement: null,
@@ -469,7 +558,7 @@ export class QubitRoundController {
       });
   }
   reset() {
-    this.pinch = null;
+    this.clearGestures();
     const round = this.round;
     this.round = null;
     this.clearTimer();
@@ -485,6 +574,8 @@ export class QubitRoundController {
     }
     this.update({
       roundId: ++this.sequence,
+      pinching: false,
+      rotating: false,
       phase: 'idle',
       guess: null,
       measurement: null,

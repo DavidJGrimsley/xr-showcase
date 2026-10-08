@@ -9,7 +9,7 @@ import {
   medicalStatus,
   type MedicalSnapshot,
 } from './medical-controller';
-import { MedicalControl } from './medical-control.native';
+import { ARControl } from '@/features/ar/ar-control.native';
 import { MedicalInfoButton, MedicalInfoModal } from './medical-info.native';
 import { MedicalModelPicker } from './medical-model-picker.native';
 import { MedicalTransformControls } from './medical-transform-controls.native';
@@ -60,7 +60,7 @@ function MedicalMainControls({
           selectedValue={state.modelId}
           onValueChange={(model) => controller.selectModel(context.sessionId, model)}
         />
-        <MedicalControl
+        <ARControl
           label="Transform"
           disabled={!state.anchorId}
           testID="medical-transform"
@@ -68,7 +68,7 @@ function MedicalMainControls({
         />
       </View>
       <View className="items-center justify-center gap-2" style={rowStyle}>
-        <MedicalControl
+        <ARControl
           label="Labels"
           selected={state.labelsVisible}
           disabled={!canManipulateMedical(state)}
@@ -76,7 +76,7 @@ function MedicalMainControls({
           testID="medical-labels"
           onPress={() => controller.toggleLabels(context.sessionId)}
         />
-        <MedicalControl label="Restart AR" testID="medical-restart-ar" onPress={onRestart} />
+        <ARControl label="Restart AR" testID="medical-restart-ar" onPress={onRestart} />
       </View>
     </>
   );
@@ -109,7 +109,7 @@ function MedicalControls({
       <MedicalStatus state={state} />
       {state.loadStatus === 'error' ? (
         <View className="items-center">
-          <MedicalControl
+          <ARControl
             label="Retry"
             testID="medical-load-retry"
             onPress={() => controller.retryLoad(context.sessionId)}

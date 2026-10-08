@@ -27,7 +27,7 @@ test('starts with Skull and labels off; Brain cannot be selected', () => {
   c.selectModel(1, 'brain');
   assert.equal(c.getSnapshot().modelId, 'skull');
   assert.equal(c.getSnapshot().labelsVisible, false);
-  assert.equal(c.getSnapshot().height, 0.3048);
+  assert.equal(c.getSnapshot().height, 0.6096);
   assert.equal(canManipulateMedical(c.getSnapshot()), false);
 });
 test('requires normal tracking, selected plane and finished loading', () => {

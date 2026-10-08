@@ -1,11 +1,18 @@
 import { isMedicalModelAvailable, type MedicalModelId } from './medical-models.ts';
-
-export const MIN_MODEL_SCALE = 0.5;
-export const MAX_MODEL_SCALE = 3;
-// Viro uses metres. Offset the prepared mesh's base above the selected surface.
-export const DEFAULT_MODEL_HEIGHT = 0.3048;
-export const MIN_MODEL_HEIGHT = 0;
-export const MAX_MODEL_HEIGHT = 1.524;
+import {
+  clampARHeight,
+  clampARScale,
+  DEFAULT_AR_HEIGHT,
+  normalizeYaw,
+} from '../ar/ar-transform.ts';
+export {
+  DEFAULT_AR_HEIGHT as DEFAULT_MODEL_HEIGHT,
+  MIN_AR_HEIGHT as MIN_MODEL_HEIGHT,
+  MAX_AR_HEIGHT as MAX_MODEL_HEIGHT,
+  MIN_AR_SCALE as MIN_MODEL_SCALE,
+  MAX_AR_SCALE as MAX_MODEL_SCALE,
+  normalizeYaw,
+} from '../ar/ar-transform.ts';
 
 export interface MedicalScope {
   sessionId: number;
@@ -47,9 +54,6 @@ export function medicalStatus(state: MedicalSnapshot) {
   return '';
 }
 
-const clampScale = (value: number) => Math.min(MAX_MODEL_SCALE, Math.max(MIN_MODEL_SCALE, value));
-export const normalizeYaw = (value: number) => ((((value + 180) % 360) + 360) % 360) - 180;
-
 export class MedicalController {
   private snapshot: MedicalSnapshot = {
     sessionId: null,
@@ -61,7 +65,7 @@ export class MedicalController {
     loadStatus: 'idle',
     scale: 1,
     yaw: 0,
-    height: DEFAULT_MODEL_HEIGHT,
+    height: DEFAULT_AR_HEIGHT,
     labelsVisible: false,
     pinching: false,
     rotating: false,
@@ -127,7 +131,7 @@ export class MedicalController {
   }
   restart(sessionId: number) {
     if (!this.live(sessionId)) return;
-    this.publish({ scale: 1, yaw: 0, height: DEFAULT_MODEL_HEIGHT });
+    this.publish({ scale: 1, yaw: 0, height: DEFAULT_AR_HEIGHT });
     this.detach(sessionId);
   }
   setTracking(sessionId: number, normal: boolean) {
@@ -204,7 +208,7 @@ export class MedicalController {
       !Number.isFinite(value)
     )
       return;
-    this.publish({ scale: clampScale(value) });
+    this.publish({ scale: clampARScale(value) });
   }
   setYaw(scope: MedicalScope, value: number) {
     if (
@@ -219,7 +223,7 @@ export class MedicalController {
   setHeight(scope: MedicalScope, value: number) {
     if (!this.current(scope) || !canManipulateMedical(this.snapshot) || !Number.isFinite(value))
       return;
-    this.publish({ height: Math.min(MAX_MODEL_HEIGHT, Math.max(MIN_MODEL_HEIGHT, value)) });
+    this.publish({ height: clampARHeight(value) });
   }
   pinch(scope: MedicalScope, gesture: number, factor: number) {
     if (
@@ -240,7 +244,7 @@ export class MedicalController {
       this.publish({ pinching: true });
     }
     if (this.pinchStart === null) return;
-    this.publish({ scale: clampScale(this.pinchStart * factor) });
+    this.publish({ scale: clampARScale(this.pinchStart * factor) });
     if (gesture === 3) {
       this.pinchStart = null;
       this.publish({ pinching: false });

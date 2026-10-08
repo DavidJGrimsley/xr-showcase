@@ -6,14 +6,21 @@ const {
   MIN_SPHERE_SCALE,
   MAX_SPHERE_SCALE,
   canGuessQubit,
+  canManipulateQubit,
+  DEFAULT_SPHERE_HEIGHT,
 } = require('../src/features/guess-the-qubit/qubit-round-controller.ts');
 const {
   BLOCH_RADIUS,
   BASIS_LABELS,
   blochToWorld,
   ringPoints,
+  blochSpherePosition,
 } = require('../src/features/guess-the-qubit/qubit-geometry.ts');
 const flush = () => new Promise((resolve) => setImmediate(resolve));
+const transformScope = (controller) => {
+  const { sessionId, placementRevision, roundId } = controller.getSnapshot();
+  return { sessionId, placementRevision, roundId };
+};
 function deferred() {
   let resolve;
   let reject;
@@ -507,121 +514,314 @@ test('tabletop geometry preserves Bloch poles, handedness and closed 0.25m rings
   }
 });
 
-test('size buttons clamp to usable bounds and preserve size across round Reset', () => {
-  const h = harness();
-  assert.equal(h.controller.getSnapshot().sphereScale, 1);
-  for (let i = 0; i < 20; i++) h.controller.adjustSphereScale(1, -1);
-  assert.equal(h.controller.getSnapshot().sphereScale, MIN_SPHERE_SCALE);
-  for (let i = 0; i < 20; i++) h.controller.adjustSphereScale(1, 1);
-  assert.equal(h.controller.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
-  h.controller.reset();
-  assert.equal(h.controller.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
+test('transform defaults to two feet, clamps size and height, and rejects invalid values', () => {
+  const h = harness(),
+    c = h.controller,
+    token = transformScope(c);
+  assert.equal(c.getSnapshot().sphereHeight, 0.6096);
+  assert.equal(DEFAULT_SPHERE_HEIGHT, 0.6096);
+  assert.equal(c.getSnapshot().sphereScale, 1);
+  assert.equal(c.getSnapshot().sphereYaw, 0);
+  c.setSphereScale(token, 100);
+  assert.equal(c.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
+  c.setSphereScale(token, -1);
+  assert.equal(c.getSnapshot().sphereScale, MIN_SPHERE_SCALE);
+  c.setSphereHeight(token, 100);
+  assert.equal(c.getSnapshot().sphereHeight, 1.524);
+  c.setSphereHeight(token, -1);
+  assert.equal(c.getSnapshot().sphereHeight, 0);
+  c.setSphereHeight(token, 0.8);
+  const before = c.getSnapshot();
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    c.setSphereScale(token, bad);
+    c.setSphereHeight(token, bad);
+    c.setSphereYaw(token, bad);
+  }
+  assert.equal(c.getSnapshot(), before);
   assert.equal(h.calls.submit.length + h.calls.measure.length, 0);
 });
 
-test('pinch uses the shared button size as its baseline and never compounds move events', () => {
-  const h = harness();
-  for (let i = 0; i < 4; i++) h.controller.adjustSphereScale(1, 1);
-  h.controller.pinchSphere(1, 1, 1);
-  h.controller.pinchSphere(1, 2, 1.2);
-  assert.equal(h.controller.getSnapshot().sphereScale, 2.4);
-  h.controller.pinchSphere(1, 2, 1.4);
-  assert.equal(h.controller.getSnapshot().sphereScale, 2.8);
-  h.controller.pinchSphere(1, 3, 1.3);
-  assert.equal(h.controller.getSnapshot().sphereScale, 2.6);
-  h.controller.pinchSphere(1, 2, 0.5);
-  assert.equal(h.controller.getSnapshot().sphereScale, 2.6);
-  h.controller.pinchSphere(1, 1, 1);
-  h.controller.pinchSphere(1, 2, 100);
-  assert.equal(h.controller.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
-  h.controller.pinchSphere(1, 3, 0.01);
-  assert.equal(h.controller.getSnapshot().sphereScale, MIN_SPHERE_SCALE);
+test('pinch starts from slider size and uses consecutive gesture baselines without compounding', () => {
+  const c = harness().controller,
+    token = transformScope(c);
+  c.setSphereScale(token, 2);
+  c.pinchSphere(token, 1, 1);
+  c.pinchSphere(token, 2, 1.2);
+  assert.equal(c.getSnapshot().sphereScale, 2.4);
+  c.pinchSphere(token, 2, 1.4);
+  assert.equal(c.getSnapshot().sphereScale, 2.8);
+  c.pinchSphere(token, 3, 1.3);
+  assert.equal(c.getSnapshot().sphereScale, 2.6);
+  c.pinchSphere(token, 2, 0.5);
+  assert.equal(c.getSnapshot().sphereScale, 2.6);
+  c.pinchSphere(token, 1, 1);
+  c.pinchSphere(token, 3, 0.5);
+  assert.equal(c.getSnapshot().sphereScale, 1.3);
+  c.pinchSphere(token, 1, 1);
+  c.pinchSphere(token, 3, 100);
+  assert.equal(c.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
+  c.pinchSphere(token, 1, 1);
+  c.pinchSphere(token, 3, 0.01);
+  assert.equal(c.getSnapshot().sphereScale, MIN_SPHERE_SCALE);
 });
 
-test('buttons supersede an active pinch and Reset discards its stale completions', () => {
-  const h = harness();
-  h.controller.pinchSphere(1, 1, 1);
-  h.controller.pinchSphere(1, 2, 1.5);
-  h.controller.adjustSphereScale(1, 1);
-  h.controller.pinchSphere(1, 3, 2);
-  assert.equal(h.controller.getSnapshot().sphereScale, 1.75);
-  h.controller.pinchSphere(1, 1, 1);
-  h.controller.reset();
-  h.controller.pinchSphere(1, 2, 0.5);
-  h.controller.pinchSphere(1, 3, 0.5);
-  assert.equal(h.controller.getSnapshot().sphereScale, 1.75);
+test('yaw sliders and native rotation wrap full turns without changing the circuit', () => {
+  const h = harness(),
+    c = h.controller,
+    token = transformScope(c);
+  c.setSphereYaw(token, 450);
+  assert.equal(c.getSnapshot().sphereYaw, 90);
+  c.rotateSphere(token, 1, 0);
+  c.rotateSphere(token, 2, 45);
+  c.rotateSphere(token, 3, 90);
+  assert.equal(c.getSnapshot().sphereYaw, 0);
+  c.rotateSphere(token, 1, 0);
+  c.rotateSphere(token, 3, 450);
+  assert.equal(c.getSnapshot().sphereYaw, -90);
+  c.rotateSphere(token, 1, 0);
+  c.rotateSphere(token, 3, -900);
+  assert.equal(c.getSnapshot().sphereYaw, 90);
+  c.setSphereYaw(token, 360);
+  assert.equal(c.getSnapshot().sphereYaw, 0);
+  assert.equal(c.getSnapshot().phase, 'idle');
+  assert.equal(h.calls.measure.length + h.calls.submit.length, 0);
 });
 
-test('surface loss, background and replacement reject stale size callbacks', () => {
-  const h = harness();
-  h.controller.adjustSphereScale(1, 1);
-  h.controller.pinchSphere(1, 1, 1);
-  h.controller.attach(2);
-  h.controller.adjustSphereScale(2, 1);
-  h.controller.pinchSphere(1, 3, 2);
-  assert.equal(h.controller.getSnapshot().sphereScale, 1.25);
-  h.controller.setPlaced(2, true);
-  h.controller.pinchSphere(2, 1, 1);
-  h.controller.adjustSphereScale(1, 1);
-  h.controller.pinchSphere(2, 2, 2);
-  assert.equal(h.controller.getSnapshot().sphereScale, 2.5);
-  h.controller.setPlaced(2, false);
-  h.controller.setPlaced(2, true);
-  h.controller.pinchSphere(2, 3, 0.5);
-  assert.equal(h.controller.getSnapshot().sphereScale, 2.5);
-  h.controller.detach(2);
-  h.controller.adjustSphereScale(2, -1);
-  h.controller.pinchSphere(2, 1, 1);
-  h.controller.pinchSphere(2, 3, 0.5);
-  assert.equal(h.controller.getSnapshot().sphereScale, 2.5);
+test('sliders defer to active gestures and Reset discards their stale completions', () => {
+  const c = harness().controller,
+    token = transformScope(c);
+  c.pinchSphere(token, 1, 1);
+  c.rotateSphere(token, 1, 0);
+  c.pinchSphere(token, 2, 1.5);
+  c.setSphereScale(token, 3);
+  c.setSphereYaw(token, 90);
+  assert.equal(c.getSnapshot().sphereScale, 1.5);
+  assert.equal(c.getSnapshot().sphereYaw, 0);
+  c.pinchSphere(token, 3, 2);
+  c.rotateSphere(token, 3, 45);
+  c.setSphereScale(token, 1.75);
+  c.setSphereHeight(token, 0.9);
+  c.pinchSphere(token, 1, 1);
+  c.rotateSphere(token, 1, 0);
+  c.reset();
+  c.pinchSphere(token, 3, 0.5);
+  c.rotateSphere(token, 3, 90);
+  c.pinchSphere(transformScope(c), 3, 0.5);
+  assert.equal(c.getSnapshot().sphereScale, 1.75);
+  assert.equal(c.getSnapshot().sphereYaw, -45);
+  assert.equal(c.getSnapshot().sphereHeight, 0.9);
+  assert.equal(c.getSnapshot().pinching, false);
+  assert.equal(c.getSnapshot().rotating, false);
 });
 
-test('invalid gesture values never introduce an invalid or negative transform', () => {
-  const h = harness();
-  for (const factor of [NaN, Infinity, -Infinity, 0, -1]) {
-    h.controller.pinchSphere(1, 1, factor);
-    h.controller.pinchSphere(1, 2, factor);
-    h.controller.pinchSphere(1, 3, factor);
+test('sphere base height is independent of scale and defaults to two feet', () => {
+  for (const height of [0, DEFAULT_SPHERE_HEIGHT, 1.524]) {
+    for (const scale of [MIN_SPHERE_SCALE, 1, MAX_SPHERE_SCALE]) {
+      const position = blochSpherePosition(scale, height);
+      assert.deepEqual([position[0], position[2]], [0, 0]);
+      assert.ok(Math.abs(position[1] - BLOCH_RADIUS * scale - height) < 1e-12);
+    }
   }
-  h.controller.pinchSphere(1, 2, 2);
-  h.controller.pinchSphere(1, 99, 2);
-  h.controller.adjustSphereScale(1, NaN);
-  assert.equal(h.controller.getSnapshot().sphereScale, 1);
 });
 
-test('resizing during measurement preserves the guess, animation identity and outcome', async () => {
-  const h = harness();
-  h.controller.guess(0);
+test('Reposition and background preserve display pose; Restart AR and a later visit restore defaults', () => {
+  const c = harness().controller,
+    token = transformScope(c);
+  c.setSphereScale(token, 2);
+  c.setSphereYaw(token, 90);
+  c.setSphereHeight(token, 0.9);
+  c.reposition(token);
+  assert.equal(c.getSnapshot().placed, false);
+  assert.ok(c.getSnapshot().placementRevision > token.placementRevision);
+  c.setPlaced(1, true);
+  c.detach(1);
+  c.attach(2);
+  assert.equal(c.getSnapshot().sphereScale, 2);
+  assert.equal(c.getSnapshot().sphereYaw, 90);
+  assert.equal(c.getSnapshot().sphereHeight, 0.9);
+  c.restart(1);
+  assert.equal(c.getSnapshot().sessionId, 2);
+  c.restart(2);
+  c.attach(3);
+  assert.equal(c.getSnapshot().sphereScale, 1);
+  assert.equal(c.getSnapshot().sphereYaw, 0);
+  assert.equal(c.getSnapshot().sphereHeight, DEFAULT_SPHERE_HEIGHT);
+  assert.equal(c.getSnapshot().placed, false);
+  assert.equal(
+    new QubitRoundController(() => null).getSnapshot().sphereHeight,
+    DEFAULT_SPHERE_HEIGHT
+  );
+});
+
+test('stale transforms and surface callbacks cannot affect a reselected plane or resumed session', () => {
+  const c = harness().controller,
+    old = transformScope(c);
+  c.setSphereScale(old, 1.25);
+  const stale = (token) => {
+    c.setSphereScale(token, 3);
+    c.setSphereYaw(token, 90);
+    c.setSphereHeight(token, 1);
+    c.pinchSphere(token, 1, 1);
+    c.pinchSphere(token, 3, 2);
+    c.rotateSphere(token, 1, 0);
+    c.rotateSphere(token, 3, 90);
+    c.reposition(token);
+    c.setPlaced(token.sessionId, false, token.placementRevision);
+  };
+  c.reposition(old);
+  c.setPlaced(1, true);
+  const replaced = c.getSnapshot();
+  stale(old);
+  assert.equal(c.getSnapshot(), replaced);
+  const previousSession = transformScope(c);
+  c.detach(1);
+  c.attach(2);
+  c.setTracking(2, true);
+  c.setPlaced(2, true);
+  const resumed = c.getSnapshot();
+  stale(previousSession);
+  assert.equal(c.getSnapshot(), resumed);
+  c.detach(2);
+  const detached = c.getSnapshot();
+  stale(transformScope(c));
+  assert.equal(c.getSnapshot(), detached);
+});
+
+test('tracking loss blocks manipulation and interrupts gestures without resetting the pose', () => {
+  const c = harness().controller,
+    token = transformScope(c);
+  c.setSphereHeight(token, 0.8);
+  c.pinchSphere(token, 1, 1);
+  c.rotateSphere(token, 1, 0);
+  c.setTracking(1, false);
+  c.setSphereScale(token, 2);
+  c.setSphereHeight(token, 1);
+  c.setSphereYaw(token, 90);
+  c.pinchSphere(token, 3, 2);
+  c.rotateSphere(token, 3, 90);
+  assert.equal(canManipulateQubit(c.getSnapshot()), false);
+  assert.equal(c.getSnapshot().sphereScale, 1);
+  assert.equal(c.getSnapshot().sphereYaw, 0);
+  assert.equal(c.getSnapshot().sphereHeight, 0.8);
+  assert.equal(c.getSnapshot().pinching, false);
+  assert.equal(c.getSnapshot().rotating, false);
+  c.setTracking(1, true);
+  c.pinchSphere(token, 3, 2);
+  c.rotateSphere(token, 3, 90);
+  assert.equal(c.getSnapshot().sphereScale, 1);
+  c.setSphereScale(token, 2);
+  assert.equal(c.getSnapshot().sphereScale, 2);
+});
+
+test('invalid and out-of-order gesture values are ignored; malformed ends release controls', () => {
+  const c = harness().controller,
+    token = transformScope(c);
+  for (const factor of [NaN, Infinity, -Infinity, 0, -1]) c.pinchSphere(token, 1, factor);
+  c.rotateSphere(token, 1, NaN);
+  c.pinchSphere(token, 2, 2);
+  c.rotateSphere(token, 2, 90);
+  c.pinchSphere(token, 99, 2);
+  assert.equal(c.getSnapshot().sphereScale, 1);
+  assert.equal(c.getSnapshot().sphereYaw, 0);
+  c.pinchSphere(token, 1, 1);
+  c.rotateSphere(token, 1, 0);
+  c.pinchSphere(token, 3, NaN);
+  c.rotateSphere(token, 3, Infinity);
+  assert.equal(c.getSnapshot().pinching, false);
+  assert.equal(c.getSnapshot().rotating, false);
+  c.setSphereScale(token, 2);
+  c.setSphereYaw(token, 45);
+  assert.equal(c.getSnapshot().sphereScale, 2);
+  assert.equal(c.getSnapshot().sphereYaw, 45);
+});
+
+test('transforms during measurement preserve the guess, animation identity and outcome', async () => {
+  const h = harness(),
+    c = h.controller;
+  c.guess(0);
   await flush();
-  const round = h.controller.getSnapshot().roundId;
-  const motion = qubitMotion(h.controller.getSnapshot(), false);
-  h.controller.adjustSphereScale(1, 1);
-  h.controller.pinchSphere(1, 1, 1);
-  h.controller.pinchSphere(1, 3, 1.4);
-  assert.equal(h.controller.getSnapshot().roundId, round);
-  assert.equal(qubitMotion(h.controller.getSnapshot(), false).key, motion.key);
+  const token = transformScope(c),
+    motion = qubitMotion(c.getSnapshot(), false);
+  c.setSphereScale(token, 1.25);
+  c.setSphereHeight(token, 1);
+  c.setSphereYaw(token, 90);
+  c.pinchSphere(token, 1, 1);
+  c.pinchSphere(token, 3, 1.4);
+  c.rotateSphere(token, 1, 0);
+  c.rotateSphere(token, 3, 45);
+  assert.equal(c.getSnapshot().roundId, token.roundId);
+  assert.equal(qubitMotion(c.getSnapshot(), false).key, motion.key);
+  assert.equal(c.getSnapshot().guess, 0);
   assert.equal(h.calls.measure.length, 1);
   h.intro();
   h.collapse();
-  assert.equal(h.controller.getSnapshot().outcome, 'won');
+  assert.equal(c.getSnapshot().outcome, 'won');
+  assert.equal(c.getSnapshot().sphereHeight, 1);
 });
 
-test('resizing a queued hardware round does not submit, cancel or restart polling', async () => {
-  const h = harness({}, 'hardware');
-  h.controller.guess(1);
+test('transforming a queued hardware round does not submit, cancel or restart polling', async () => {
+  const h = harness({}, 'hardware'),
+    c = h.controller;
+  c.guess(1);
   await flush();
   h.advance(10000);
-  h.controller.adjustSphereScale(1, -1);
-  h.controller.pinchSphere(1, 1, 1);
-  h.controller.pinchSphere(1, 3, 1.5);
-  h.controller.guess(0);
-  assert.equal(h.controller.canGuess(), false);
-  assert.equal(h.controller.getSnapshot().guess, 1);
+  const token = transformScope(c);
+  c.setSphereScale(token, 0.75);
+  c.setSphereHeight(token, 1);
+  c.setSphereYaw(token, 90);
+  c.pinchSphere(token, 1, 1);
+  c.pinchSphere(token, 3, 1.5);
+  c.guess(0);
+  assert.equal(c.canGuess(), false);
+  assert.equal(c.getSnapshot().guess, 1);
+  assert.equal(c.getSnapshot().roundId, token.roundId);
   assert.equal(h.calls.submit.length, 1);
   assert.equal(h.calls.cancel.length, 0);
   h.advance(5000);
   await flush();
   assert.equal(h.calls.status.length, 1);
-  assert.equal(h.controller.getSnapshot().jobStatus, 'running');
-  h.controller.detach(1);
+  assert.equal(c.getSnapshot().jobStatus, 'running');
+  c.detach(1);
+});
+
+test('Reposition cancels a queued hardware round once while preserving the display pose', async () => {
+  const h = harness({}, 'hardware'),
+    c = h.controller;
+  c.guess(1);
+  await flush();
+  const token = transformScope(c);
+  c.setSphereScale(token, 2);
+  c.setSphereHeight(token, 1);
+  c.setSphereYaw(token, 90);
+  c.reposition(token);
+  c.reposition(token);
+  await flush();
+  assert.equal(c.getSnapshot().placed, false);
+  assert.equal(c.getSnapshot().phase, 'idle');
+  assert.equal(c.getSnapshot().sphereScale, 2);
+  assert.equal(c.getSnapshot().sphereYaw, 90);
+  assert.equal(c.getSnapshot().sphereHeight, 1);
+  assert.equal(h.calls.cancel.length, 1);
+  h.advance(60000);
+  await flush();
+  assert.equal(h.calls.status.length, 0);
+  c.setPlaced(1, true);
+  c.setSphereScale(token, 0.5);
+  assert.equal(c.getSnapshot().sphereScale, 2);
+});
+
+test('Reposition during submission cancels a late hardware acknowledgement without accepting its result', async () => {
+  const submission = deferred();
+  const h = harness({ submit: () => submission.promise }, 'hardware'),
+    c = h.controller;
+  c.guess(0);
+  c.reposition(transformScope(c));
+  c.setPlaced(1, true);
+  assert.equal(c.getSnapshot().uncertainSubmission, true);
+  submission.resolve({ jobId: 'late-reposition', status: 'running' });
+  await flush();
+  assert.equal(h.calls.cancel.length, 1);
+  assert.equal(c.getSnapshot().jobId, null);
+  assert.equal(c.getSnapshot().measurement, null);
+  assert.equal(h.calls.submit.length, 1);
 });

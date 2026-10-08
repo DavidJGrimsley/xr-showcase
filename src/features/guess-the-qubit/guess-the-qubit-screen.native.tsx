@@ -7,13 +7,9 @@ import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useQubitConfiguration } from './use-qubit-configuration.native';
 import { qubitPresentation } from './qubit-presentation';
-import {
-  canGuessQubit,
-  MAX_SPHERE_SCALE,
-  MIN_SPHERE_SCALE,
-  type QubitSnapshot,
-} from './qubit-round-controller';
+import { canGuessQubit, type QubitSnapshot } from './qubit-round-controller';
 import { QubitInfoButton, QubitInfoModal } from './qubit-info.native';
+import { QubitTransformControls } from './qubit-transform-controls.native';
 
 const QubitNavigator = lazy(() => import('./qubit-navigator.native'));
 type Configuration = ReturnType<typeof useQubitConfiguration>;
@@ -64,15 +60,15 @@ function QubitStatus({
   );
 }
 
-function QubitModeAndSize({
+function QubitModeAndTransform({
   controller,
   state,
-  sessionId,
+  onTransform,
   width,
 }: {
   controller: Configuration['controller'];
   state: QubitSnapshot;
-  sessionId: number;
+  onTransform: () => void;
   width: number;
 }) {
   const { fontScale } = useWindowDimensions();
@@ -93,42 +89,25 @@ function QubitModeAndSize({
       </Picker>
     </Column>
   );
-  const sizeButtons = ([-1, 1] as const).map((direction) => {
-    const disabled =
-      direction === -1
-        ? state.sphereScale <= MIN_SPHERE_SCALE
-        : state.sphereScale >= MAX_SPHERE_SCALE;
-    return (
-      <Button
-        key={direction}
-        testID={direction === -1 ? 'qubit-size-smaller' : 'qubit-size-larger'}
-        label={direction === -1 ? '−' : '+'}
-        disabled={disabled}
-        variant="outlined"
-        style={{
-          width: 48,
-          height: Math.max(48, 17 * fontScale + 20),
-          opacity: disabled ? 0.35 : 1,
-        }}
-        onPress={() => controller.adjustSphereScale(sessionId, direction)}
-      />
-    );
-  });
-  const sizeGroup = (
-    <Row spacing={8} alignment="center" style={{ width: 104 }}>
-      {sizeButtons}
-    </Row>
+  const transformButton = (
+    <Button
+      testID="qubit-transform"
+      label="Transform"
+      variant="outlined"
+      onPress={onTransform}
+      style={{ height: Math.max(48, 17 * fontScale + 20) }}
+    />
   );
   return stacked ? (
     <Column spacing={10} alignment="center" style={{ width }}>
       {modePicker}
-      {sizeGroup}
+      {transformButton}
     </Column>
   ) : (
     <Row spacing={0} alignment="center" style={{ width }}>
       {modePicker}
       <Spacer flexible size={12} />
-      {sizeGroup}
+      {transformButton}
     </Row>
   );
 }
@@ -165,6 +144,97 @@ function QubitRoundButton({
   );
 }
 
+function QubitMainControls({
+  controller,
+  state,
+  context,
+  now,
+  guessHint,
+  controlsWidth,
+  onTransform,
+}: {
+  controller: Configuration['controller'];
+  state: QubitSnapshot;
+  context: ARActiveOverlayContext;
+  now: number;
+  guessHint: string;
+  controlsWidth: number;
+  onTransform: () => void;
+}) {
+  const { fontScale, width } = useWindowDimensions();
+  const disabled = !canGuessQubit(state, now);
+  const resetDisabled = state.phase === 'idle' && !state.uncertainSubmission;
+  const actionHeight = Math.max(48, 17 * fontScale + 20);
+  const guessWidth = Math.max(80, 24 * fontScale + 40);
+  // SwiftUI's explicit point size needs scaling; Compose's sp already follows fontScale.
+  const guessFontSize = Platform.OS === 'ios' ? 24 * fontScale : 24;
+  const Actions = fontScale > 1.3 || width < 360 ? Column : Row;
+  const Guesses = 2 * guessWidth + 24 > controlsWidth ? Column : Row;
+  const restart = () => {
+    if (controller.getSessionId() !== context.sessionId) return;
+    controller.restart(context.sessionId);
+    context.restartAR();
+  };
+  return (
+    <Host
+      matchContents={{ vertical: true }}
+      colorScheme="dark"
+      seedColor="#93f5c5"
+      style={{ width: '100%' }}>
+      <Column spacing={10} alignment="center" style={{ width: controlsWidth }}>
+        <QubitModeAndTransform
+          controller={controller}
+          state={state}
+          onTransform={onTransform}
+          width={controlsWidth}
+        />
+        <Guesses spacing={24} alignment="center">
+          {[0, 1].map((bit) => (
+            <QubitRoundButton
+              key={bit}
+              testID={`qubit-guess-${bit}`}
+              label={String(bit)}
+              disabled={disabled}
+              onPress={() => controller.guess(bit as 0 | 1)}
+              height={Math.max(48, 24 * fontScale + 20)}
+              width={guessWidth}
+              fontSize={guessFontSize}
+            />
+          ))}
+        </Guesses>
+        {guessHint ? (
+          <NativeText
+            testID="qubit-tracking-caption"
+            style={{ width: controlsWidth }}
+            textStyle={{
+              fontSize: Platform.OS === 'ios' ? 13 * fontScale : 13,
+              color: '#fde68a',
+              textAlign: 'center',
+            }}>
+            {guessHint}
+          </NativeText>
+        ) : null}
+        <Actions spacing={10} alignment="center">
+          <QubitRoundButton
+            testID="qubit-reset"
+            label="Reset Qubit"
+            disabled={resetDisabled}
+            onPress={() => resetQubit(controller)}
+            height={actionHeight}
+            fontSize={Platform.OS === 'ios' ? 17 * fontScale : 17}
+          />
+          <Button
+            label="Restart AR"
+            variant="outlined"
+            onPress={restart}
+            style={{ height: actionHeight }}
+          />
+        </Actions>
+      </Column>
+    </Host>
+  );
+}
+
 function QubitControls({
   controller,
   state,
@@ -178,80 +248,35 @@ function QubitControls({
   now: number;
   guessHint: string;
 }) {
-  const { fontScale, width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const [measuredWidth, setMeasuredWidth] = useState(0);
+  const [transformRevision, setTransformRevision] = useState<number | null>(null);
   const controlsWidth = measuredWidth || Math.max(1, Math.min(width, 720) - 72);
-  const disabled = !canGuessQubit(state, now);
-  const resetDisabled = state.phase === 'idle' && !state.uncertainSubmission;
-  const actionHeight = Math.max(48, 17 * fontScale + 20);
-  const guessWidth = Math.max(80, 24 * fontScale + 40);
-  // SwiftUI's explicit point size needs scaling; Compose's sp already follows fontScale.
-  const guessFontSize = Platform.OS === 'ios' ? 24 * fontScale : 24;
-  const Actions = fontScale > 1.3 || width < 360 ? Column : Row;
-  const Guesses = 2 * guessWidth + 24 > controlsWidth ? Column : Row;
-  const restart = () => {
-    if (controller.getSessionId() !== context.sessionId) return;
-    controller.detach(context.sessionId);
-    context.restartAR();
-  };
   return (
     <View className="w-full" onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}>
-      <Host
-        matchContents={{ vertical: true }}
-        colorScheme="dark"
-        seedColor="#93f5c5"
-        style={{ width: '100%' }}>
-        <Column spacing={10} alignment="center" style={{ width: controlsWidth }}>
-          <QubitModeAndSize
-            controller={controller}
-            state={state}
-            sessionId={context.sessionId}
-            width={controlsWidth}
-          />
-          <Guesses spacing={24} alignment="center">
-            {[0, 1].map((bit) => (
-              <QubitRoundButton
-                key={bit}
-                testID={`qubit-guess-${bit}`}
-                label={String(bit)}
-                disabled={disabled}
-                onPress={() => controller.guess(bit as 0 | 1)}
-                height={Math.max(48, 24 * fontScale + 20)}
-                width={guessWidth}
-                fontSize={guessFontSize}
-              />
-            ))}
-          </Guesses>
-          {guessHint ? (
-            <NativeText
-              testID="qubit-tracking-caption"
-              style={{ width: controlsWidth }}
-              textStyle={{
-                fontSize: Platform.OS === 'ios' ? 13 * fontScale : 13,
-                color: '#fde68a',
-                textAlign: 'center',
-              }}>
-              {guessHint}
-            </NativeText>
-          ) : null}
-          <Actions spacing={10} alignment="center">
-            <QubitRoundButton
-              testID="qubit-reset"
-              label="Reset Qubit"
-              disabled={resetDisabled}
-              onPress={() => resetQubit(controller)}
-              height={actionHeight}
-              fontSize={Platform.OS === 'ios' ? 17 * fontScale : 17}
-            />
-            <Button
-              label="Restart AR"
-              variant="outlined"
-              onPress={restart}
-              style={{ height: actionHeight }}
-            />
-          </Actions>
-        </Column>
-      </Host>
+      {transformRevision === state.placementRevision ? (
+        <QubitTransformControls
+          controller={controller}
+          state={state}
+          scope={{
+            sessionId: context.sessionId,
+            placementRevision: state.placementRevision,
+            roundId: state.roundId,
+          }}
+          stacked={fontScale > 1.3 || controlsWidth < 290}
+          onDone={() => setTransformRevision(null)}
+        />
+      ) : (
+        <QubitMainControls
+          controller={controller}
+          state={state}
+          context={context}
+          now={now}
+          guessHint={guessHint}
+          controlsWidth={controlsWidth}
+          onTransform={() => setTransformRevision(state.placementRevision)}
+        />
+      )}
     </View>
   );
 }
