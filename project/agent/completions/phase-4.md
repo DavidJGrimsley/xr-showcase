@@ -2,6 +2,8 @@
 
 Date: 2026-10-08 (America/New_York).
 
+Current delivery update: the owner subsequently requested the first-party npm SDK and a bundled hackathon demo key, with no player credential entry. That refactor supersedes the SecureStore/key-entry behavior and acceptance steps recorded below. See [the SDK refactor report](phase-4-sdk-refactor.md) for current behavior and validation, and [the build setup](../../quantum-demo-setup.md) for one-time owner environment configuration. The remainder of this document preserves the initial delivery evidence.
+
 Implementation and automated verification are complete. Physical native AR and protected live API acceptance remain owner-owned and unverified. This report does not mark the roadmap or the entire phase accepted.
 
 ## Delivery identity
