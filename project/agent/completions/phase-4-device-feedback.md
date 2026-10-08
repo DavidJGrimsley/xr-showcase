@@ -2,7 +2,7 @@
 
 Date: 2026-10-08 (America/New_York). Implementation and automated checks complete; revised native UI and cancellation acceptance pending.
 
-Latest revision: [the header info modal](#follow-up-header-info-modal), following [disabled guesses, vector labels, sizing, and centering](#follow-up-disabled-guesses-labels-and-sizing). The sizing revision supersedes the selected-guess appearance and four-button-only layout described in the initial feedback delivery below.
+Latest revision: [reactive buttons, full-width controls, and native info scrolling](#follow-up-reactive-buttons-and-native-scrolling), correcting the preceding [header info modal](#follow-up-header-info-modal) and [disabled guesses, vector labels, sizing, and centering](#follow-up-disabled-guesses-labels-and-sizing) deliveries. Historical descriptions below preserve their original validation evidence.
 
 ## Delivery
 
@@ -122,3 +122,35 @@ Additional opt-in device acceptance:
 - [ ] Check largest Dynamic Type, VoiceOver section navigation/diagram/link, escape dismissal, and landscape layout. Follow the Quantum API link and return to the app; confirm normal camera handoff/background recovery.
 - [ ] If opting into hardware, open info during submission, queued/running work, and paused recovery. Verify no resubmission, known-job cancellation, late-acknowledgement cancellation, and the uncertainty guard when no job ID was returned. Verify completed results remain visible after dismissal.
 - [ ] Repeat modal and TalkBack/back-button checks on Android after iPhone. Automated checks and JavaScript export do not establish native modal appearance, touch handling, or live cancellation acceptance.
+
+## Follow-up: reactive buttons and native scrolling
+
+Starting HEAD: `f59c3e69bc2891b9e07117bbf6cc0ff7e4892dea`. Tested implementation HEAD: `e34f407cb1946a4550ee8d3536443db8d11b337b` (`fix: qubit control state and native info scrolling`). The subsequent documentation commit delivers this report.
+
+The owner reported that the info sheet stopped scrolling before its final content, the selector wrapped and shifted other controls, and unavailable guesses still appeared enabled. These are corrections to device-reported failures; prior automated checks did not establish their native appearance.
+
+- **Button state:** compiling the old component with the installed React Compiler reproduced a cache keyed only by the stable controller identity around `controller.canGuess()`. The UI could therefore retain its initial enabled appearance despite subscribed round changes. A shared pure `canGuessQubit(snapshot, now)` guard now drives both controller validation and React rendering. The compiled replacement depends on the subscribed snapshot and clock. Both guesses and Reset use the same native button component: gray text, faded outlined appearance and no press callback when unavailable; filled mint appearance with dark text when available. Picking a bit disables both guesses and enables Reset. Completion keeps the guesses disabled until Reset; Reset reverses those states when connectivity/tracking are ready. Retry deadlines refresh the UI clock, including deadlines that have already elapsed.
+- **Selector and centering:** the native Host matches content vertically while filling the HUD's actual measured width. The selector/size row uses that full width, reserves a fixed region for `−` / `+`, and gives the remaining width to the selector. The label is now **Hardware** in both selector and info copy. Mode changes keep the same container width and centered controls. Narrow layouts and larger Dynamic Type stack the selector and size controls instead of compressing the label.
+- **Info scrolling:** the sheet uses Expo UI's native ScrollView inside a native Column. The fixed header and complete body each bridge through a content-sized RNHostView; the body no longer inherits a viewport-sized flex root or a nested React Native scroll view. Removed vertical shrinking from paragraph text. The native scroll owner measures the full body, including mode descriptions and the Quantum API link. Native sheet safe-area handling, Done, dismissal, section labels, and the existing hardware cancellation path remain.
+
+Final validation timestamp: `2026-10-08T16:50:24.007Z` (12:50 EDT).
+
+| Check | Result |
+| --- | --- |
+| `npm test`, direct and MDS CI | Exit 0; lint, formatting, TypeScript, 14 AR tests and 101 Qubit tests passed: 115 total. Four regression tests exercise subscribed eligibility through simulator/hardware waiting, results and Reset with a stable controller, changing retry clocks without snapshot publication, and placement/tracking/connection/submission uncertainty. |
+| React Compiler inspection | Before: memoization keyed by controller identity. After: keyed by `state` and `now`. Used the installed Babel/compiler packages and TypeScript/JSX parsing; no compiler setting was disabled. |
+| Expo Doctor | Exit 0; 21/21 passed. |
+| MDS Doctor CI | `doctor_scan_project(projectPath: assigned worktree, mode: "ci", runScripts: true)` passed: score 99, zero errors, one existing warning category, 15 passed, four intentional skips. React Doctor: zero errors, seven unchanged warnings outside Qubit, score 98. Every non-pass result was explained through the MDS tool. |
+| iOS export through MDS CI | Exit 0; 2,317 modules, 28 assets. Hermes bundle `entry-349c8f528057797998962bce502e3d27.hbc`, 5,141,914 bytes. The previously documented intermittent Windows exporter exit crash did not recur in this run. |
+| Git whitespace and preservation | Staged diff check passed. SDK 57, dependencies/lockfile, shared AR interface, navigation layout, quantum transport, Viro scene, roadmap, and sibling experiences are unchanged. |
+
+No native build, live API jobs, credentials, deployment, push, or merge were performed. Dependency installation was not repeated for source-only changes; existing dependency advisories remain. JavaScript export, compiler inspection and mocked lifecycle tests do not prove native scroll bounds or button colors on a physical device.
+
+Opt-in device acceptance for these corrections:
+
+- [ ] On iPhone, scroll past the complete circuit paragraph and both mode descriptions to the Quantum API link. Release at the bottom and confirm the link remains reachable, with normal and largest Dynamic Type and in landscape.
+- [ ] Place the sphere and switch Simulator/Hardware repeatedly. Verify the label stays readable, the selector/size row fills the HUD, and guesses/actions stay centered.
+- [ ] Before guessing, verify 0/1 are enabled and Reset is gray. After either guess, verify both numbers become gray and Reset becomes enabled; check waiting, collapse and completion, then Reset. Repeat in Hardware only when opting into a live job. Verify no second guess can submit before Reset.
+- [ ] Verify offline/retry recovery, tracking loss, native press feedback and VoiceOver disabled announcements. Repeat scrolling/layout/disabled-state checks with TalkBack on Android after iPhone.
+
+References: [Expo SDK 57 native ScrollView](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/scrollview/), [Host](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/host/), [BottomSheet](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/bottomsheet/), and [React Compiler memoization](https://react.dev/learn/react-compiler/introduction). Layout behavior was also inspected in the pinned package's native and universal implementations.
