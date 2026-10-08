@@ -2,7 +2,10 @@ import { isMedicalModelAvailable, type MedicalModelId } from './medical-models.t
 
 export const MIN_MODEL_SCALE = 0.5;
 export const MAX_MODEL_SCALE = 3;
-export const SCALE_STEP = 1.1;
+// Viro uses metres. Offset the prepared mesh's base above the selected surface.
+export const DEFAULT_MODEL_HEIGHT = 0.3048;
+export const MIN_MODEL_HEIGHT = 0;
+export const MAX_MODEL_HEIGHT = 1.524;
 
 export interface MedicalScope {
   sessionId: number;
@@ -20,6 +23,7 @@ export interface MedicalSnapshot {
   loadStatus: 'idle' | 'loading' | 'ready' | 'error';
   scale: number;
   yaw: number;
+  height: number;
   labelsVisible: boolean;
   pinching: boolean;
   rotating: boolean;
@@ -57,6 +61,7 @@ export class MedicalController {
     loadStatus: 'idle',
     scale: 1,
     yaw: 0,
+    height: DEFAULT_MODEL_HEIGHT,
     labelsVisible: false,
     pinching: false,
     rotating: false,
@@ -122,7 +127,7 @@ export class MedicalController {
   }
   restart(sessionId: number) {
     if (!this.live(sessionId)) return;
-    this.publish({ scale: 1, yaw: 0 });
+    this.publish({ scale: 1, yaw: 0, height: DEFAULT_MODEL_HEIGHT });
     this.detach(sessionId);
   }
   setTracking(sessionId: number, normal: boolean) {
@@ -176,7 +181,11 @@ export class MedicalController {
         !(this.snapshot.loadStatus === 'ready' && !success))
     )
       return;
-    this.publish({ loadStatus: success ? 'ready' : 'error' });
+    if (!success) this.clearGestures();
+    this.publish({
+      loadStatus: success ? 'ready' : 'error',
+      ...(!success ? { pinching: false, rotating: false } : {}),
+    });
   }
   retryLoad(sessionId: number) {
     if (!this.live(sessionId) || !this.snapshot.anchorId || this.snapshot.loadStatus !== 'error')
@@ -187,10 +196,30 @@ export class MedicalController {
     if (this.live(sessionId) && canManipulateMedical(this.snapshot))
       this.publish({ labelsVisible: !this.snapshot.labelsVisible });
   }
-  adjustScale(sessionId: number, direction: -1 | 1) {
-    if (!this.live(sessionId) || !canManipulateMedical(this.snapshot) || this.snapshot.pinching)
+  setScale(scope: MedicalScope, value: number) {
+    if (
+      !this.current(scope) ||
+      !canManipulateMedical(this.snapshot) ||
+      this.snapshot.pinching ||
+      !Number.isFinite(value)
+    )
       return;
-    this.publish({ scale: clampScale(this.snapshot.scale * SCALE_STEP ** direction) });
+    this.publish({ scale: clampScale(value) });
+  }
+  setYaw(scope: MedicalScope, value: number) {
+    if (
+      !this.current(scope) ||
+      !canManipulateMedical(this.snapshot) ||
+      this.snapshot.rotating ||
+      !Number.isFinite(value)
+    )
+      return;
+    this.publish({ yaw: normalizeYaw(value) });
+  }
+  setHeight(scope: MedicalScope, value: number) {
+    if (!this.current(scope) || !canManipulateMedical(this.snapshot) || !Number.isFinite(value))
+      return;
+    this.publish({ height: Math.min(MAX_MODEL_HEIGHT, Math.max(MIN_MODEL_HEIGHT, value)) });
   }
   pinch(scope: MedicalScope, gesture: number, factor: number) {
     if (

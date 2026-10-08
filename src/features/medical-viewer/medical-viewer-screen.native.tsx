@@ -5,16 +5,82 @@ import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import {
   canManipulateMedical,
-  MAX_MODEL_SCALE,
   MedicalController,
   medicalStatus,
-  MIN_MODEL_SCALE,
+  type MedicalSnapshot,
 } from './medical-controller';
-import { MEDICAL_MODELS } from './medical-models';
 import { MedicalControl } from './medical-control.native';
 import { MedicalInfoButton, MedicalInfoModal } from './medical-info.native';
+import { MedicalModelPicker } from './medical-model-picker.native';
+import { MedicalTransformControls } from './medical-transform-controls.native';
 
 const MedicalNavigator = lazy(() => import('./medical-navigator.native'));
+
+function MedicalStatus({ state }: { state: MedicalSnapshot }) {
+  const status = medicalStatus(state);
+  if (!status) return null;
+  return (
+    <View className="flex-row items-center justify-center gap-2">
+      {state.loadStatus === 'loading' || state.tracking === 'initializing' ? (
+        <ActivityIndicator color="#93f5c5" />
+      ) : null}
+      <Text
+        accessibilityLiveRegion="polite"
+        className="shrink text-center text-base"
+        style={{ color: state.loadStatus === 'error' ? '#fde68a' : '#e2e8f0' }}>
+        {status}
+      </Text>
+    </View>
+  );
+}
+
+function MedicalMainControls({
+  context,
+  controller,
+  state,
+  stacked,
+  onTransform,
+  onRestart,
+}: {
+  context: ARActiveOverlayContext;
+  controller: MedicalController;
+  state: MedicalSnapshot;
+  stacked: boolean;
+  onTransform: () => void;
+  onRestart: () => void;
+}) {
+  const rowStyle = {
+    flexDirection: stacked ? ('column' as const) : ('row' as const),
+    flexWrap: 'wrap' as const,
+  };
+  return (
+    <>
+      <View className="items-center justify-center gap-2" style={rowStyle}>
+        <MedicalModelPicker
+          selectedValue={state.modelId}
+          onValueChange={(model) => controller.selectModel(context.sessionId, model)}
+        />
+        <MedicalControl
+          label="Transform"
+          disabled={!state.anchorId}
+          testID="medical-transform"
+          onPress={onTransform}
+        />
+      </View>
+      <View className="items-center justify-center gap-2" style={rowStyle}>
+        <MedicalControl
+          label="Labels"
+          selected={state.labelsVisible}
+          disabled={!canManipulateMedical(state)}
+          accessibilityLabel={state.labelsVisible ? 'Hide anatomy labels' : 'Show anatomy labels'}
+          testID="medical-labels"
+          onPress={() => controller.toggleLabels(context.sessionId)}
+        />
+        <MedicalControl label="Restart AR" testID="medical-restart-ar" onPress={onRestart} />
+      </View>
+    </>
+  );
+}
 
 function MedicalControls({
   context,
@@ -26,10 +92,9 @@ function MedicalControls({
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const { width, fontScale } = useWindowDimensions();
   const [measuredWidth, setMeasuredWidth] = useState(0);
+  const [transformRevision, setTransformRevision] = useState<number | null>(null);
   const availableWidth = measuredWidth ? measuredWidth - 32 : Math.min(width, 720) - 72;
   const stacked = fontScale > 1.3 || availableWidth < 290;
-  const ready = canManipulateMedical(state);
-  const status = medicalStatus(state);
   const restart = () => {
     if (controller.getSessionId() !== context.sessionId) return;
     controller.restart(context.sessionId);
@@ -41,54 +106,7 @@ function MedicalControls({
       onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}
       className="gap-3 rounded-2xl p-4"
       style={{ backgroundColor: '#10191fe6' }}>
-      {status ? (
-        <View className="flex-row items-center justify-center gap-2">
-          {state.loadStatus === 'loading' || state.tracking === 'initializing' ? (
-            <ActivityIndicator color="#93f5c5" />
-          ) : null}
-          <Text
-            accessibilityLiveRegion="polite"
-            className="shrink text-center text-base"
-            style={{ color: state.loadStatus === 'error' ? '#fde68a' : '#e2e8f0' }}>
-            {status}
-          </Text>
-        </View>
-      ) : null}
-      <View
-        className="items-center justify-center gap-2"
-        style={{ flexDirection: stacked ? 'column' : 'row', flexWrap: 'wrap' }}>
-        <View className="flex-row items-center justify-center gap-2" style={{ flexWrap: 'wrap' }}>
-          {MEDICAL_MODELS.map((model) => (
-            <MedicalControl
-              key={model.id}
-              label={model.label}
-              selected={state.modelId === model.id}
-              disabled={!model.available}
-              hint={!model.available ? 'Brain model is not available yet' : undefined}
-              testID={`medical-model-${model.id}`}
-              onPress={() => controller.selectModel(context.sessionId, model.id)}
-            />
-          ))}
-        </View>
-        <View className="flex-row gap-2">
-          <MedicalControl
-            label="−"
-            accessibilityLabel="Make skull smaller"
-            testID="medical-size-smaller"
-            width={Math.max(48, 17 * fontScale + 20)}
-            disabled={!ready || state.pinching || state.scale <= MIN_MODEL_SCALE}
-            onPress={() => controller.adjustScale(context.sessionId, -1)}
-          />
-          <MedicalControl
-            label="+"
-            accessibilityLabel="Make skull larger"
-            testID="medical-size-larger"
-            width={Math.max(48, 17 * fontScale + 20)}
-            disabled={!ready || state.pinching || state.scale >= MAX_MODEL_SCALE}
-            onPress={() => controller.adjustScale(context.sessionId, 1)}
-          />
-        </View>
-      </View>
+      <MedicalStatus state={state} />
       {state.loadStatus === 'error' ? (
         <View className="items-center">
           <MedicalControl
@@ -98,25 +116,28 @@ function MedicalControls({
           />
         </View>
       ) : null}
-      <View
-        className="items-center justify-center gap-2"
-        style={{ flexDirection: stacked ? 'column' : 'row', flexWrap: 'wrap' }}>
-        <MedicalControl
-          label="Labels"
-          selected={state.labelsVisible}
-          disabled={!ready}
-          accessibilityLabel={state.labelsVisible ? 'Hide anatomy labels' : 'Show anatomy labels'}
-          testID="medical-labels"
-          onPress={() => controller.toggleLabels(context.sessionId)}
+      {transformRevision === state.placementRevision && state.anchorId ? (
+        <MedicalTransformControls
+          controller={controller}
+          state={state}
+          scope={{
+            sessionId: context.sessionId,
+            placementRevision: state.placementRevision,
+            loadAttempt: state.loadAttempt,
+          }}
+          stacked={stacked}
+          onDone={() => setTransformRevision(null)}
         />
-        <MedicalControl
-          label="Reposition"
-          disabled={!state.anchorId}
-          testID="medical-reposition"
-          onPress={() => controller.reposition(context.sessionId)}
+      ) : (
+        <MedicalMainControls
+          context={context}
+          controller={controller}
+          state={state}
+          stacked={stacked}
+          onTransform={() => setTransformRevision(state.placementRevision)}
+          onRestart={restart}
         />
-        <MedicalControl label="Restart AR" testID="medical-restart-ar" onPress={restart} />
-      </View>
+      )}
     </View>
   );
 }

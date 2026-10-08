@@ -52,6 +52,7 @@ function Skull({ context, controller }: MedicalSceneProps) {
   if (!state.anchorId || state.loadStatus === 'error') return null;
   return (
     <ViroNode
+      position={[0, state.height, 0]}
       rotation={[0, state.yaw, 0]}
       scale={[state.scale, state.scale, state.scale]}
       onPinch={

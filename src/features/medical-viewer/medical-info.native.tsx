@@ -86,23 +86,29 @@ export function MedicalInfoModal({
                 style={{ width: contentWidth }}
                 onAccessibilityEscape={onDismiss}>
                 <Text className="text-base leading-6 text-slate-200">
-                  Move your phone slowly, then tap a highlighted table or floor. Pinch the skull to
-                  resize it, or use − and +. Twist two fingers to rotate it. Labels reveals the
-                  anatomy markers.
+                  Move your phone slowly, then tap a highlighted table or floor. The skull starts
+                  floating one foot above that surface. Pinch to resize it and twist two fingers to
+                  rotate it. Labels reveals the anatomy markers.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
-                  Reposition lets you choose another surface and keeps your current size and
-                  rotation. Restart AR starts a fresh tracking session at the original size and
-                  orientation.
+                  Transform opens sliders for Scale, Rotate, and Height. Scale ranges from half to
+                  three times the original size; Height moves the skull from surface level to five
+                  feet above it. Done returns to the main controls.
+                </Text>
+                <Text className="text-base leading-6 text-slate-200">
+                  Reposition, inside Transform, lets you choose another surface while keeping your
+                  size, rotation, height, and labels. Restart AR starts fresh tracking with the
+                  original size and orientation, floating one foot above the surface.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
                   This skull was segmented from CT images in 3D Slicer and simplified for the
-                  viewer. Brain is unavailable until its separate model is ready.
+                  viewer. Choose a model from the dropdown; Brain is unavailable until its separate
+                  model is ready.
                 </Text>
                 <Text selectable className="text-base leading-6 text-slate-200">
                   {provenance.attribution}
                 </Text>
-                <Link href={provenance.collectionReadme} asChild>
+                <Link href={provenance.collectionReadme as `https://${string}`} asChild>
                   <Pressable
                     accessibilityRole="link"
                     className="min-h-[48px] justify-center active:opacity-50">
