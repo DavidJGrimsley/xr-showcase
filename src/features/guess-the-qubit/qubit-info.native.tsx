@@ -1,7 +1,9 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { BottomSheet, Button, Column, Host, RNHostView, ScrollView } from '@expo/ui';
+import { fillMaxWidth, onSizeChanged } from '@expo/ui/jetpack-compose/modifiers';
+import { frame, onGeometryChange } from '@expo/ui/swift-ui/modifiers';
 import { Link } from 'expo-router';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { useAppTheme } from '@/theme/provider';
 
@@ -61,9 +63,9 @@ function SphereKey({ color, children }: { color: string; children: ReactNode }) 
   );
 }
 
-function CircuitDiagram() {
-  const { fontScale, width } = useWindowDimensions();
-  const stacked = fontScale > 1.3 || width < 360;
+function CircuitDiagram({ width }: { width: number }) {
+  const { fontScale } = useWindowDimensions();
+  const stacked = fontScale > 1.3 || width < 300;
   return (
     <View
       accessible
@@ -94,7 +96,18 @@ export function QubitInfoModal({
   isPresented: boolean;
   onDismiss: () => void;
 }) {
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, width } = useWindowDimensions();
+  const [sheetWidth, setSheetWidth] = useState(0);
+  const contentWidth = Math.min(width, sheetWidth || width, 560);
+  const measureSheet = ({ width }: { width: number }) => {
+    if (width > 0) setSheetWidth(width);
+  };
+  // RNHostView matchContents measures Yoga content, not the sheet's proposed width.
+  // Measure the native viewport and give both RN roots a bounded width and natural height.
+  const sheetModifiers =
+    Platform.OS === 'ios'
+      ? [frame({ maxWidth: Infinity, alignment: 'top' }), onGeometryChange(measureSheet)]
+      : [fillMaxWidth(), onSizeChanged(measureSheet)];
   return (
     <Host colorScheme="dark" seedColor="#93f5c5" style={styles.sheetHost}>
       <BottomSheet
@@ -104,9 +117,11 @@ export function QubitInfoModal({
         snapPoints={['full']}
         contentPadding={0}
         containerColor="#10191f">
-        <Column alignment="center" spacing={0}>
+        <Column alignment="center" spacing={0} modifiers={sheetModifiers}>
           <RNHostView matchContents>
-            <View style={styles.header} onAccessibilityEscape={onDismiss}>
+            <View
+              style={[styles.header, { width: contentWidth }]}
+              onAccessibilityEscape={onDismiss}>
               <Text accessibilityRole="header" style={styles.title}>
                 Guess the Qubit
               </Text>
@@ -120,9 +135,14 @@ export function QubitInfoModal({
               </Host>
             </View>
           </RNHostView>
-          <ScrollView testID="qubit-info-scroll">
+          <ScrollView
+            testID="qubit-info-scroll"
+            direction="vertical"
+            style={{ width: contentWidth }}>
             <RNHostView matchContents>
-              <View style={styles.content} onAccessibilityEscape={onDismiss}>
+              <View
+                style={[styles.content, { width: contentWidth }]}
+                onAccessibilityEscape={onDismiss}>
                 <InfoSection title="The game">
                   <Text style={styles.body}>
                     Pick 0 or 1 before a qubit is measured. You win when your guess matches the
@@ -151,7 +171,7 @@ export function QubitInfoModal({
                   </Text>
                 </InfoSection>
                 <InfoSection title="The circuit">
-                  <CircuitDiagram />
+                  <CircuitDiagram width={contentWidth - 48} />
                   <Text style={styles.body}>
                     One qubit starts in |0⟩. A Ry(π/2) gate rotates it 90° around Y, creating an
                     equal superposition of 0 and 1. A single Z measurement returns one bit: 0 or 1,
@@ -192,7 +212,6 @@ const styles = StyleSheet.create({
   iconButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   sheetHost: { position: 'absolute' },
   header: {
-    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -201,8 +220,6 @@ const styles = StyleSheet.create({
   },
   title: { flex: 1, color: '#f8fafc', fontSize: 22, fontWeight: '700' },
   content: {
-    width: '100%',
-    maxWidth: 560,
     alignSelf: 'center',
     padding: 24,
     paddingBottom: 32,

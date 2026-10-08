@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Alert, Platform, Text, useWindowDimensions, View } from 'react-native';
-import { Button, Column, Host, Picker, Row, Text as NativeText } from '@expo/ui';
+import { Button, Column, Host, Picker, Row, Spacer, Text as NativeText } from '@expo/ui';
+import { fixedSize } from '@expo/ui/swift-ui/modifiers';
 import { Stack } from 'expo-router/stack';
 import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
@@ -76,46 +77,58 @@ function QubitModeAndSize({
 }) {
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale > 1.3 || width < 250;
-  const Layout = stacked ? Column : Row;
-  const sizeControlsWidth = 2 * 48 + 8;
-  return (
-    <Layout spacing={10} alignment="center" style={{ width }}>
-      <Column
-        alignment="center"
-        style={{ width: stacked ? width : width - sizeControlsWidth - 10 }}>
-        <Picker
-          testID="qubit-mode"
-          selectedValue={state.mode}
-          enabled={['idle', 'complete', 'error'].includes(state.phase)}
-          onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
-          <Picker.Item label="Simulator" value="simulator" />
-          <Picker.Item label="Hardware" value="hardware" />
-        </Picker>
-      </Column>
-      <Row spacing={8} alignment="center" style={{ width: sizeControlsWidth }}>
-        {([-1, 1] as const).map((direction) => {
-          const disabled =
-            direction === -1
-              ? state.sphereScale <= MIN_SPHERE_SCALE
-              : state.sphereScale >= MAX_SPHERE_SCALE;
-          return (
-            <Button
-              key={direction}
-              testID={direction === -1 ? 'qubit-size-smaller' : 'qubit-size-larger'}
-              label={direction === -1 ? '−' : '+'}
-              disabled={disabled}
-              variant="outlined"
-              style={{
-                width: 48,
-                height: Math.max(48, 17 * fontScale + 20),
-                opacity: disabled ? 0.35 : 1,
-              }}
-              onPress={() => controller.adjustSphereScale(sessionId, direction)}
-            />
-          );
-        })}
+  const modePicker = (
+    <Column
+      alignment="center"
+      modifiers={
+        Platform.OS === 'ios' ? [fixedSize({ horizontal: true, vertical: false })] : undefined
+      }>
+      <Picker
+        testID="qubit-mode"
+        selectedValue={state.mode}
+        enabled={['idle', 'complete', 'error'].includes(state.phase)}
+        onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
+        <Picker.Item label="Simulator" value="simulator" />
+        <Picker.Item label="Hardware" value="hardware" />
+      </Picker>
+    </Column>
+  );
+  const sizeButtons = ([-1, 1] as const).map((direction) => {
+    const disabled =
+      direction === -1
+        ? state.sphereScale <= MIN_SPHERE_SCALE
+        : state.sphereScale >= MAX_SPHERE_SCALE;
+    return (
+      <Button
+        key={direction}
+        testID={direction === -1 ? 'qubit-size-smaller' : 'qubit-size-larger'}
+        label={direction === -1 ? '−' : '+'}
+        disabled={disabled}
+        variant="outlined"
+        style={{
+          width: 48,
+          height: Math.max(48, 17 * fontScale + 20),
+          opacity: disabled ? 0.35 : 1,
+        }}
+        onPress={() => controller.adjustSphereScale(sessionId, direction)}
+      />
+    );
+  });
+  return stacked ? (
+    <Column spacing={10} alignment="center" style={{ width }}>
+      {modePicker}
+      <Row spacing={24} alignment="center">
+        {sizeButtons}
       </Row>
-    </Layout>
+    </Column>
+  ) : (
+    <Row spacing={0} alignment="center" style={{ width }}>
+      {modePicker}
+      <Spacer flexible size={12} />
+      {sizeButtons[0]}
+      <Spacer flexible size={12} />
+      {sizeButtons[1]}
+    </Row>
   );
 }
 
