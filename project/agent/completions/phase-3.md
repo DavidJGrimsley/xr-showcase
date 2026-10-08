@@ -15,10 +15,46 @@ bootstrap handoff and both TODO copies were left unchanged.
 - Implementation HEAD: `5ff142ae7d47dad65ac5020eba28cdec1baa6626`
 - Commit: `feat: add CT skull medical AR viewer and simple controls`
 
-This report and its review images are a separate documentation commit following
-the implementation. No push, PR, merge, cloud build, deployment, or sibling
-experience change was performed. Final integration must refresh the authoritative
-base through the source checkout and reconcile the additive shared contract.
+This original delivery record and its review images were committed separately
+from the implementation. No push, PR, merge, cloud build, deployment, or sibling
+experience change was performed during that initial delivery. The post-merge
+update below supersedes its Git/integration status; the original validation
+results remain historical evidence.
+
+### Post-merge rebase — 2026-10-08
+
+At the owner's request, the initial Phase 3 tip
+`ef04f443bec3eef3e91ee17de135862a7a8dded7` was pushed to
+`origin/phase-3-medical`, then main was fetched through the source checkout.
+Main now includes the Phase 4 qubit merge at
+`4449f1c0069e679f86203ade4e769a13895cdbf4`. The three Phase 3 commits were
+rebased onto that exact main commit:
+
+- Bootstrap handoff: `c6bda24`.
+- Rebased implementation: `52785949be05893aba2fa1c583ff0a81a4450788`.
+- Rebased original report: `65844b750ec2b206334fd689f540759e27274da1`.
+
+The only conflict was in `package.json`. Resolution retains main's pinned Quantum
+SDK dependency, lockfile, qubit test script, and two-worker iOS export command,
+and appends medical tests to `npm test`. Main's AR overlay contract exactly
+matches the medical implementation, so there is now no shared AR file diff
+against main. No qubit feature, EAS configuration, or roadmap change was added by
+the rebase.
+
+Post-rebase validation:
+
+- `npm ci --no-fund --no-audit`: passed against the merged lockfile.
+- `npm test`: passed lint/Prettier, TypeScript, 14 AR tests, 102 qubit tests, and
+  20 medical tests (**136 total**).
+- `npx expo-doctor`: 21/21 passed.
+- `npm run build:ios`: passed with main's two-worker setting and packaged skull.
+- `npx expo export --platform android --max-workers 2`: passed with packaged skull.
+- `git diff --check`: passed; diff against updated main reviewed.
+
+The rebased remote branch is updated using an explicit force-with-lease against
+the previously pushed Phase 3 tip, protecting any unexpected intervening push.
+The validation/report update follows the rebased original report in a separate
+commit. Physical medical acceptance remains pending as listed below.
 
 ## Delivered behavior
 
