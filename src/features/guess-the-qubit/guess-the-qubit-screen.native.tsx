@@ -114,20 +114,21 @@ function QubitModeAndSize({
       />
     );
   });
+  const sizeGroup = (
+    <Row spacing={8} alignment="center" style={{ width: 104 }}>
+      {sizeButtons}
+    </Row>
+  );
   return stacked ? (
     <Column spacing={10} alignment="center" style={{ width }}>
       {modePicker}
-      <Row spacing={24} alignment="center">
-        {sizeButtons}
-      </Row>
+      {sizeGroup}
     </Column>
   ) : (
     <Row spacing={0} alignment="center" style={{ width }}>
       {modePicker}
       <Spacer flexible size={12} />
-      {sizeButtons[0]}
-      <Spacer flexible size={12} />
-      {sizeButtons[1]}
+      {sizeGroup}
     </Row>
   );
 }
