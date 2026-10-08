@@ -2,7 +2,7 @@
 
 Date: 2026-10-08 (America/New_York). Implementation and automated checks complete; revised native UI and cancellation acceptance pending.
 
-Latest revision: [grouped scale controls](#follow-up-grouped-scale-controls), following [even control spacing and bounded info width](#follow-up-even-control-spacing-and-bounded-info-width). Historical descriptions below preserve their original validation evidence.
+Latest revision: [tracking caption for disabled choices](#follow-up-tracking-caption-for-disabled-choices), following [grouped scale controls](#follow-up-grouped-scale-controls). Historical descriptions below preserve their original validation evidence.
 
 ## Delivery
 
@@ -192,3 +192,13 @@ Corrected the interpretation of the requested spacing: the compact selector and 
 MDS Doctor CI at `2026-10-08T17:15:47.529Z` (13:15 EDT) passed: score 99, zero errors, 15 passed, four intentional skips, and the same seven React Doctor warnings outside Qubit (score 98). All non-pass results were explained through MDS. `npm test` passed lint/Prettier, TypeScript, 14 AR tests and 101 Qubit tests (115 total); Expo Doctor passed 21/21. iOS export exited 0 with 2,321 modules and 28 assets; Hermes bundle `entry-a77325e6e48614283c90878b254ed805.hbc`, 5,156,368 bytes. Staged Git whitespace check passed. Dependencies/lockfile and shared interfaces are unchanged.
 
 Device acceptance: reload on iPhone and verify the selector stays compact at the left, the minus/plus pair stays close together at the right, and the larger-text fallback keeps that pair grouped. Automated checks do not establish physical-device appearance.
+
+## Follow-up: tracking caption for disabled choices
+
+Starting HEAD: `c444aae05d8df0c5fbd93d405c2ff38278d03549`. Tested implementation HEAD: `b263fc44539eb3efcb141828217fd88917ae5ace` (`feat: explain disabled qubit choices during tracking loss`). The following documentation commit records the results; both commits are delivered to remote `phase-4-qubit`.
+
+The existing Viro tracking callback disables idle choices whenever tracking is not normal. The placed HUD now displays a centered, small yellow caption immediately beneath 0/1: “AR tracking paused. Lift your phone and point it at a well-lit surface.” It follows the subscribed tracking state and disappears automatically on recovery. It is hidden before placement and during active/completed rounds, where choices require finishing/resetting the round. Text respects Dynamic Type and the measured control width. The app reports tracking loss rather than claiming a measured camera-light condition. No controller, circuit, cancellation, info sheet, or control spacing behavior changed.
+
+MDS Doctor CI at `2026-10-08T17:21:28.844Z` (13:21 EDT) passed: score 99, zero errors, 15 passed, four intentional skips, and seven unchanged React Doctor warnings outside Qubit (score 98). All non-pass results were explained through MDS. `npm test` passed lint/Prettier, TypeScript, 14 AR tests and 102 Qubit tests (116 total); the targeted `npm run test:qubit` also passed. The new lifecycle test covers tracking loss and recovery in both modes, blocked submissions, ignored callbacks from another session, preserved placement, and caption visibility after Reset/surface loss. Expo Doctor passed 21/21. iOS export exited 0 with 2,321 modules and 28 assets; Hermes bundle `entry-6838d109a497a05e705b04a0974fe338.hbc`, 5,156,902 bytes. Staged Git whitespace check passed. Dependencies/lockfile, shared interfaces, and native scene are unchanged.
+
+Device acceptance: after placement and before guessing, lower/cover the camera until tracking becomes limited; confirm both choices gray out and the small yellow caption appears beneath them. Lift the phone toward a lit surface and confirm the caption disappears and choices re-enable after tracking recovers. Check larger text and VoiceOver, then Android. Automated checks do not establish physical camera behavior or native caption appearance.
