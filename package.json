@@ -22,9 +22,10 @@
     "expo-doctor": "npx expo-doctor",
     "post-create-check": "npx expo install --fix && npx expo-doctor",
     "ci:verify": "npx mds doctor --ci",
-    "test": "npm run lint && npm run typecheck && npm run test:ar && npm run test:qubit",
+    "test": "npm run lint && npm run typecheck && npm run test:ar && npm run test:qubit && npm run test:medical",
     "test:ar": "node --experimental-strip-types --test tests/ar-session.test.cjs",
     "test:qubit": "node --experimental-strip-types --test tests/qubit-*.test.cjs",
+    "test:medical": "node --experimental-strip-types --test tests/medical-controller.test.cjs tests/medical-assets.test.cjs",
     "build:ios": "expo export --platform ios --max-workers 2",
     "react:check": "react-doctor -y --no-telemetry",
     "build": "npm run build:ios"
