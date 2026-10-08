@@ -21,7 +21,9 @@ Expo reads explicit `process.env.EXPO_PUBLIC_*` property accesses during bundlin
 
 ## Verify on the development build
 
-Enter the game and confirm it connects without setup. Before placement, only the placement caption appears in the HUD. After placement, Simulator has no caption; Hardware Jobs has a short waiting/cancellation caption. Controls are `0`, `1`, `Reset Qubit`, and `Restart AR`, with native pressed feedback and disabled states. Test placement/readability, Dynamic Type, VoiceOver, Reduce Motion, live simulator guesses, and camera handoff.
+Enter the game and confirm it connects without setup. Before placement, only the placement caption appears in the HUD. After placement, Simulator has no caption; Hardware Jobs has a short waiting/cancellation caption. Centered controls are `0`, `1`, `Reset Qubit`, and `Restart AR`, with `−` / `+` beside the mode selector. Both guesses become outlined, gray, and faded whenever guessing is unavailable, including the previously selected guess.
+
+Pinch the placed sphere with two fingers, or tap `−` / `+`, to change its size. Both methods share one size setting, from half to three times the default diameter (12.5–75 cm). Sizing does not restart a round or submit a job. Reset Qubit and restarting AR retain the selected size. All nine labels use native vector text geometry. Test label sharpness at each size and distance, pinch handling, centered controls, Dynamic Type, VoiceOver, Reduce Motion, live simulator guesses, and camera handoff.
 
 Hardware remains an intentional user-selected one-shot action; connectivity checking never submits a job. Opt in to a hardware guess and check queue/result/cancellation behavior when ready. Reset Qubit, Restart AR, surface loss, navigating away, and backgrounding stop the round and request cancellation of known unfinished jobs. Failed or incomplete cancellations are retried automatically; only job IDs are saved locally so reopening can cancel outstanding jobs before enabling hardware again.
 

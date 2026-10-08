@@ -8,12 +8,16 @@ import type {
 import type { QubitCleanup } from './qubit-job-cleanup';
 
 export type QubitMode = 'simulator' | 'hardware';
+export const MIN_SPHERE_SCALE = 0.5;
+export const MAX_SPHERE_SCALE = 3;
+const SPHERE_SCALE_STEP = 0.25;
 export type RoundPhase =
   'idle' | 'intro' | 'waiting' | 'collapsing' | 'complete' | 'paused' | 'error';
 export interface QubitSnapshot {
   sessionId: number | null;
   roundId: number;
   placed: boolean;
+  sphereScale: number;
   tracking: boolean;
   mode: QubitMode;
   phase: RoundPhase;
@@ -50,6 +54,7 @@ export class QubitRoundController {
     sessionId: null,
     roundId: 0,
     placed: false,
+    sphereScale: 1,
     tracking: false,
     mode: 'simulator',
     phase: 'idle',
@@ -74,6 +79,7 @@ export class QubitRoundController {
   private clock: QuantumClock;
   private cleanup?: QubitCleanup;
   private uncertainRounds = new Set<number>();
+  private pinch: { sessionId: number; startScale: number } | null = null;
   constructor(
     getRuntime: () => QuantumRuntime | null,
     clock = defaultClock,
@@ -132,6 +138,45 @@ export class QubitRoundController {
   }
   setAvailability(simulatorReady: boolean, hardwareReady: boolean) {
     this.update({ simulatorReady, hardwareReady });
+  }
+  private setSphereScale(sessionId: number, scale: number) {
+    if (
+      this.snapshot.sessionId !== sessionId ||
+      !this.snapshot.placed ||
+      !Number.isFinite(scale) ||
+      scale <= 0
+    )
+      return;
+    const sphereScale = Math.max(MIN_SPHERE_SCALE, Math.min(MAX_SPHERE_SCALE, scale));
+    if (sphereScale !== this.snapshot.sphereScale) this.update({ sphereScale });
+  }
+  adjustSphereScale(sessionId: number, direction: -1 | 1) {
+    if (
+      this.snapshot.sessionId !== sessionId ||
+      !this.snapshot.placed ||
+      (direction !== -1 && direction !== 1)
+    )
+      return;
+    this.pinch = null;
+    this.setSphereScale(sessionId, this.snapshot.sphereScale + direction * SPHERE_SCALE_STEP);
+  }
+  pinchSphere(sessionId: number, gesture: number, factor: number) {
+    if (
+      this.snapshot.sessionId !== sessionId ||
+      !this.snapshot.placed ||
+      !Number.isFinite(factor) ||
+      factor <= 0
+    )
+      return;
+    if (gesture === 1) {
+      this.pinch = { sessionId, startScale: this.snapshot.sphereScale };
+      return;
+    }
+    if (!this.pinch || this.pinch.sessionId !== sessionId || (gesture !== 2 && gesture !== 3))
+      return;
+    // Viro reports a factor relative to gesture start, not to the previous callback.
+    this.setSphereScale(sessionId, this.pinch.startScale * factor);
+    if (gesture === 3) this.pinch = null;
   }
   deferUntil(retryAt: number) {
     this.update({ retryAt: Math.max(this.snapshot.retryAt, retryAt) });
@@ -421,6 +466,7 @@ export class QubitRoundController {
       });
   }
   reset() {
+    this.pinch = null;
     const round = this.round;
     this.round = null;
     this.clearTimer();

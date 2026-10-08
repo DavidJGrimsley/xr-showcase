@@ -3,6 +3,8 @@ const { test } = require('node:test');
 const { qubitMotion } = require('../src/features/guess-the-qubit/qubit-motion.ts');
 const {
   QubitRoundController,
+  MIN_SPHERE_SCALE,
+  MAX_SPHERE_SCALE,
 } = require('../src/features/guess-the-qubit/qubit-round-controller.ts');
 const {
   BLOCH_RADIUS,
@@ -426,4 +428,123 @@ test('tabletop geometry preserves Bloch poles, handedness and closed 0.25m rings
     for (const point of points) assert.ok(Math.abs(Math.hypot(...point) - BLOCH_RADIUS) < 1e-10);
     assert.ok(Math.hypot(...points[0].map((v, i) => v - points[96][i])) < 1e-10);
   }
+});
+
+test('size buttons clamp to usable bounds and preserve size across round Reset', () => {
+  const h = harness();
+  assert.equal(h.controller.getSnapshot().sphereScale, 1);
+  for (let i = 0; i < 20; i++) h.controller.adjustSphereScale(1, -1);
+  assert.equal(h.controller.getSnapshot().sphereScale, MIN_SPHERE_SCALE);
+  for (let i = 0; i < 20; i++) h.controller.adjustSphereScale(1, 1);
+  assert.equal(h.controller.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
+  h.controller.reset();
+  assert.equal(h.controller.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
+  assert.equal(h.calls.submit.length + h.calls.measure.length, 0);
+});
+
+test('pinch uses the shared button size as its baseline and never compounds move events', () => {
+  const h = harness();
+  for (let i = 0; i < 4; i++) h.controller.adjustSphereScale(1, 1);
+  h.controller.pinchSphere(1, 1, 1);
+  h.controller.pinchSphere(1, 2, 1.2);
+  assert.equal(h.controller.getSnapshot().sphereScale, 2.4);
+  h.controller.pinchSphere(1, 2, 1.4);
+  assert.equal(h.controller.getSnapshot().sphereScale, 2.8);
+  h.controller.pinchSphere(1, 3, 1.3);
+  assert.equal(h.controller.getSnapshot().sphereScale, 2.6);
+  h.controller.pinchSphere(1, 2, 0.5);
+  assert.equal(h.controller.getSnapshot().sphereScale, 2.6);
+  h.controller.pinchSphere(1, 1, 1);
+  h.controller.pinchSphere(1, 2, 100);
+  assert.equal(h.controller.getSnapshot().sphereScale, MAX_SPHERE_SCALE);
+  h.controller.pinchSphere(1, 3, 0.01);
+  assert.equal(h.controller.getSnapshot().sphereScale, MIN_SPHERE_SCALE);
+});
+
+test('buttons supersede an active pinch and Reset discards its stale completions', () => {
+  const h = harness();
+  h.controller.pinchSphere(1, 1, 1);
+  h.controller.pinchSphere(1, 2, 1.5);
+  h.controller.adjustSphereScale(1, 1);
+  h.controller.pinchSphere(1, 3, 2);
+  assert.equal(h.controller.getSnapshot().sphereScale, 1.75);
+  h.controller.pinchSphere(1, 1, 1);
+  h.controller.reset();
+  h.controller.pinchSphere(1, 2, 0.5);
+  h.controller.pinchSphere(1, 3, 0.5);
+  assert.equal(h.controller.getSnapshot().sphereScale, 1.75);
+});
+
+test('surface loss, background and replacement reject stale size callbacks', () => {
+  const h = harness();
+  h.controller.adjustSphereScale(1, 1);
+  h.controller.pinchSphere(1, 1, 1);
+  h.controller.attach(2);
+  h.controller.adjustSphereScale(2, 1);
+  h.controller.pinchSphere(1, 3, 2);
+  assert.equal(h.controller.getSnapshot().sphereScale, 1.25);
+  h.controller.setPlaced(2, true);
+  h.controller.pinchSphere(2, 1, 1);
+  h.controller.adjustSphereScale(1, 1);
+  h.controller.pinchSphere(2, 2, 2);
+  assert.equal(h.controller.getSnapshot().sphereScale, 2.5);
+  h.controller.setPlaced(2, false);
+  h.controller.setPlaced(2, true);
+  h.controller.pinchSphere(2, 3, 0.5);
+  assert.equal(h.controller.getSnapshot().sphereScale, 2.5);
+  h.controller.detach(2);
+  h.controller.adjustSphereScale(2, -1);
+  h.controller.pinchSphere(2, 1, 1);
+  h.controller.pinchSphere(2, 3, 0.5);
+  assert.equal(h.controller.getSnapshot().sphereScale, 2.5);
+});
+
+test('invalid gesture values never introduce an invalid or negative transform', () => {
+  const h = harness();
+  for (const factor of [NaN, Infinity, -Infinity, 0, -1]) {
+    h.controller.pinchSphere(1, 1, factor);
+    h.controller.pinchSphere(1, 2, factor);
+    h.controller.pinchSphere(1, 3, factor);
+  }
+  h.controller.pinchSphere(1, 2, 2);
+  h.controller.pinchSphere(1, 99, 2);
+  h.controller.adjustSphereScale(1, NaN);
+  assert.equal(h.controller.getSnapshot().sphereScale, 1);
+});
+
+test('resizing during measurement preserves the guess, animation identity and outcome', async () => {
+  const h = harness();
+  h.controller.guess(0);
+  await flush();
+  const round = h.controller.getSnapshot().roundId;
+  const motion = qubitMotion(h.controller.getSnapshot(), false);
+  h.controller.adjustSphereScale(1, 1);
+  h.controller.pinchSphere(1, 1, 1);
+  h.controller.pinchSphere(1, 3, 1.4);
+  assert.equal(h.controller.getSnapshot().roundId, round);
+  assert.equal(qubitMotion(h.controller.getSnapshot(), false).key, motion.key);
+  assert.equal(h.calls.measure.length, 1);
+  h.intro();
+  h.collapse();
+  assert.equal(h.controller.getSnapshot().outcome, 'won');
+});
+
+test('resizing a queued hardware round does not submit, cancel or restart polling', async () => {
+  const h = harness({}, 'hardware');
+  h.controller.guess(1);
+  await flush();
+  h.advance(10000);
+  h.controller.adjustSphereScale(1, -1);
+  h.controller.pinchSphere(1, 1, 1);
+  h.controller.pinchSphere(1, 3, 1.5);
+  h.controller.guess(0);
+  assert.equal(h.controller.canGuess(), false);
+  assert.equal(h.controller.getSnapshot().guess, 1);
+  assert.equal(h.calls.submit.length, 1);
+  assert.equal(h.calls.cancel.length, 0);
+  h.advance(5000);
+  await flush();
+  assert.equal(h.calls.status.length, 1);
+  assert.equal(h.controller.getSnapshot().jobStatus, 'running');
+  h.controller.detach(1);
 });

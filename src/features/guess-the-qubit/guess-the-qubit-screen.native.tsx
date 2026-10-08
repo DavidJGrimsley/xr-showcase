@@ -6,7 +6,7 @@ import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useQubitConfiguration } from './use-qubit-configuration.native';
 import { qubitPresentation } from './qubit-presentation';
-import type { QubitSnapshot } from './qubit-round-controller';
+import { MAX_SPHERE_SCALE, MIN_SPHERE_SCALE, type QubitSnapshot } from './qubit-round-controller';
 
 const QubitNavigator = lazy(() => import('./qubit-navigator.native'));
 type Configuration = ReturnType<typeof useQubitConfiguration>;
@@ -43,14 +43,65 @@ function QubitStatus({
   const outcomeColor = outcome && { won: '#86efac', lost: '#fca5a5' }[outcome];
   const color = display.warning ? '#fde68a' : outcomeColor || '#e2e8f0';
   return (
-    <View className="flex-row items-center gap-2">
+    <View className="flex-row items-center justify-center gap-2">
       {display.spinning ? (
         <ActivityIndicator accessibilityLabel="Waiting for the result" color="#93f5c5" />
       ) : null}
-      <Text accessibilityLiveRegion="polite" className="flex-1 text-base" style={{ color }}>
+      <Text
+        accessibilityLiveRegion="polite"
+        className="shrink text-center text-base"
+        style={{ color }}>
         {display.status}
       </Text>
     </View>
+  );
+}
+
+function QubitModeAndSize({
+  controller,
+  state,
+  sessionId,
+}: {
+  controller: Configuration['controller'];
+  state: QubitSnapshot;
+  sessionId: number;
+}) {
+  const { fontScale, width } = useWindowDimensions();
+  const Layout = fontScale > 1.3 || width < 360 ? Column : Row;
+  return (
+    <Layout spacing={10} alignment="center">
+      <Picker
+        testID="qubit-mode"
+        selectedValue={state.mode}
+        enabled={['idle', 'complete', 'error'].includes(state.phase)}
+        onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
+        <Picker.Item label="Simulator" value="simulator" />
+        <Picker.Item label="Hardware Jobs" value="hardware" />
+      </Picker>
+      <Row spacing={8} alignment="center">
+        {([-1, 1] as const).map((direction) => {
+          const disabled =
+            direction === -1
+              ? state.sphereScale <= MIN_SPHERE_SCALE
+              : state.sphereScale >= MAX_SPHERE_SCALE;
+          return (
+            <Button
+              key={direction}
+              testID={direction === -1 ? 'qubit-size-smaller' : 'qubit-size-larger'}
+              label={direction === -1 ? '−' : '+'}
+              disabled={disabled}
+              variant="outlined"
+              style={{
+                width: 48,
+                height: Math.max(48, 17 * fontScale + 20),
+                opacity: disabled ? 0.35 : 1,
+              }}
+              onPress={() => controller.adjustSphereScale(sessionId, direction)}
+            />
+          );
+        })}
+      </Row>
+    </Layout>
   );
 }
 
@@ -78,36 +129,38 @@ function QubitControls({
     context.restartAR();
   };
   return (
-    <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor="#93f5c5">
-      <Column spacing={10}>
-        <Picker
-          testID="qubit-mode"
-          selectedValue={state.mode}
-          enabled={['idle', 'complete', 'error'].includes(state.phase)}
-          onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
-          <Picker.Item label="Simulator" value="simulator" />
-          <Picker.Item label="Hardware Jobs" value="hardware" />
-        </Picker>
-        <Guesses spacing={24}>
+    <Host
+      matchContents
+      colorScheme="dark"
+      seedColor="#93f5c5"
+      style={{ alignSelf: 'center', maxWidth: '100%' }}>
+      <Column spacing={10} alignment="center">
+        <QubitModeAndSize controller={controller} state={state} sessionId={context.sessionId} />
+        <Guesses spacing={24} alignment="center">
           {[0, 1].map((bit) => (
             <Button
               key={bit}
               testID={`qubit-guess-${bit}`}
               disabled={disabled}
-              variant={disabled && state.guess !== bit ? 'outlined' : 'filled'}
+              variant={disabled ? 'outlined' : 'filled'}
               onPress={() => controller.guess(bit as 0 | 1)}
               style={{
                 height: Math.max(48, 24 * fontScale + 20),
                 width: guessWidth,
-                opacity: disabled && state.guess !== bit ? 0.4 : 1,
+                opacity: disabled ? 0.4 : 1,
               }}>
-              <NativeText textStyle={{ fontSize: guessFontSize, fontWeight: 'bold' }}>
+              <NativeText
+                textStyle={{
+                  fontSize: guessFontSize,
+                  fontWeight: 'bold',
+                  color: disabled ? '#94a3b8' : '#10231c',
+                }}>
                 {String(bit)}
               </NativeText>
             </Button>
           ))}
         </Guesses>
-        <Actions spacing={10}>
+        <Actions spacing={10} alignment="center">
           <Button
             label="Reset Qubit"
             disabled={resetDisabled}
@@ -150,7 +203,7 @@ function QubitHUD({
   if (!state.placed)
     return (
       <View className="rounded-2xl px-4 py-3" style={{ backgroundColor: '#10191fe6' }}>
-        <Text className="text-base" style={{ color: '#e2e8f0' }}>
+        <Text className="text-center text-base" style={{ color: '#e2e8f0' }}>
           {display.caption}
         </Text>
       </View>
@@ -158,7 +211,7 @@ function QubitHUD({
   return (
     <View className="gap-3 rounded-2xl p-4" style={{ backgroundColor: '#10191fe6' }}>
       {display.caption ? (
-        <Text className="text-sm" style={{ color: '#cbd5e1' }}>
+        <Text className="text-center text-sm" style={{ color: '#cbd5e1' }}>
           {display.caption}
         </Text>
       ) : null}

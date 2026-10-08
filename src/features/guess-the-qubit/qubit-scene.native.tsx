@@ -22,12 +22,14 @@ import {
   BLOCH_CENTER,
   BLOCH_RADIUS,
   ringPoints,
+  type Point3,
 } from './qubit-geometry';
 import type { QubitRoundController, QubitSnapshot } from './qubit-round-controller';
 import { qubitMotion } from './qubit-motion';
 
 ViroMaterials.createMaterials({
   qubitCyan: { diffuseColor: '#00c7ff', lightingModel: 'Constant' },
+  qubitIvory: { diffuseColor: '#fff1da', lightingModel: 'Constant' },
   qubitShell: {
     diffuseColor: '#009ec7',
     lightingModel: 'Constant',
@@ -113,16 +115,53 @@ function useQubitReducedMotion(
   return reduceMotion;
 }
 
+function VectorLabel({
+  text,
+  position,
+  axis = false,
+}: {
+  text: string;
+  position: Point3;
+  axis?: boolean;
+}) {
+  const scale = axis ? 0.032 : 0.04;
+  const material = axis ? 'qubitCyan' : 'qubitIvory';
+  return (
+    <ViroText
+      text={text}
+      position={position}
+      width={axis ? 1.3 : 2.5}
+      height={1}
+      scale={[scale, scale, scale]}
+      // Positive depth uses native vector glyph geometry instead of a stretched bitmap atlas.
+      extrusionDepth={0.015}
+      materials={[material, material, material]}
+      maxLines={1}
+      textLineBreakMode="None"
+      transformBehaviors={['billboard']}
+      style={{
+        fontSize: 64,
+        fontWeight: 'bold',
+        color: axis ? '#00c7ff' : '#fff1da',
+        textAlign: 'center',
+      }}
+    />
+  );
+}
+
 function BlochSphere({ context, controller }: QubitSceneProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const reduceMotion = useQubitReducedMotion(controller, context, state);
   const motion = qubitMotion(state, reduceMotion);
   return (
-    <ViroNode position={BLOCH_CENTER}>
+    <ViroNode
+      position={[0, BLOCH_CENTER[1] * state.sphereScale, 0]}
+      scale={[state.sphereScale, state.sphereScale, state.sphereScale]}
+      onPinch={(gesture, factor) => controller.pinchSphere(context.sessionId, gesture, factor)}>
       <ViroSphere
         radius={BLOCH_RADIUS}
-        widthSegmentCount={32}
-        heightSegmentCount={24}
+        widthSegmentCount={64}
+        heightSegmentCount={48}
         opacity={0.13}
         materials={['qubitShell']}
         renderingOrder={1}
@@ -155,44 +194,11 @@ function BlochSphere({ context, controller }: QubitSceneProps) {
         materials={['qubitCyan']}
       />
       {BASIS_LABELS.map((label) => (
-        <ViroText
-          key={label.text}
-          text={label.text}
-          position={label.position}
-          width={0.5}
-          height={0.2}
-          scale={[0.2, 0.2, 0.2]}
-          transformBehaviors={['billboard']}
-          style={{ fontSize: 13, color: '#fff1da', textAlign: 'center' }}
-        />
+        <VectorLabel key={label.text} text={label.text} position={label.position} />
       ))}
-      <ViroText
-        text="X"
-        position={[0.105, 0.022, 0]}
-        width={0.2}
-        height={0.125}
-        scale={[0.2, 0.2, 0.2]}
-        transformBehaviors={['billboard']}
-        style={{ fontSize: 10, color: '#00c7ff', textAlign: 'center' }}
-      />
-      <ViroText
-        text="Y"
-        position={[0.018, 0.022, -0.105]}
-        width={0.2}
-        height={0.125}
-        scale={[0.2, 0.2, 0.2]}
-        transformBehaviors={['billboard']}
-        style={{ fontSize: 10, color: '#00c7ff', textAlign: 'center' }}
-      />
-      <ViroText
-        text="Z"
-        position={[0.025, 0.115, 0]}
-        width={0.2}
-        height={0.125}
-        scale={[0.2, 0.2, 0.2]}
-        transformBehaviors={['billboard']}
-        style={{ fontSize: 10, color: '#00c7ff', textAlign: 'center' }}
-      />
+      <VectorLabel axis text="X" position={[0.105, 0.022, 0]} />
+      <VectorLabel axis text="Y" position={[0.018, 0.022, -0.105]} />
+      <VectorLabel axis text="Z" position={[0.025, 0.115, 0]} />
       <ViroNode
         key={motion.key}
         rotation={[0, 0, motion.angle]}
