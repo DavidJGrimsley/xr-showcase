@@ -170,11 +170,13 @@ function QubitControls({
   state,
   context,
   now,
+  guessHint,
 }: {
   controller: Configuration['controller'];
   state: QubitSnapshot;
   context: ARActiveOverlayContext;
   now: number;
+  guessHint: string;
 }) {
   const { fontScale, width } = useWindowDimensions();
   const [measuredWidth, setMeasuredWidth] = useState(0);
@@ -220,6 +222,18 @@ function QubitControls({
               />
             ))}
           </Guesses>
+          {guessHint ? (
+            <NativeText
+              testID="qubit-tracking-caption"
+              style={{ width: controlsWidth }}
+              textStyle={{
+                fontSize: Platform.OS === 'ios' ? 13 * fontScale : 13,
+                color: '#fde68a',
+                textAlign: 'center',
+              }}>
+              {guessHint}
+            </NativeText>
+          ) : null}
           <Actions spacing={10} alignment="center">
             <QubitRoundButton
               testID="qubit-reset"
@@ -278,7 +292,13 @@ function QubitHUD({
         </Text>
       ) : null}
       <QubitStatus display={display} outcome={state.outcome} />
-      <QubitControls controller={controller} state={state} context={context} now={now} />
+      <QubitControls
+        controller={controller}
+        state={state}
+        context={context}
+        now={now}
+        guessHint={display.guessHint}
+      />
     </View>
   );
 }

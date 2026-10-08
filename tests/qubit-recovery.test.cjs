@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const {
+  canGuessQubit,
   QubitRoundController,
 } = require('../src/features/guess-the-qubit/qubit-round-controller.ts');
 const {
@@ -14,6 +15,7 @@ const {
   qubitPresentation,
   PLACEMENT_CAPTION,
   HARDWARE_CAPTION,
+  TRACKING_CAPTION,
 } = require('../src/features/guess-the-qubit/qubit-presentation.ts');
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -110,6 +112,41 @@ test('only the exact caption is presented before placement, even on connection f
   assert.equal(display.caption, PLACEMENT_CAPTION);
   assert.equal(display.status, '');
   assert.equal(display.spinning, false);
+  assert.equal(display.guessHint, '');
+});
+
+test('lost tracking explains disabled idle choices and recovers with the same placed sphere', async () => {
+  const h = harness();
+  h.connection.start();
+  await flush();
+  const display = () => qubitPresentation(h.rounds.getSnapshot(), '', false, h.time.now());
+  assert.equal(canGuessQubit(h.rounds.getSnapshot(), h.time.now()), true);
+  assert.equal(display().guessHint, '');
+  for (const mode of ['simulator', 'hardware']) {
+    h.rounds.setMode(mode);
+    h.rounds.setTracking(1, false);
+    assert.equal(canGuessQubit(h.rounds.getSnapshot(), h.time.now()), false);
+    assert.equal(display().guessHint, TRACKING_CAPTION);
+    h.rounds.guess(0);
+    assert.equal(h.count('measure') + h.count('submit'), 0);
+    h.rounds.setTracking(2, true);
+    assert.equal(display().guessHint, TRACKING_CAPTION);
+    h.rounds.setTracking(1, true);
+    assert.equal(canGuessQubit(h.rounds.getSnapshot(), h.time.now()), true);
+    assert.equal(display().guessHint, '');
+    assert.equal(h.rounds.getSnapshot().placed, true);
+  }
+  h.rounds.setMode('simulator');
+  h.rounds.guess(0);
+  h.rounds.setTracking(1, false);
+  assert.equal(display().guessHint, '');
+  h.rounds.reset();
+  assert.equal(display().guessHint, TRACKING_CAPTION);
+  h.rounds.setPlaced(1, false);
+  assert.equal(display().guessHint, '');
+  h.connection.stop();
+  h.rounds.detach(1);
+  await flush();
 });
 
 test('placed simulator has no caption; hardware has one caption and one concise status', async () => {

@@ -4,6 +4,8 @@ export const PLACEMENT_CAPTION =
   'Move slowly, then tap a highlighted flat surface to place a Bloch Sphere.';
 export const HARDWARE_CAPTION =
   'Hardware queues can take time. Keep this screen open; leaving requests cancellation.';
+export const TRACKING_CAPTION =
+  'AR tracking paused. Lift your phone and point it at a well-lit surface.';
 
 export function qubitPresentation(
   state: QubitSnapshot,
@@ -12,7 +14,13 @@ export function qubitPresentation(
   now: number
 ) {
   if (!state.placed)
-    return { caption: PLACEMENT_CAPTION, status: '', warning: false, spinning: false };
+    return {
+      caption: PLACEMENT_CAPTION,
+      guessHint: '',
+      status: '',
+      warning: false,
+      spinning: false,
+    };
   const caption = state.mode === 'hardware' ? HARDWARE_CAPTION : '';
   const uncertain = state.mode === 'hardware' && state.uncertainSubmission;
   const warning = uncertain || state.phase === 'error' || state.phase === 'paused';
@@ -27,6 +35,7 @@ export function qubitPresentation(
     status = connection;
   return {
     caption,
+    guessHint: state.phase === 'idle' && !state.tracking ? TRACKING_CAPTION : '',
     status,
     warning: warning || (!!state.cancellationNotice && state.phase === 'idle'),
     spinning: !warning && (busy || ['intro', 'waiting', 'collapsing'].includes(state.phase)),
