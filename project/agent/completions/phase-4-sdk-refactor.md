@@ -2,6 +2,8 @@
 
 Date: 2026-10-08 (America/New_York). Implementation complete; native and protected live acceptance pending.
 
+Subsequent device feedback supersedes the HUD's Reconnect control and status copy described here. See [the latest device-feedback report](phase-4-device-feedback.md) for automatic reconnection, cancellation recovery, and current acceptance evidence. This document preserves the earlier SDK/configuration delivery.
+
 ## Delivery
 
 - Worktree: `F:/ReactNativeApps/xr-showcase-i2Workspace/xr-showcase-phase-4-qubit`
