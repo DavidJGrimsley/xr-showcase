@@ -2,6 +2,8 @@
 
 Date: 2026-10-08 (America/New_York). Implementation and automated checks complete; revised native UI and cancellation acceptance pending.
 
+Latest revision: [disabled guesses, vector labels, sizing, and centering](#follow-up-disabled-guesses-labels-and-sizing). That revision supersedes the selected-guess appearance and four-button-only layout described in the initial feedback delivery below.
+
 ## Delivery
 
 - Worktree: `F:/ReactNativeApps/xr-showcase-i2Workspace/xr-showcase-phase-4-qubit`
@@ -58,3 +60,36 @@ An intermediate test run caught an outdated readiness expectation after submissi
 - [ ] Repeat on Android after iPhone acceptance.
 
 Client cleanup cannot guarantee remote cancellation after an immediate force quit, network loss, or process termination before a job ID is returned. The current API exposes no server-side lease for automatic unattended-job expiry. The hardware caption therefore says “requests cancellation.” Absolute force-quit guarantees require service work outside this client revision. Mock tests, schema validation, and JavaScript export do not establish native AR or provider cancellation acceptance.
+
+## Follow-up: disabled guesses, labels, and sizing
+
+Feedback starting HEAD: `650a8854f885eb2fa221e71171d4f5369936e0f4`. Tested implementation HEAD: `e2e2235cd28304d1987a9208141dd2e3e590da78`. Branch and worktree remain as recorded above. The following documentation commit updates this report; retrieve its SHA with the delivery command above.
+
+Both guess buttons now use the same disabled treatment: outlined native buttons, muted gray numbers, and 40% opacity. The selected guess no longer retains its enabled appearance. Enabled guesses have filled backgrounds with dark, contrasting numbers. Native disabled behavior and the controller's guess guard remain in place.
+
+All six basis labels and X/Y/Z now use shallow extruded, vectorized native `ViroText`, with a larger font definition scaled down to approximately the existing physical label size. This replaces the small bitmap glyphs that were enlarged on screen. Constant-color materials keep front, back, and side faces readable without lights. [Viro's text reference](https://viro-community.readme.io/docs/virotext) documents vector text with positive extrusion depth.
+
+Pinching the placed sphere and the new `−` / `+` buttons share the controller's `sphereScale`. Buttons sit beside the mode selector at ordinary text sizes; large text and narrow displays use a centered stacked layout. Scale is bounded to 0.5–3 times default, giving a 12.5–75 cm diameter. Buttons step by 0.25 times default and disable at the corresponding bound. Center height scales with the model so the sphere and labels remain above the placement plane. Sphere mesh detail increases to support enlargement.
+
+Pinch updates use the gesture-start scale rather than repeatedly multiplying the last update. Buttons supersede an active pinch; Reset and teardown invalidate gesture state. Stale session callbacks and invalid factors are rejected. Resizing preserves the selected size across Reset/Restart AR, does not change round/animation identity, and does not submit, cancel, or restart polling. Caption text, status/spinner, mode/size controls, guesses, and actions are centered horizontally. No new instructions appear in the game UI.
+
+Final validation timestamp: `2026-10-08T15:57:10.781Z` (11:57 EDT).
+
+| Check | Result |
+| --- | --- |
+| `npm test`, direct and final MDS CI | Exit 0; lint, formatting, TypeScript, 14 AR tests and 97 Qubit tests passed: 111 total. Seven added tests cover bounds, cumulative pinch math, stale gestures/session teardown, invalid factors, and unchanged measurement/animation/hardware polling. |
+| Expo Doctor | Exit 0; 21/21 passed. |
+| MDS Doctor CI | Score 99; zero errors, one existing warning category, 15 passed, four existing skips. React Doctor: zero errors, seven unchanged warnings outside Qubit, score 98. |
+| iOS export through `npm run build` | Exit 0; 2,204 modules, 28 assets, 5 MB Hermes bundle: `entry-94600cad1acd39e43513cd9a493e9601.hbc`. |
+| Viro schema and iOS/Android support checks | Schema: zero errors/warnings. Platform tool reports no unsupported combinations. These are static checks, not native visual/gesture acceptance. |
+| Git whitespace and preservation | Staged diff check passed. Dependencies, lockfile, SDK 57, quantum transport, shared AR interface, navigation files, roadmap, and sibling experiences remain unchanged. No native dependency was added. |
+
+No credential values, service administration, live jobs, EAS builds, deployment, push, or merge were performed. Existing dependency advisories are unchanged; dependency installation was not repeated for these source-only changes.
+
+Additional opt-in acceptance:
+
+- [ ] Reload the iPhone app and verify both guesses visibly disable after either guess and throughout submission/waiting/completion/error states; verify native press feedback when enabled.
+- [ ] Verify X/Y/Z and all basis labels are sharp at near/far viewing distances and at minimum/default/maximum sphere size, with normal and reduced motion.
+- [ ] Pinch inward/outward, then use `−` / `+`; verify both methods share the current size and remain centered beside the selector at ordinary text sizes. Verify bounds, largest Dynamic Type, and VoiceOver.
+- [ ] Resize during simulator measurement and while a hardware job is queued/running; verify no extra submission, polling restart, lost guess, or animation restart. Test Reset, Restart AR, surface loss, and background/resume.
+- [ ] Repeat native label/gesture/layout acceptance on Android after iPhone. JavaScript export and mock tests do not prove device gesture performance or label quality.
