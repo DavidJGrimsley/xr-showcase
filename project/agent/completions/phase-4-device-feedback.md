@@ -2,7 +2,7 @@
 
 Date: 2026-10-08 (America/New_York). Implementation and automated checks complete; revised native UI and cancellation acceptance pending.
 
-Latest revision: [even control spacing and bounded info width](#follow-up-even-control-spacing-and-bounded-info-width), following [reactive buttons, full-width controls, and native info scrolling](#follow-up-reactive-buttons-and-native-scrolling). Historical descriptions below preserve their original validation evidence.
+Latest revision: [grouped scale controls](#follow-up-grouped-scale-controls), following [even control spacing and bounded info width](#follow-up-even-control-spacing-and-bounded-info-width). Historical descriptions below preserve their original validation evidence.
 
 ## Delivery
 
@@ -182,3 +182,13 @@ Opt-in device acceptance:
 - [ ] Verify Done/swipe dismissal, VoiceOver, and preserved sphere placement/size. Repeat bounds and layout checks on Android after iPhone.
 
 References: [Expo SDK 57 RNHostView](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/rnhostview/), [Spacer](https://docs.expo.dev/versions/v57.0.0/sdk/ui/universal/spacer/), [SwiftUI geometry modifiers](https://docs.expo.dev/versions/v57.0.0/sdk/ui/swift-ui/modifiers/), and [Compose size modifiers](https://docs.expo.dev/versions/v57.0.0/sdk/ui/jetpack-compose/modifiers/). Native measurement behavior was inspected in the installed `@expo/ui` 57.0.22 implementation.
+
+## Follow-up: grouped scale controls
+
+Starting HEAD: `9eae15f2b75bf335b854f1e71f89a6e3da562463`. Tested implementation HEAD: `b966b80c5f58c45c55d18d19217701862b17029a` (`fix: group qubit scale buttons beside compact selector`). The subsequent documentation commit records this check; both commits are delivered on remote `phase-4-qubit`.
+
+Corrected the interpretation of the requested spacing: the compact selector and the scale-button group occupy opposite ends of the full-width row. Minus and plus share one 104-point Row, with 48-point buttons and an 8-point internal gap. Only the space between selector and group expands. The same compact group is centered below the selector in the existing larger-text/narrow-screen fallback. The info sheet and round/button behavior are unchanged.
+
+MDS Doctor CI at `2026-10-08T17:15:47.529Z` (13:15 EDT) passed: score 99, zero errors, 15 passed, four intentional skips, and the same seven React Doctor warnings outside Qubit (score 98). All non-pass results were explained through MDS. `npm test` passed lint/Prettier, TypeScript, 14 AR tests and 101 Qubit tests (115 total); Expo Doctor passed 21/21. iOS export exited 0 with 2,321 modules and 28 assets; Hermes bundle `entry-a77325e6e48614283c90878b254ed805.hbc`, 5,156,368 bytes. Staged Git whitespace check passed. Dependencies/lockfile and shared interfaces are unchanged.
+
+Device acceptance: reload on iPhone and verify the selector stays compact at the left, the minus/plus pair stays close together at the right, and the larger-text fallback keeps that pair grouped. Automated checks do not establish physical-device appearance.
