@@ -7,6 +7,7 @@ import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useQubitConfiguration } from './use-qubit-configuration.native';
 import { qubitPresentation } from './qubit-presentation';
 import { MAX_SPHERE_SCALE, MIN_SPHERE_SCALE, type QubitSnapshot } from './qubit-round-controller';
+import { QubitInfoButton, QubitInfoModal } from './qubit-info.native';
 
 const QubitNavigator = lazy(() => import('./qubit-navigator.native'));
 type Configuration = ReturnType<typeof useQubitConfiguration>;
@@ -222,9 +223,35 @@ function QubitHUD({
 }
 export default function GuessTheQubitScreen() {
   const configuration = useQubitConfiguration();
+  const [infoOpen, setInfoOpen] = useState(false);
+  const openInfo = () => {
+    const state = configuration.controller.getSnapshot();
+    // Reading the modal leaves active waiting; use the existing bounded cancellation path.
+    if (state.mode === 'hardware' && ['intro', 'waiting', 'paused'].includes(state.phase)) {
+      configuration.controller.reset();
+    }
+    setInfoOpen(true);
+  };
   return (
     <>
-      <Stack.Screen options={{ headerRight: () => null, headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen
+        options={{
+          headerRight: () =>
+            Platform.OS === 'ios' ? null : <QubitInfoButton onPress={openInfo} />,
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      />
+      {Platform.OS === 'ios' ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="info.circle"
+            accessibilityLabel="About Guess the Qubit"
+            accessibilityHint="Explains the game, Bloch sphere, and circuit"
+            hidesSharedBackground
+            onPress={openInfo}
+          />
+        </Stack.Toolbar>
+      ) : null}
       <ARSessionBoundary
         renderNavigator={(context) => (
           <Suspense fallback={null}>
@@ -235,6 +262,7 @@ export default function GuessTheQubitScreen() {
           <QubitHUD key={context.sessionId} context={context} configuration={configuration} />
         )}
       />
+      <QubitInfoModal isPresented={infoOpen} onDismiss={() => setInfoOpen(false)} />
     </>
   );
 }
