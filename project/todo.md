@@ -80,12 +80,21 @@ Product tasks take precedence over retained starter checklist items. The retaine
 
 ## Phase 4 — Guess The Qubit
 
-- [ ] Recreate the Unreal Bloch sphere/axes/rings/basis labels and magenta vector/state point using Viro primitives at tabletop scale.
-- [ ] Implement simulator and Hardware Jobs 0/1 guesses, pi/2 intro, valid-result collapse, win/loss feedback, Reset, status and waiting pulse.
-- [ ] Implement the typed Quantum API client and SecureStore runtime-key configuration; keep private values out of source, config and logs.
-- [ ] Use one-shot ry(pi/2) hardware jobs, poll every 15 seconds and validate terminal counts; block duplicate submission and automatic resubmission.
-- [ ] Test 0/1 outcomes, fast/slow response ordering, invalid results, credentials/rate limits/offline failures, queued/running/succeeded/failed/cancelled states, Reset/Home during submission or polling, and late responses.
-- [ ] Keep errors recoverable; abort requests/stop polls and attempt unfinished-job cancellation on Reset/Home.
+- [x] Recreate the Unreal Bloch sphere/axes/rings/basis labels and magenta vector/state point using Viro primitives at tabletop scale.
+  - Completion: [verified implementation commit](https://github.com/DavidJGrimsley/xr-showcase/commit/6fcdf0ad749893e2c39ef1bd7fca7a591db9c281).
+- [x] Implement simulator and Hardware Jobs 0/1 guesses, pi/2 intro, valid-result collapse, win/loss feedback, Reset, status and waiting pulse.
+  - Completion: [verified implementation commit](https://github.com/DavidJGrimsley/xr-showcase/commit/6fcdf0ad749893e2c39ef1bd7fca7a591db9c281).
+- [x] Implement the typed Quantum API client and SecureStore runtime-key configuration; keep private values out of source, config and logs.
+  - Owner-approved scope update: SecureStore/player key entry was superseded by first-party npm SDK integration and build-time demo credentials. Credential values remain outside committed files and logs; the private hackathon client intentionally bundles the key.
+  - Completion: [verified implementation commit](https://github.com/DavidJGrimsley/xr-showcase/commit/bc6aff00227a27dce1d6e0c8e915707060675384).
+- [x] Use one-shot ry(pi/2) hardware jobs, poll every 15 seconds and validate terminal counts; block duplicate submission and automatic resubmission.
+  - Completion: [verified implementation commit](https://github.com/DavidJGrimsley/xr-showcase/commit/6fcdf0ad749893e2c39ef1bd7fca7a591db9c281).
+- [x] Test 0/1 outcomes, fast/slow response ordering, invalid results, credentials/rate limits/offline failures, queued/running/succeeded/failed/cancelled states, Reset/Home during submission or polling, and late responses.
+  - Completion: [verified implementation commit](https://github.com/DavidJGrimsley/xr-showcase/commit/b263fc44539eb3efcb141828217fd88917ae5ace).
+- [x] Keep errors recoverable; abort requests/stop polls and attempt unfinished-job cancellation on Reset/Home.
+  - Completion: [verified implementation commit](https://github.com/DavidJGrimsley/xr-showcase/commit/6fcdf0ad749893e2c39ef1bd7fca7a591db9c281).
+
+Implementation complete on the published phase-4-qubit branch; main integration and Phase 6 device acceptance remain separate.
 
 ## Phase 5 — Safeguards And Release
 

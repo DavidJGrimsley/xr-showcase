@@ -56,7 +56,10 @@ function SceneRenderer({
   );
 }
 
-export default function ARSessionBoundary({ renderNavigator }: ARSessionBoundaryProps) {
+export default function ARSessionBoundary({
+  renderNavigator,
+  renderActiveOverlay,
+}: ARSessionBoundaryProps) {
   const { activeColors: colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
@@ -150,7 +153,17 @@ export default function ARSessionBoundary({ renderNavigator }: ARSessionBoundary
             paddingRight: Math.max(20, insets.right),
           }}>
           <View className="items-center">
-            <View className="w-full max-w-[720px]">{panel}</View>
+            <View className="w-full max-w-[720px]">
+              {mounting && renderActiveOverlay
+                ? renderActiveOverlay({
+                    sessionId: snapshot.sessionId,
+                    status: snapshot.status === 'running' ? 'running' : 'starting',
+                    instruction: snapshot.instruction,
+                    home,
+                    restartAR: controller.retry,
+                  })
+                : panel}
+            </View>
           </View>
         </ScrollView>
       </View>
