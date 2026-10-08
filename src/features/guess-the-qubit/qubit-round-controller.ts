@@ -284,14 +284,14 @@ export class QubitRoundController {
     const message = uncertain
       ? 'Submission outcome is unknown. A hardware job may still run. Check with the owner before authorizing another shot.'
       : data.code === 'credentials'
-        ? 'Access denied. Reset and check the saved key or profile.'
+        ? 'The demo service denied access. Reset or try again later.'
         : data.code === 'rate_limit'
           ? 'Rate limited. Wait, then resume the existing job or reset.'
           : data.code === 'invalid_result'
             ? 'Invalid measurement or job response. No result was accepted. Reset to recover.'
             : resumable
               ? 'Connection interrupted. Resume checks the same job without submitting another shot.'
-              : 'The measurement request failed. Check your connection and configuration, then Reset.';
+              : 'The measurement request failed. Check your connection, then Reset.';
     this.update({
       phase: resumable ? 'paused' : 'error',
       message,

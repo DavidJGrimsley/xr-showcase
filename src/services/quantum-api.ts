@@ -1,3 +1,5 @@
+import { QuantumApiClient as QuantumSDK, QuantumApiError } from '@mr.dj2u/quantum-api';
+
 export const QUANTUM_API_BASE = 'https://davidjgrimsley.com/public-facing/api/quantum/v1';
 export type Bit = 0 | 1;
 export type JobStatus = 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled';
@@ -9,6 +11,7 @@ export interface QuantumCredentials {
   apiKey: string;
   backend: string;
   profile: string;
+  baseUrl?: string;
 }
 export interface QuantumRuntime {
   measure(signal: AbortSignal): Promise<Bit>;
@@ -17,21 +20,7 @@ export interface QuantumRuntime {
   result(jobId: string, signal: AbortSignal): Promise<Bit>;
   cancel(jobId: string): Promise<QuantumJob>;
 }
-export interface QuantumTransportResponse {
-  ok: boolean;
-  status: number;
-  headers: { get(name: string): string | null };
-  json(): Promise<unknown>;
-}
-export type QuantumTransport = (
-  url: string,
-  init: {
-    method: string;
-    headers: Record<string, string>;
-    body?: string;
-    signal: AbortSignal;
-  }
-) => Promise<QuantumTransportResponse>;
+export type QuantumTransport = typeof globalThis.fetch;
 export interface QuantumClock {
   now(): number;
   schedule(callback: () => void, delayMs: number): unknown;
@@ -52,7 +41,7 @@ export type QuantumErrorCode =
   | 'invalid_result'
   | 'request_failed';
 const messages: Record<QuantumErrorCode, string> = {
-  credentials: 'Access was denied. Reset, then check the saved key and hardware profile.',
+  credentials: 'The demo service denied access. Reset or try again later.',
   rate_limit: 'The service is limiting requests. Wait before trying again.',
   unavailable: 'The quantum service or selected backend is unavailable.',
   network: 'Connection lost. Check the network before trying again.',
@@ -126,20 +115,22 @@ export function parseHardwareResult(value: unknown, expectedId: string): Bit {
 }
 
 export class QuantumApiClient implements QuantumRuntime {
-  private transport: QuantumTransport;
+  private sdk: QuantumSDK;
   private credentials: QuantumCredentials;
   private clock: QuantumClock;
   constructor(transport: QuantumTransport, credentials: QuantumCredentials, clock = quantumClock) {
-    this.transport = transport;
     this.credentials = { ...credentials };
     this.clock = clock;
+    this.sdk = new QuantumSDK({
+      baseUrl: credentials.baseUrl ?? QUANTUM_API_BASE,
+      apiKey: credentials.apiKey,
+      fetchImpl: transport,
+    });
   }
   private async request<T>(
-    path: string,
-    method: string,
     signal: AbortSignal | undefined,
+    execute: (signal: AbortSignal) => Promise<unknown>,
     parse: (data: unknown) => T,
-    body?: unknown,
     onLate?: (value: T) => void,
     timeout = 12000
   ): Promise<T> {
@@ -160,51 +151,37 @@ export class QuantumApiClient implements QuantumRuntime {
     const timer = this.clock.schedule(() => stop('timeout'), timeout);
     const operation = async () => {
       try {
-        const response = await this.transport(`${QUANTUM_API_BASE}${path}`, {
-          method,
-          signal: controller.signal,
-          headers:
-            path === '/health'
-              ? {}
-              : { 'X-API-Key': this.credentials.apiKey, 'Content-Type': 'application/json' },
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        });
-        if (!response.ok) {
+        const value = parse(await execute(controller.signal));
+        if (abandoned) onLate?.(value);
+        return value;
+      } catch (error) {
+        if (error instanceof QuantumError) throw error;
+        if (error instanceof QuantumApiError) {
           const code =
-            response.status === 401 || response.status === 403
+            error.status === 401 || error.status === 403
               ? 'credentials'
-              : response.status === 429
+              : error.status === 429
                 ? 'rate_limit'
-                : response.status >= 500
+                : error.status >= 500
                   ? 'unavailable'
                   : 'request_failed';
-          const retry = response.headers.get('Retry-After');
-          const seconds = retry === null ? NaN : Number(retry);
+          const retry = error.headers['retry-after'];
+          const seconds = retry === undefined ? NaN : Number(retry);
           const retryAt = Number.isFinite(seconds)
             ? this.clock.now() + Math.max(0, seconds) * 1000
             : retry
               ? Date.parse(retry)
               : NaN;
-          // Never propagate remote bodies or transport exception text: either may contain private values.
+          // SDK errors retain remote bodies. Expose only sanitized game errors.
           throw new QuantumError(
             code,
-            response.status,
+            error.status,
             code === 'rate_limit'
               ? Math.max(this.clock.now() + 15000, Number.isFinite(retryAt) ? retryAt : 0)
               : 0
           );
         }
-        let data: unknown;
-        try {
-          data = await response.json();
-        } catch {
-          throw new QuantumError('invalid_result');
-        }
-        const value = parse(data);
-        if (abandoned) onLate?.(value);
-        return value;
-      } catch (error) {
-        if (error instanceof QuantumError) throw error;
+        if (error instanceof SyntaxError) throw new QuantumError('invalid_result');
         throw new QuantumError('network');
       }
     };
@@ -216,80 +193,103 @@ export class QuantumApiClient implements QuantumRuntime {
     }
   }
   health(signal: AbortSignal) {
-    return this.request('/health', 'GET', signal, (value) => {
-      const data = record(value);
-      if (
-        data.status !== 'healthy' ||
-        !['qiskit', 'classical-fallback'].includes(data.runtime_mode as string)
-      )
-        throw new QuantumError('unavailable');
-      return data.runtime_mode as 'qiskit' | 'classical-fallback';
-    });
+    return this.request(
+      signal,
+      (signal) => this.sdk.health({ signal }),
+      (value) => {
+        const data = record(value);
+        if (
+          data.status !== 'healthy' ||
+          !['qiskit', 'classical-fallback'].includes(data.runtime_mode as string)
+        )
+          throw new QuantumError('unavailable');
+        return data.runtime_mode as 'qiskit' | 'classical-fallback';
+      }
+    );
   }
   async checkHardware(signal: AbortSignal): Promise<void> {
-    const query = new URLSearchParams({
-      provider: 'ibm',
-      min_qubits: '1',
-      ibm_profile: this.credentials.profile,
-    });
-    await this.request(`/list_backends?${query}`, 'GET', signal, (value) => {
-      const backends = record(value).backends;
-      if (
-        !Array.isArray(backends) ||
-        !backends.some((item) => {
-          const backend = record(item);
-          return (
-            backend.name === this.credentials.backend &&
-            backend.is_hardware === true &&
-            backend.is_simulator === false &&
-            typeof backend.num_qubits === 'number' &&
-            backend.num_qubits >= 1
-          );
-        })
-      )
-        throw new QuantumError('unavailable');
-    });
+    await this.request(
+      signal,
+      (signal) =>
+        this.sdk.listBackends(
+          {
+            provider: 'ibm',
+            min_qubits: 1,
+            ibm_profile: this.credentials.profile,
+          },
+          { signal }
+        ),
+      (value) => {
+        const backends = record(value).backends;
+        if (
+          !Array.isArray(backends) ||
+          !backends.some((item) => {
+            const backend = record(item);
+            return (
+              backend.name === this.credentials.backend &&
+              backend.is_hardware === true &&
+              backend.is_simulator === false &&
+              typeof backend.num_qubits === 'number' &&
+              backend.num_qubits >= 1
+            );
+          })
+        )
+          throw new QuantumError('unavailable');
+      }
+    );
   }
   measure(signal: AbortSignal) {
-    return this.request('/gates/run', 'POST', signal, parseMeasurement, {
-      gate_type: 'rotation',
-      rotation_angle_rad: Math.PI / 2,
-    });
+    return this.request(
+      signal,
+      (signal) =>
+        this.sdk.runGate(
+          {
+            gate_type: 'rotation',
+            rotation_angle_rad: Math.PI / 2,
+          },
+          { signal }
+        ),
+      parseMeasurement
+    );
   }
   submit(signal: AbortSignal, onLateJob: (job: QuantumJob) => void) {
     return this.request(
-      '/jobs/circuits',
-      'POST',
       signal,
+      (signal) =>
+        this.sdk.submitCircuitJob(
+          {
+            provider: 'ibm',
+            backend_name: this.credentials.backend,
+            ibm_profile: this.credentials.profile,
+            shots: 1,
+            circuit: { num_qubits: 1, operations: [{ gate: 'ry', target: 0, theta: Math.PI / 2 }] },
+          },
+          { signal }
+        ),
       (data) => parseJob(data),
-      {
-        provider: 'ibm',
-        backend_name: this.credentials.backend,
-        ibm_profile: this.credentials.profile,
-        shots: 1,
-        circuit: { num_qubits: 1, operations: [{ gate: 'ry', target: 0, theta: Math.PI / 2 }] },
-      },
       onLateJob,
       30000
     );
   }
   status(jobId: string, signal: AbortSignal) {
-    return this.request(`/jobs/${encodeURIComponent(jobId)}`, 'GET', signal, (data) =>
-      parseJob(data, jobId)
+    return this.request(
+      signal,
+      (signal) => this.sdk.getCircuitJob(jobId, { signal }),
+      (data) => parseJob(data, jobId)
     );
   }
   result(jobId: string, signal: AbortSignal) {
-    return this.request(`/jobs/${encodeURIComponent(jobId)}/result`, 'GET', signal, (data) =>
-      parseHardwareResult(data, jobId)
+    return this.request(
+      signal,
+      (signal) => this.sdk.getCircuitJobResult(jobId, { signal }),
+      (data) => parseHardwareResult(data, jobId)
     );
   }
   cancel(jobId: string) {
     return this.request(
-      `/jobs/${encodeURIComponent(jobId)}/cancel`,
-      'POST',
       undefined,
+      (signal) => this.sdk.cancelCircuitJob(jobId, { signal }),
       (data) => parseJob(data, jobId),
-      undefined,
       undefined,
       8000
     );

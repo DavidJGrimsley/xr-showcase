@@ -3,7 +3,6 @@ import { ActivityIndicator, Text, useWindowDimensions, View } from 'react-native
 import { Button, Column, Host, Picker, Row } from '@expo/ui';
 import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
-import QubitConfigurationSheet from './qubit-configuration-sheet.native';
 import { useQubitConfiguration } from './use-qubit-configuration.native';
 
 import type { QubitSnapshot } from './qubit-round-controller';
@@ -47,7 +46,7 @@ function QubitStatus({
       ) : null}
       {busy || ['intro', 'waiting', 'collapsing'].includes(state.phase) ? (
         <ActivityIndicator
-          accessibilityLabel={busy ? 'Checking configuration' : 'Round in progress'}
+          accessibilityLabel={busy ? 'Connecting to the service' : 'Round in progress'}
           color="#ff08a1"
         />
       ) : null}
@@ -83,9 +82,8 @@ function QubitHUD({
   context: ARActiveOverlayContext;
   configuration: Configuration;
 }) {
-  const { controller, summary, busy, message, retryAt, check, cancelCheck } = configuration;
+  const { controller, configured, busy, message, retryAt, check, cancelCheck } = configuration;
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const [showConfiguration, setShowConfiguration] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const { fontScale, width } = useWindowDimensions();
   const coolUntil = Math.max(retryAt, state.retryAt);
@@ -98,7 +96,10 @@ function QubitHUD({
     }, 1000);
     return () => clearInterval(timer);
   }, [coolUntil]);
-  useEffect(() => () => cancelCheck(), [context.sessionId, cancelCheck]);
+  useEffect(() => {
+    void check();
+    return () => cancelCheck();
+  }, [context.sessionId, check, cancelCheck]);
   const disabled = busy || !controller.canGuess(now) || now < coolUntil;
   const idle = state.phase === 'idle';
   const buttonStyle = {
@@ -182,22 +183,13 @@ function QubitHUD({
             style={buttonStyle}
           />
           {idle ? (
-            <>
-              <Button
-                label="Check connection"
-                disabled={busy || !summary.configured || coolUntil > now}
-                onPress={() => void check()}
-                variant="outlined"
-                style={buttonStyle}
-              />
-              <Button
-                label="Configure"
-                disabled={busy}
-                onPress={() => setShowConfiguration(true)}
-                variant="text"
-                style={buttonStyle}
-              />
-            </>
+            <Button
+              label="Reconnect"
+              disabled={busy || !configured || coolUntil > now}
+              onPress={() => void check()}
+              variant="outlined"
+              style={buttonStyle}
+            />
           ) : null}
           <Button
             label="Restart AR"
@@ -213,16 +205,6 @@ function QubitHUD({
           />
         </Column>
       </Host>
-      {showConfiguration && idle ? (
-        <QubitConfigurationSheet
-          {...summary}
-          busy={busy}
-          message={message}
-          save={configuration.save}
-          remove={configuration.remove}
-          close={() => setShowConfiguration(false)}
-        />
-      ) : null}
     </View>
   );
 }

@@ -9,8 +9,9 @@ const {
   parseJob,
 } = require('../src/services/quantum-api.ts');
 const {
-  QubitConfiguration,
-  QUBIT_CONFIG_KEY,
+  getQubitBuildConfiguration,
+  DEFAULT_BACKEND,
+  DEFAULT_PROFILE,
 } = require('../src/features/guess-the-qubit/qubit-configuration.ts');
 
 const credentials = {
@@ -53,8 +54,9 @@ function clock() {
 const response = (body, status = 200, headers = {}) => ({
   ok: status >= 200 && status < 300,
   status,
-  headers: { get: (key) => headers[key] ?? null },
+  headers: new Headers(headers),
   json: async () => body,
+  text: async () => JSON.stringify(body),
 });
 const hardware = (counts, overrides = {}) => ({
   job_id: 'job-1',
@@ -141,7 +143,7 @@ test('requests use the exact production paths, authentication and one-shot ry pa
     rotation_angle_rad: Math.PI / 2,
   });
   assert.equal(calls[1].url, `${QUANTUM_API_BASE}/jobs/circuits`);
-  assert.equal(calls[1].init.headers['X-API-Key'], credentials.apiKey);
+  assert.equal(calls[1].init.headers.get('X-API-Key'), credentials.apiKey);
   assert.deepEqual(JSON.parse(calls[1].init.body), {
     provider: 'ibm',
     backend_name: credentials.backend,
@@ -165,7 +167,7 @@ test('health is public; hardware discovery must find an actual hardware backend'
     );
   }, credentials);
   assert.equal(await client.health(new AbortController().signal), 'classical-fallback');
-  assert.deepEqual(calls[0].init.headers, {});
+  assert.deepEqual([...calls[0].init.headers], []);
   await client.checkHardware(new AbortController().signal);
   assert.match(calls[1].url, /list_backends\?provider=ibm/);
   assert.match(calls[1].url, /ibm_profile=test-profile/);
@@ -226,7 +228,7 @@ test('network errors and non-JSON successes expose no raw private text', async (
     async () => ({
       ...response({}),
       json: async () => {
-        throw new Error(credentials.apiKey);
+        throw new SyntaxError(credentials.apiKey);
       },
     }),
     credentials
@@ -301,76 +303,40 @@ test('status/result/cancel URL-encode IDs; cancellation has its own bounded sign
   await stopped;
 });
 
-function storageHarness() {
-  const values = new Map();
-  let fail = false;
-  const storage = {
-    async getItemAsync(key) {
-      if (fail) throw Error(credentials.apiKey);
-      return values.get(key) ?? null;
-    },
-    async setItemAsync(key, value) {
-      if (fail) throw Error(credentials.apiKey);
-      values.set(key, value);
-    },
-    async deleteItemAsync(key) {
-      if (fail) throw Error(credentials.apiKey);
-      values.delete(key);
-    },
-  };
-  return {
-    config: new QubitConfiguration(storage),
-    values,
-    setFail(value) {
-      fail = value;
-    },
-  };
-}
-test('private storage supports save, masked summary, reload, key retention and deletion', async () => {
-  const h = storageHarness();
-  await h.config.load();
-  assert.equal(h.config.summary().configured, false);
-  await h.config.save(credentials.apiKey, 'backend', 'profile');
-  assert.equal(JSON.stringify(h.config.summary()).includes(credentials.apiKey), false);
-  await h.config.save('', 'new-backend', 'new-profile');
-  await h.config.load();
-  assert.equal(h.config.forTransport().apiKey, credentials.apiKey);
-  assert.equal(h.config.summary().backend, 'new-backend');
-  await h.config.remove();
-  assert.equal(h.config.forTransport(), null);
-  assert.equal(h.values.size, 0);
-});
-test('SecureStore failures preserve previous writes, suppress secret errors, and reject corrupt data', async () => {
-  const h = storageHarness();
-  await h.config.save(credentials.apiKey, 'original', 'profile');
-  h.setFail(true);
-  for (const action of [() => h.config.save('replacement', 'new', 'new'), () => h.config.remove()])
-    await assert.rejects(action(), (error) => !error.message.includes(credentials.apiKey));
-  assert.equal(h.config.summary().backend, 'original');
-  await assert.rejects(h.config.load());
-  assert.equal(h.config.forTransport(), null);
-  h.setFail(false);
-  h.values.set(QUBIT_CONFIG_KEY, '{bad json');
-  await assert.rejects(h.config.load());
-  h.values.set(QUBIT_CONFIG_KEY, JSON.stringify({ apiKey: '', backend: 'b', profile: 'p' }));
-  await assert.rejects(h.config.load());
-});
-test('concurrent configuration writes are rejected without overwriting pending work', async () => {
-  const pending = deferred();
-  let writes = 0;
-  const config = new QubitConfiguration({
-    getItemAsync: async () => null,
-    setItemAsync: async () => {
-      writes++;
-      await pending.promise;
-    },
-    deleteItemAsync: async () => {},
+test('build configuration supplies demo credentials and defaults without player setup', () => {
+  const config = getQubitBuildConfiguration({ apiKey: '  synthetic-build-key  ' });
+  assert.deepEqual(config, {
+    apiKey: 'synthetic-build-key',
+    baseUrl: QUANTUM_API_BASE,
+    backend: DEFAULT_BACKEND,
+    profile: DEFAULT_PROFILE,
   });
-  const save = config.save('first-test-key', 'b', 'p');
-  await assert.rejects(config.save('second-test-key', 'b', 'p'));
-  await assert.rejects(config.remove());
-  pending.resolve();
-  await save;
-  assert.equal(writes, 1);
-  assert.equal(config.forTransport().apiKey, 'first-test-key');
+});
+test('missing demo key or malformed service URL disables the feature without leaking values', () => {
+  for (const values of [
+    {},
+    { apiKey: '   ' },
+    { apiKey: credentials.apiKey, baseUrl: 'invalid' },
+    { apiKey: credentials.apiKey, baseUrl: 'file:///tmp/demo' },
+    { apiKey: credentials.apiKey, baseUrl: 'https://user:password@example.com' },
+  ])
+    assert.equal(getQubitBuildConfiguration(values), null);
+});
+test('build configuration accepts trimmed environment overrides and SDK normalizes the base URL', async () => {
+  const config = getQubitBuildConfiguration({
+    apiKey: credentials.apiKey,
+    baseUrl: ' https://example.com/quantum/ ',
+    backend: ' custom-backend ',
+    profile: ' Existing Demo Profile ',
+  });
+  assert.equal(config.backend, 'custom-backend');
+  assert.equal(config.profile, 'Existing Demo Profile');
+  const calls = [];
+  const client = new QuantumApiClient(async (url, init) => {
+    calls.push({ url, init });
+    return response({ measurement: 0 });
+  }, config);
+  assert.equal(await client.measure(new AbortController().signal), 0);
+  assert.equal(calls[0].url, 'https://example.com/quantum/v1/gates/run');
+  assert.equal(calls[0].init.headers.get('X-API-Key'), credentials.apiKey);
 });
