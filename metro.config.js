@@ -1,8 +1,12 @@
-// Learn more https://docs.expo.io/guides/customizing-metro
 const { getDefaultConfig } = require('expo/metro-config');
-
-/** @type {import('expo/metro-config').MetroConfig} */
+const { withUniwindConfig } = require('uniwind/metro');
 
 const config = getDefaultConfig(__dirname);
+config.resolver.assetExts = [
+  ...new Set([...config.resolver.assetExts, 'glb', 'gltf', 'bin', 'obj', 'mtl', 'vrx']),
+];
 
-module.exports = config;
+module.exports = withUniwindConfig(config, {
+  cssEntryFile: './global.css',
+  dtsFile: './src/uniwind-types.d.ts',
+});

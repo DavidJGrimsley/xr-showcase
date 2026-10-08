@@ -1,47 +1,93 @@
 {
   "expo": {
-    "name": "xr-showcase",
+    "name": "XR Showcase",
     "slug": "xr-showcase",
     "version": "1.0.0",
-
     "scheme": "xr-showcase",
-    "platforms": ["ios", "android", "web"],
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/favicon.png"
-    },
+    "platforms": ["ios", "android"],
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
+          "backgroundColor": "#ffffff",
           "image": "./assets/splash.png",
-          "backgroundColor": "#ffffff"
+          "dark": {
+            "image": "./assets/images/splash-icon-dark.png",
+            "backgroundColor": "#000000"
+          },
+          "imageWidth": 200
+        }
+      ],
+      [
+        "expo-navigation-bar",
+        {
+          "style": "dark",
+          "enforceContrast": false
+        }
+      ],
+      "expo-system-ui",
+      "expo-secure-store",
+      [
+        "@reactvision/react-viro",
+        {
+          "android": {
+            "xRMode": ["AR"]
+          },
+          "ios": {
+            "cameraUsagePermission": "XR Showcase uses the camera to place interactive experiences in your surroundings."
+          },
+          "provider": "none"
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true,
-
       "tsconfigPaths": true
     },
-
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-
-    "userInterfaceStyle": "light",
-
+    "userInterfaceStyle": "dark",
     "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.djleg.xrshowcase",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
+        "NSPhotoLibraryAddUsageDescription": "Allow $(PRODUCT_NAME) to save photos",
+        "NSCameraUsageDescription": "XR Showcase uses the camera to place interactive experiences in your surroundings.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use your microphone",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "backgroundColor": "#f1f0f8",
+      "package": "com.djleg.xrshowcase"
+    },
+    "backgroundColor": "#f1f0f8",
+    "androidStatusBar": {
+      "backgroundColor": "#f1f0f8",
+      "barStyle": "dark-content",
+      "translucent": false
+    },
+    "extra": {
+      "router": {},
+      "expo-navigation-bar": {
+        "enforceContrast": false,
+        "style": "dark"
+      },
+      "eas": {
+        "projectId": "84da0e86-ee7a-4f23-a381-7e5c947b7fe3"
       }
+    },
+    "owner": "mrdj2u",
+    "web": {
+      "output": "static"
     }
   }
 }
