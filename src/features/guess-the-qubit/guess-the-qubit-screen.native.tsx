@@ -6,7 +6,12 @@ import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useQubitConfiguration } from './use-qubit-configuration.native';
 import { qubitPresentation } from './qubit-presentation';
-import { MAX_SPHERE_SCALE, MIN_SPHERE_SCALE, type QubitSnapshot } from './qubit-round-controller';
+import {
+  canGuessQubit,
+  MAX_SPHERE_SCALE,
+  MIN_SPHERE_SCALE,
+  type QubitSnapshot,
+} from './qubit-round-controller';
 import { QubitInfoButton, QubitInfoModal } from './qubit-info.native';
 
 const QubitNavigator = lazy(() => import('./qubit-navigator.native'));
@@ -62,24 +67,32 @@ function QubitModeAndSize({
   controller,
   state,
   sessionId,
+  width,
 }: {
   controller: Configuration['controller'];
   state: QubitSnapshot;
   sessionId: number;
+  width: number;
 }) {
-  const { fontScale, width } = useWindowDimensions();
-  const Layout = fontScale > 1.3 || width < 360 ? Column : Row;
+  const { fontScale } = useWindowDimensions();
+  const stacked = fontScale > 1.3 || width < 250;
+  const Layout = stacked ? Column : Row;
+  const sizeControlsWidth = 2 * 48 + 8;
   return (
-    <Layout spacing={10} alignment="center">
-      <Picker
-        testID="qubit-mode"
-        selectedValue={state.mode}
-        enabled={['idle', 'complete', 'error'].includes(state.phase)}
-        onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
-        <Picker.Item label="Simulator" value="simulator" />
-        <Picker.Item label="Hardware Jobs" value="hardware" />
-      </Picker>
-      <Row spacing={8} alignment="center">
+    <Layout spacing={10} alignment="center" style={{ width }}>
+      <Column
+        alignment="center"
+        style={{ width: stacked ? width : width - sizeControlsWidth - 10 }}>
+        <Picker
+          testID="qubit-mode"
+          selectedValue={state.mode}
+          enabled={['idle', 'complete', 'error'].includes(state.phase)}
+          onValueChange={(mode) => controller.setMode(mode as 'simulator' | 'hardware')}>
+          <Picker.Item label="Simulator" value="simulator" />
+          <Picker.Item label="Hardware" value="hardware" />
+        </Picker>
+      </Column>
+      <Row spacing={8} alignment="center" style={{ width: sizeControlsWidth }}>
         {([-1, 1] as const).map((direction) => {
           const disabled =
             direction === -1
@@ -106,78 +119,112 @@ function QubitModeAndSize({
   );
 }
 
+function QubitRoundButton({
+  label,
+  disabled,
+  onPress,
+  testID,
+  height,
+  width,
+  fontSize,
+}: {
+  label: string;
+  disabled: boolean;
+  onPress: () => void;
+  testID: string;
+  height: number;
+  width?: number;
+  fontSize: number;
+}) {
+  return (
+    <Button
+      testID={testID}
+      disabled={disabled}
+      variant={disabled ? 'outlined' : 'filled'}
+      onPress={disabled ? undefined : onPress}
+      style={{ height, ...(width ? { width } : {}), opacity: disabled ? 0.4 : 1 }}>
+      <NativeText
+        textStyle={{ fontSize, fontWeight: 'bold', color: disabled ? '#94a3b8' : '#10231c' }}>
+        {label}
+      </NativeText>
+    </Button>
+  );
+}
+
 function QubitControls({
   controller,
   state,
   context,
+  now,
 }: {
   controller: Configuration['controller'];
   state: QubitSnapshot;
   context: ARActiveOverlayContext;
+  now: number;
 }) {
   const { fontScale, width } = useWindowDimensions();
-  const disabled = !controller.canGuess();
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  const controlsWidth = measuredWidth || Math.max(1, Math.min(width, 720) - 72);
+  const disabled = !canGuessQubit(state, now);
   const resetDisabled = state.phase === 'idle' && !state.uncertainSubmission;
   const actionHeight = Math.max(48, 17 * fontScale + 20);
   const guessWidth = Math.max(80, 24 * fontScale + 40);
   // SwiftUI's explicit point size needs scaling; Compose's sp already follows fontScale.
   const guessFontSize = Platform.OS === 'ios' ? 24 * fontScale : 24;
   const Actions = fontScale > 1.3 || width < 360 ? Column : Row;
-  const Guesses = 2 * guessWidth + 24 > width - 72 ? Column : Row;
+  const Guesses = 2 * guessWidth + 24 > controlsWidth ? Column : Row;
   const restart = () => {
     if (controller.getSessionId() !== context.sessionId) return;
     controller.detach(context.sessionId);
     context.restartAR();
   };
   return (
-    <Host
-      matchContents
-      colorScheme="dark"
-      seedColor="#93f5c5"
-      style={{ alignSelf: 'center', maxWidth: '100%' }}>
-      <Column spacing={10} alignment="center">
-        <QubitModeAndSize controller={controller} state={state} sessionId={context.sessionId} />
-        <Guesses spacing={24} alignment="center">
-          {[0, 1].map((bit) => (
+    <View className="w-full" onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}>
+      <Host
+        matchContents={{ vertical: true }}
+        colorScheme="dark"
+        seedColor="#93f5c5"
+        style={{ width: '100%' }}>
+        <Column spacing={10} alignment="center" style={{ width: controlsWidth }}>
+          <QubitModeAndSize
+            controller={controller}
+            state={state}
+            sessionId={context.sessionId}
+            width={controlsWidth}
+          />
+          <Guesses spacing={24} alignment="center">
+            {[0, 1].map((bit) => (
+              <QubitRoundButton
+                key={bit}
+                testID={`qubit-guess-${bit}`}
+                label={String(bit)}
+                disabled={disabled}
+                onPress={() => controller.guess(bit as 0 | 1)}
+                height={Math.max(48, 24 * fontScale + 20)}
+                width={guessWidth}
+                fontSize={guessFontSize}
+              />
+            ))}
+          </Guesses>
+          <Actions spacing={10} alignment="center">
+            <QubitRoundButton
+              testID="qubit-reset"
+              label="Reset Qubit"
+              disabled={resetDisabled}
+              onPress={() => resetQubit(controller)}
+              height={actionHeight}
+              fontSize={Platform.OS === 'ios' ? 17 * fontScale : 17}
+            />
             <Button
-              key={bit}
-              testID={`qubit-guess-${bit}`}
-              disabled={disabled}
-              variant={disabled ? 'outlined' : 'filled'}
-              onPress={() => controller.guess(bit as 0 | 1)}
-              style={{
-                height: Math.max(48, 24 * fontScale + 20),
-                width: guessWidth,
-                opacity: disabled ? 0.4 : 1,
-              }}>
-              <NativeText
-                textStyle={{
-                  fontSize: guessFontSize,
-                  fontWeight: 'bold',
-                  color: disabled ? '#94a3b8' : '#10231c',
-                }}>
-                {String(bit)}
-              </NativeText>
-            </Button>
-          ))}
-        </Guesses>
-        <Actions spacing={10} alignment="center">
-          <Button
-            label="Reset Qubit"
-            disabled={resetDisabled}
-            variant="outlined"
-            onPress={() => resetQubit(controller)}
-            style={{ height: actionHeight, opacity: resetDisabled ? 0.4 : 1 }}
-          />
-          <Button
-            label="Restart AR"
-            variant="outlined"
-            onPress={restart}
-            style={{ height: actionHeight }}
-          />
-        </Actions>
-      </Column>
-    </Host>
+              label="Restart AR"
+              variant="outlined"
+              onPress={restart}
+              style={{ height: actionHeight }}
+            />
+          </Actions>
+        </Column>
+      </Host>
+    </View>
   );
 }
 
@@ -192,7 +239,7 @@ function QubitHUD({
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (Date.now() >= state.retryAt) return;
+    if (!state.retryAt) return;
     const timer = setInterval(() => {
       const time = Date.now();
       setNow(time);
@@ -217,7 +264,7 @@ function QubitHUD({
         </Text>
       ) : null}
       <QubitStatus display={display} outcome={state.outcome} />
-      <QubitControls controller={controller} state={state} context={context} />
+      <QubitControls controller={controller} state={state} context={context} now={now} />
     </View>
   );
 }

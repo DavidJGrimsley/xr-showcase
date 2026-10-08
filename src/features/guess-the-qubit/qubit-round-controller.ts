@@ -34,6 +34,19 @@ export interface QubitSnapshot {
   simulatorReady: boolean;
   hardwareReady: boolean;
 }
+// React renders must depend on the subscribed snapshot, not a mutable controller read.
+export function canGuessQubit(state: QubitSnapshot, now: number) {
+  return (
+    state.sessionId !== null &&
+    state.placed &&
+    state.tracking &&
+    state.phase === 'idle' &&
+    now >= state.retryAt &&
+    (state.mode === 'simulator'
+      ? state.simulatorReady
+      : state.hardwareReady && !state.uncertainSubmission)
+  );
+}
 interface Round {
   id: number;
   sessionId: number;
@@ -191,17 +204,7 @@ export class QubitRoundController {
     this.update({ mode });
   }
   canGuess(now = this.clock.now()) {
-    const state = this.snapshot;
-    return (
-      state.sessionId !== null &&
-      state.placed &&
-      state.tracking &&
-      state.phase === 'idle' &&
-      now >= state.retryAt &&
-      (state.mode === 'simulator'
-        ? state.simulatorReady
-        : state.hardwareReady && !state.uncertainSubmission)
-    );
+    return canGuessQubit(this.snapshot, now);
   }
   acknowledgeUnknown() {
     if (this.snapshot.phase === 'idle') {

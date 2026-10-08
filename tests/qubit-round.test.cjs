@@ -5,6 +5,7 @@ const {
   QubitRoundController,
   MIN_SPHERE_SCALE,
   MAX_SPHERE_SCALE,
+  canGuessQubit,
 } = require('../src/features/guess-the-qubit/qubit-round-controller.ts');
 const {
   BLOCH_RADIUS,
@@ -77,6 +78,82 @@ function harness(overrides = {}, mode = 'simulator') {
     },
   };
 }
+
+for (const mode of ['simulator', 'hardware']) {
+  test(`${mode}: subscribed guess availability updates through waiting, result and Reset with the same controller`, async () => {
+    const result = deferred();
+    const h = harness(
+      {
+        measure: () => result.promise,
+        submit: async () => ({ jobId: 'job-1', status: 'succeeded' }),
+        result: () => result.promise,
+      },
+      mode
+    );
+    const controller = h.controller;
+    const initial = controller.getSnapshot();
+    const eligibility = [];
+    const stop = controller.subscribe(() =>
+      eligibility.push(canGuessQubit(controller.getSnapshot(), 0))
+    );
+    assert.equal(canGuessQubit(initial, 0), true);
+    controller.guess(0);
+    assert.equal(canGuessQubit(controller.getSnapshot(), 0), false);
+    h.intro();
+    assert.equal(canGuessQubit(controller.getSnapshot(), 0), false);
+    result.resolve(0);
+    await flush();
+    assert.equal(controller.getSnapshot().phase, 'collapsing');
+    assert.equal(canGuessQubit(controller.getSnapshot(), 0), false);
+    h.collapse();
+    assert.equal(controller.getSnapshot().phase, 'complete');
+    assert.equal(canGuessQubit(controller.getSnapshot(), 0), false);
+    assert.equal(
+      eligibility.every((value) => value === false),
+      true
+    );
+    controller.reset();
+    assert.equal(canGuessQubit(controller.getSnapshot(), 0), true);
+    assert.equal(eligibility.at(-1), true);
+    assert.notEqual(controller.getSnapshot(), initial);
+    assert.equal(canGuessQubit(initial, 0), true);
+    assert.equal(h.controller, controller);
+    stop();
+  });
+}
+
+test('guess availability reacts to the retry clock even when the snapshot does not change', () => {
+  const h = harness();
+  h.controller.deferUntil(2000);
+  const state = h.controller.getSnapshot();
+  assert.equal(canGuessQubit(state, 1999), false);
+  h.advance(2000);
+  assert.equal(h.controller.getSnapshot(), state);
+  assert.equal(canGuessQubit(state, 2000), true);
+  assert.equal(h.controller.canGuess(), true);
+});
+
+test('guess availability follows placement, tracking, connection and submission uncertainty', () => {
+  const submission = deferred();
+  const h = harness({ submit: () => submission.promise }, 'hardware');
+  const available = () => canGuessQubit(h.controller.getSnapshot(), 0);
+  h.controller.setPlaced(1, false);
+  assert.equal(available(), false);
+  h.controller.setPlaced(1, true);
+  h.controller.setTracking(1, false);
+  assert.equal(available(), false);
+  h.controller.setTracking(1, true);
+  h.controller.setAvailability(true, false);
+  assert.equal(available(), false);
+  h.controller.setAvailability(true, true);
+  assert.equal(available(), true);
+  h.controller.guess(0);
+  h.controller.reset();
+  assert.equal(h.controller.getSnapshot().uncertainSubmission, true);
+  assert.equal(available(), false);
+  h.controller.detach(1);
+  assert.equal(available(), false);
+});
 
 for (const mode of ['simulator', 'hardware'])
   for (const guess of [0, 1])
