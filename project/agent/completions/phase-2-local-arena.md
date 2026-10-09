@@ -25,12 +25,16 @@ The landscape HUD includes top health/outcome feedback, bottom movement/attack c
 - `src/features/arena-fighter/`: native screen, navigator, scene, controller, HUD and native touch-batch helper. The non-native fallback remains available.
 - `assets/arena/`: unchanged GLBs and original manifest, plus provenance notes.
 - `tests/arena-fighter.test.cjs`, `tests/arena-assets.test.cjs`: 35 arena/input/asset checks. `npm test` includes `test:arena` alongside the 14 shared AR tests.
-- `src/features/ar/ar-session-types.ts`, `ar-session-boundary.native.tsx`: optional `enabled` activation gate and `renderActiveOverlay` hook. Existing permission, unsupported/error handling and default overlay behavior remain shared.
+- `src/features/ar/ar-session-types.ts`, `ar-session-boundary.native.tsx`: optional `enabled` activation gate and full-screen layout for `renderActiveOverlay`. The existing overlay context and panel layout remain compatible with Medical and Qubit; Arena explicitly selects full-screen layout. Permission, unsupported/error handling and default overlay behavior remain shared.
 - `src/navigation/root-layout.tsx`: default portrait routes; Arena Fighter requests landscape with its own HUD and hidden navigation header.
 - `app.json`: native orientation `default` and iOS `requireFullScreen: true`. Introspection confirmed portrait, both landscape orientations and `UIRequiresFullScreen`.
 - `.gitattributes` / `.prettierignore`: preserve curated asset/manifest bytes on Windows and other checkouts. `prettier.config.js` accepts the checkout's existing line endings, avoiding formatting changes across 40 otherwise unchanged files.
 
 The user-approved plan supersedes the packet's Studio integration and SQLite work. SQLite, multiplayer, blocking, dash, sideways movement and Studio authoring are outside this implementation. Historical handoffs and roadmap state were not edited.
+
+Publication preparation integrates `main` at `37bc04ef2fdfc52c44a1155aa5b40fd322f121c4`, retaining the merged Medical and Qubit implementations, their test commands, the two-worker iOS export and the EAS development environment selection. The PR targets the repository's active `main` branch, matching the prior two feature PRs; the documented `test` branch does not exist remotely. Merging the PR is outside this publication request.
+
+The integrated tree passed MDS Doctor CI on October 9 at 12:40 UTC: score 99, zero errors, seven React Doctor warnings in shared code and four intentional skips. Lint, TypeScript, all AR/Qubit/Medical/Arena test suites, Expo Doctor (21/21) and the iOS export passed. The combined export includes the three arena GLBs and the medical skull.
 
 ## Verification
 

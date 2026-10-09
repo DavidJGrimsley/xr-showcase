@@ -59,6 +59,7 @@ function SceneRenderer({
 export default function ARSessionBoundary({
   renderNavigator,
   renderActiveOverlay,
+  activeOverlayLayout = 'panel',
   enabled: featureEnabled = true,
 }: ARSessionBoundaryProps) {
   const { activeColors: colors } = useAppTheme();
@@ -133,6 +134,17 @@ export default function ARSessionBoundary({
     />
   );
 
+  const hasActiveOverlay = mounting && renderActiveOverlay;
+  const activeOverlay = hasActiveOverlay
+    ? renderActiveOverlay({
+        sessionId: snapshot.sessionId,
+        status: snapshot.status === 'running' ? 'running' : 'starting',
+        instruction: snapshot.instruction,
+        home,
+        restartAR: controller.retry,
+      })
+    : null;
+
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       {mounting ? (
@@ -140,13 +152,8 @@ export default function ARSessionBoundary({
           <SceneRenderer context={context} renderNavigator={renderNavigator} />
         </SceneErrorBoundary>
       ) : null}
-      {mounting && renderActiveOverlay ? (
-        renderActiveOverlay({
-          status: snapshot.status as 'starting' | 'running',
-          instruction: snapshot.instruction,
-          home,
-          retry: controller.retry,
-        })
+      {hasActiveOverlay && activeOverlayLayout === 'fullscreen' ? (
+        activeOverlay
       ) : (
         <View
           pointerEvents="box-none"
@@ -162,7 +169,9 @@ export default function ARSessionBoundary({
               paddingRight: Math.max(20, insets.right),
             }}>
             <View className="items-center">
-              <View className="w-full max-w-[720px]">{panel}</View>
+              <View className="w-full max-w-[720px]">
+                {hasActiveOverlay ? activeOverlay : panel}
+              </View>
             </View>
           </ScrollView>
         </View>

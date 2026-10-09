@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { ARSessionOverlayControls } from '@/features/ar/ar-session-types';
+import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useAppTheme } from '@/theme/provider';
 
 import {
@@ -123,7 +123,7 @@ function SetupPanel({
   buttonStyle,
 }: {
   controller: ArenaController;
-  controls: ARSessionOverlayControls;
+  controls: ARActiveOverlayContext;
   snapshot: ArenaSnapshot;
   buttonStyle: ComponentProps<typeof Button>['style'];
 }) {
@@ -193,7 +193,7 @@ function SetupPanel({
           <HUDButton
             label="Replace arena"
             variant="outlined"
-            onPress={controls.retry}
+            onPress={controls.restartAR}
             style={buttonStyle}
           />
         </View>
@@ -254,7 +254,7 @@ export default function ArenaHUD({
   controls,
 }: {
   controller: ArenaController;
-  controls: ARSessionOverlayControls;
+  controls: ARActiveOverlayContext;
 }) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const { activeColors: colors } = useAppTheme();

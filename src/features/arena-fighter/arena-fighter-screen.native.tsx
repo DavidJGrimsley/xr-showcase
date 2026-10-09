@@ -34,6 +34,7 @@ export default function ArenaFighterScreen() {
   return (
     <ARSessionBoundary
       enabled={landscape}
+      activeOverlayLayout="fullscreen"
       renderNavigator={(context) => (
         <Suspense fallback={null}>
           <ArenaNavigator controller={controller} context={context} />

@@ -9,15 +9,17 @@ export interface ARSceneContext {
 
 export interface ARSessionBoundaryProps {
   enabled?: boolean;
+  activeOverlayLayout?: 'panel' | 'fullscreen';
   // A feature can supply a Viro or Studio navigator. The boundary owns its lifecycle.
   renderNavigator?: (context: ARSceneContext) => ReactNode;
   // Replace only the mounted-session HUD; permission, unsupported and error UI stay shared.
-  renderActiveOverlay?: (controls: ARSessionOverlayControls) => ReactNode;
+  renderActiveOverlay?: (context: ARActiveOverlayContext) => ReactNode;
 }
 
-export interface ARSessionOverlayControls {
+export interface ARActiveOverlayContext {
+  sessionId: number;
   status: 'starting' | 'running';
   instruction: string;
   home: () => void;
-  retry: () => void;
+  restartAR: () => void;
 }
