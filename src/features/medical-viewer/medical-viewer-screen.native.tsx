@@ -13,6 +13,7 @@ import { ARControl } from '@/features/ar/ar-control.native';
 import { MedicalInfoButton, MedicalInfoModal } from './medical-info.native';
 import { MedicalModelPicker } from './medical-model-picker.native';
 import { MedicalTransformControls } from './medical-transform-controls.native';
+import { hasMedicalLabels, medicalPlaceholderNotice } from './medical-models';
 
 const MedicalNavigator = lazy(() => import('./medical-navigator.native'));
 
@@ -71,7 +72,7 @@ function MedicalMainControls({
         <ARControl
           label="Labels"
           selected={state.labelsVisible}
-          disabled={!canManipulateMedical(state)}
+          disabled={!canManipulateMedical(state) || !hasMedicalLabels(state.modelId)}
           accessibilityLabel={state.labelsVisible ? 'Hide anatomy labels' : 'Show anatomy labels'}
           testID="medical-labels"
           onPress={() => controller.toggleLabels(context.sessionId)}
@@ -107,6 +108,11 @@ function MedicalControls({
       className="gap-3 rounded-2xl p-4"
       style={{ backgroundColor: '#10191fe6' }}>
       <MedicalStatus state={state} />
+      {medicalPlaceholderNotice(state.modelId) ? (
+        <Text accessibilityLiveRegion="polite" className="text-center text-sm text-amber-200">
+          {medicalPlaceholderNotice(state.modelId)}
+        </Text>
+      ) : null}
       {state.loadStatus === 'error' ? (
         <View className="items-center">
           <ARControl
@@ -122,6 +128,7 @@ function MedicalControls({
           state={state}
           scope={{
             sessionId: context.sessionId,
+            modelId: state.modelId,
             placementRevision: state.placementRevision,
             loadAttempt: state.loadAttempt,
           }}

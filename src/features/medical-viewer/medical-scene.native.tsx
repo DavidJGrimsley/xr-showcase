@@ -15,12 +15,15 @@ import {
 import type { ARSceneContext } from '@/features/ar/ar-session-types';
 import type { MedicalController, MedicalScope } from './medical-controller';
 import { canManipulateMedical } from './medical-controller';
-import type { Point3 } from './medical-models';
+import {
+  hasMedicalLabels,
+  MEDICAL_ASSETS,
+  MEDICAL_MODEL_ASSETS,
+  type Point3,
+} from './medical-models';
+import { MEDICAL_ASSET_SOURCES } from './medical-asset-sources.native';
 import calibration from '../../../assets/medical/skull-labels.json';
 
-// Metro needs a literal require to include this non-image binary asset.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const skullSource = require('../../../assets/medical/skull.glb');
 ViroMaterials.createMaterials({
   medicalLabel: { diffuseColor: '#fff1da', lightingModel: 'Constant' },
   medicalLeader: { diffuseColor: '#93f5c5', lightingModel: 'Constant' },
@@ -31,10 +34,11 @@ export interface MedicalSceneProps {
   controller: MedicalController;
 }
 
-function Skull({ context, controller }: MedicalSceneProps) {
+function MedicalModels({ context, controller }: MedicalSceneProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const scope: MedicalScope = {
     sessionId: context.sessionId,
+    modelId: state.modelId,
     placementRevision: state.placementRevision,
     loadAttempt: state.loadAttempt,
   };
@@ -42,12 +46,25 @@ function Skull({ context, controller }: MedicalSceneProps) {
     if (state.loadStatus !== 'loading') return;
     const token = {
       sessionId: context.sessionId,
+      modelId: state.modelId,
       placementRevision: state.placementRevision,
       loadAttempt: state.loadAttempt,
     };
-    const timeout = setTimeout(() => controller.finishLoad(token, false), 30000);
+    const timeout = setTimeout(() => {
+      const current = controller.getSnapshot();
+      for (const assetId of MEDICAL_MODEL_ASSETS[token.modelId]) {
+        if (current.assetLoads[assetId] === 'loading') controller.finishLoad(token, assetId, false);
+      }
+    }, 30000);
     return () => clearTimeout(timeout);
-  }, [controller, context.sessionId, state.loadStatus, state.placementRevision, state.loadAttempt]);
+  }, [
+    controller,
+    context.sessionId,
+    state.modelId,
+    state.loadStatus,
+    state.placementRevision,
+    state.loadAttempt,
+  ]);
   const interactive = canManipulateMedical(state);
   if (!state.anchorId || state.loadStatus === 'error') return null;
   return (
@@ -61,14 +78,23 @@ function Skull({ context, controller }: MedicalSceneProps) {
       onRotate={
         interactive ? (gesture, factor) => controller.rotate(scope, gesture, factor) : undefined
       }>
-      <Viro3DObject
-        key={`${state.placementRevision}:${state.loadAttempt}`}
-        source={skullSource}
-        type="GLB"
-        onLoadEnd={() => controller.finishLoad(scope, true)}
-        onError={() => controller.finishLoad(scope, false)}
-      />
-      {state.loadStatus === 'ready' && state.labelsVisible
+      {MEDICAL_MODEL_ASSETS[state.modelId].map((assetId) => {
+        const transform = MEDICAL_ASSETS[assetId].transform;
+        if (!transform) return null;
+        return (
+          <Viro3DObject
+            key={`${state.modelId}:${assetId}:${state.placementRevision}:${state.loadAttempt}`}
+            source={MEDICAL_ASSET_SOURCES[assetId]}
+            type="GLB"
+            position={transform.position}
+            rotation={transform.rotation}
+            scale={transform.scale}
+            onLoadEnd={() => controller.finishLoad(scope, assetId, true)}
+            onError={() => controller.finishLoad(scope, assetId, false)}
+          />
+        );
+      })}
+      {state.loadStatus === 'ready' && state.labelsVisible && hasMedicalLabels(state.modelId)
         ? calibration.labels.map((label) => {
             // Keep room for fixed-size text even when the anatomy is scaled down.
             const position: Point3 = [
@@ -159,7 +185,7 @@ export default function MedicalScene({
         onPlaneRemoved={(id) =>
           controller.losePlane(context.sessionId, state.placementRevision, id)
         }>
-        <Skull context={context} controller={controller} />
+        <MedicalModels context={context} controller={controller} />
       </ViroARPlaneSelector>
     </ViroARScene>
   );

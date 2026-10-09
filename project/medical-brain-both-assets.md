@@ -1,0 +1,16 @@
+# Medical Viewer model replacement
+
+The owner requested groundwork using the existing `assets/medical/skull.glb` in all three asset slots on 2026-10-09. Brain uses one full-skull stand-in. Both creates two independently loaded, overlapping full-skull stand-ins for half-skull and brain. These are temporary previews; they do not establish MRI derivation or anatomical alignment.
+
+The dropdown has exactly Skull, Brain, and Both. Skull retains its original full-skull source and labels. Both uses half-skull plus brain, with one plane anchor and parent height, scale, and yaw. Switching modes preserves that anchor and pose, restarts loading, and invalidates earlier model callbacks. Retry reloads the entire selected pair after either asset fails. Reposition preserves pose; Restart AR returns to the existing pose defaults and retains the selected mode.
+
+When the real models arrive:
+
+1. Record their exact source paths, formats, source hashes, provenance, permission/license, and owner-supplied anatomical correspondence. Preserve the original files. Never infer MRI provenance or calibrated accuracy from a filename.
+2. Inspect source units, bounds, origins, and orientation. Prepare supported, packaged GLB files without patient-identifying metadata. Optimization and conversion should preserve anatomy and be documented against the original. The existing skull is Y-up metres, anterior +Z, anatomical left +X; its conversion matrix is in `assets/medical/skull-provenance.json`.
+3. Replace only the brain and half-skull literal requires in `src/features/medical-viewer/medical-asset-sources.native.ts`. The full Skull require stays unchanged. Keep the new provenance and geometry bounds/hash evidence in `assets/medical/`.
+4. Set each asset's `transform` in `medical-models.ts` to documented position, rotation, and scale within the common parent coordinate space. Identity transforms currently describe two copies of the same prepared skull. They provide no evidence that the future models align. Set a replacement's transform to `null` while its alignment is pending; all modes requiring that slot become unavailable. Set `placeholder: false` only after actual integration. The preview notice then disappears automatically.
+5. Update the info sheet's stand-in paragraph and add real source attribution. Leave Brain and Both labels disabled until the owner supplies or approves labels and anchors on the final models; full-skull label anchors are unsuitable evidence for either new model.
+6. Replace the intentional stand-in assertions in `tests/medical-assets.test.cjs` with final format, hash, provenance, bounds, and alignment checks. Keep the two-load readiness, failure/retry, stale callback, common transform, timeout, and teardown tests.
+
+Physical iPhone acceptance remains owner work: select each mode before and after placement; switch rapidly while loading; pinch/rotate and use all transform sliders in Both; Reposition and Restart AR; verify background/resume, lost planes, Home teardown, safe-area controls, Dynamic Type, and VoiceOver. Repeat native picker and placement checks on Android. After replacement, visually confirm pair alignment and readable labels with the owner. Unit tests, scene schema checks, and JavaScript export do not prove native AR performance or anatomical accuracy.

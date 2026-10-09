@@ -26,7 +26,7 @@ export function MedicalModelPicker({
   const selected = MEDICAL_MODELS.find((model) => model.id === selectedValue)!;
   return (
     <Host matchContents colorScheme="dark" seedColor="#93f5c5">
-      {/* Universal Picker lacks disabled items; use native menus to keep Brain unavailable. */}
+      {/* Universal Picker lacks disabled items; native menus preserve asset availability. */}
       {Platform.OS === 'ios' ? (
         <Picker
           testID="medical-model-picker"

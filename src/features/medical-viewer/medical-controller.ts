@@ -1,4 +1,12 @@
-import { isMedicalModelAvailable, type MedicalModelId } from './medical-models.ts';
+import {
+  hasMedicalLabels,
+  isMedicalModelAvailable,
+  MEDICAL_ASSETS,
+  MEDICAL_MODEL_ASSETS,
+  MEDICAL_MODELS,
+  type MedicalAssetId,
+  type MedicalModelId,
+} from './medical-models.ts';
 import {
   clampARHeight,
   clampARScale,
@@ -16,6 +24,7 @@ export {
 
 export interface MedicalScope {
   sessionId: number;
+  modelId: MedicalModelId;
   placementRevision: number;
   loadAttempt: number;
 }
@@ -28,6 +37,7 @@ export interface MedicalSnapshot {
   placementRevision: number;
   loadAttempt: number;
   loadStatus: 'idle' | 'loading' | 'ready' | 'error';
+  assetLoads: Partial<Record<MedicalAssetId, 'loading' | 'ready' | 'error'>>;
   scale: number;
   yaw: number;
   height: number;
@@ -46,11 +56,23 @@ export function canManipulateMedical(state: MedicalSnapshot) {
 }
 
 export function medicalStatus(state: MedicalSnapshot) {
-  if (state.loadStatus === 'error') return 'Skull could not load.';
+  const model = MEDICAL_MODELS.find((model) => model.id === state.modelId)!;
+  if (state.loadStatus === 'error') {
+    const failed = MEDICAL_MODEL_ASSETS[state.modelId]
+      .filter((id) => state.assetLoads[id] === 'error')
+      .map((id) => MEDICAL_ASSETS[id].label);
+    return `${failed.join(' and ') || model.label} could not load.`;
+  }
   if (state.tracking === 'initializing') return 'Finding a surface…';
   if (state.tracking === 'limited') return 'Tracking limited. Move slowly in good light.';
-  if (!state.anchorId) return 'Tap a highlighted surface to place the skull.';
-  if (state.loadStatus === 'loading') return 'Loading skull…';
+  if (!state.anchorId)
+    return state.modelId === 'both'
+      ? 'Tap a highlighted surface to place the half-skull and brain.'
+      : `Tap a highlighted surface to place the ${model.label.toLowerCase()}.`;
+  if (state.loadStatus === 'loading')
+    return state.modelId === 'both'
+      ? 'Loading half-skull and brain…'
+      : `Loading ${model.label.toLowerCase()}…`;
   return '';
 }
 
@@ -63,6 +85,7 @@ export class MedicalController {
     placementRevision: 0,
     loadAttempt: 0,
     loadStatus: 'idle',
+    assetLoads: {},
     scale: 1,
     yaw: 0,
     height: DEFAULT_AR_HEIGHT,
@@ -73,6 +96,14 @@ export class MedicalController {
   private listeners = new Set<() => void>();
   private pinchStart: number | null = null;
   private rotationStart: number | null = null;
+  private readonly isAssetAvailable: (assetId: MedicalAssetId) => boolean;
+
+  constructor(
+    isAssetAvailable: (assetId: MedicalAssetId) => boolean = (assetId) =>
+      MEDICAL_ASSETS[assetId].transform !== null
+  ) {
+    this.isAssetAvailable = isAssetAvailable;
+  }
 
   getSnapshot = () => this.snapshot;
   getSessionId = () => this.snapshot.sessionId;
@@ -96,12 +127,16 @@ export class MedicalController {
   private current(scope: MedicalScope) {
     return (
       this.live(scope.sessionId) &&
+      scope.modelId === this.snapshot.modelId &&
       scope.placementRevision === this.snapshot.placementRevision &&
       scope.loadAttempt === this.snapshot.loadAttempt
     );
   }
   private clearGestures() {
     this.pinchStart = this.rotationStart = null;
+  }
+  private loadingAssets(modelId = this.snapshot.modelId): MedicalSnapshot['assetLoads'] {
+    return Object.fromEntries(MEDICAL_MODEL_ASSETS[modelId].map((id) => [id, 'loading']));
   }
 
   attach(sessionId: number) {
@@ -113,6 +148,7 @@ export class MedicalController {
       anchorId: null,
       placementRevision: this.snapshot.placementRevision + 1,
       loadStatus: 'idle',
+      assetLoads: {},
       pinching: false,
       rotating: false,
     });
@@ -125,6 +161,7 @@ export class MedicalController {
       anchorId: null,
       placementRevision: this.snapshot.placementRevision + 1,
       loadStatus: 'idle',
+      assetLoads: {},
       pinching: false,
       rotating: false,
     });
@@ -143,8 +180,22 @@ export class MedicalController {
     });
   }
   selectModel(sessionId: number, modelId: MedicalModelId) {
-    if (!this.live(sessionId) || !isMedicalModelAvailable(modelId)) return;
-    this.publish({ modelId });
+    if (
+      !this.live(sessionId) ||
+      modelId === this.snapshot.modelId ||
+      !isMedicalModelAvailable(modelId, this.isAssetAvailable)
+    )
+      return;
+    this.clearGestures();
+    this.publish({
+      modelId,
+      loadAttempt: this.snapshot.loadAttempt + 1,
+      loadStatus: this.snapshot.anchorId ? 'loading' : 'idle',
+      assetLoads: this.snapshot.anchorId ? this.loadingAssets(modelId) : {},
+      labelsVisible: hasMedicalLabels(modelId) && this.snapshot.labelsVisible,
+      pinching: false,
+      rotating: false,
+    });
   }
   selectPlane(sessionId: number, revision: number, anchorId: string) {
     if (
@@ -155,7 +206,12 @@ export class MedicalController {
       !anchorId
     )
       return;
-    this.publish({ anchorId, loadStatus: 'loading', loadAttempt: this.snapshot.loadAttempt + 1 });
+    this.publish({
+      anchorId,
+      loadStatus: 'loading',
+      loadAttempt: this.snapshot.loadAttempt + 1,
+      assetLoads: this.loadingAssets(),
+    });
   }
   losePlane(sessionId: number, revision: number, anchorId: string) {
     if (
@@ -173,31 +229,53 @@ export class MedicalController {
       anchorId: null,
       placementRevision: this.snapshot.placementRevision + 1,
       loadStatus: 'idle',
+      assetLoads: {},
       pinching: false,
       rotating: false,
     });
   }
-  finishLoad(scope: MedicalScope, success: boolean) {
+  finishLoad(scope: MedicalScope, assetId: MedicalAssetId, success: boolean) {
     if (
       !this.current(scope) ||
       !this.snapshot.anchorId ||
-      (this.snapshot.loadStatus !== 'loading' &&
-        !(this.snapshot.loadStatus === 'ready' && !success))
+      !MEDICAL_MODEL_ASSETS[this.snapshot.modelId].includes(assetId) ||
+      (success &&
+        (this.snapshot.loadStatus !== 'loading' ||
+          this.snapshot.assetLoads[assetId] !== 'loading')) ||
+      (!success &&
+        (this.snapshot.loadStatus === 'idle' || this.snapshot.assetLoads[assetId] === 'error'))
     )
       return;
+    const assetLoads: MedicalSnapshot['assetLoads'] = {
+      ...this.snapshot.assetLoads,
+      [assetId]: success ? 'ready' : 'error',
+    };
     if (!success) this.clearGestures();
     this.publish({
-      loadStatus: success ? 'ready' : 'error',
+      assetLoads,
+      loadStatus: !success
+        ? 'error'
+        : MEDICAL_MODEL_ASSETS[this.snapshot.modelId].every((id) => assetLoads[id] === 'ready')
+          ? 'ready'
+          : 'loading',
       ...(!success ? { pinching: false, rotating: false } : {}),
     });
   }
   retryLoad(sessionId: number) {
     if (!this.live(sessionId) || !this.snapshot.anchorId || this.snapshot.loadStatus !== 'error')
       return;
-    this.publish({ loadStatus: 'loading', loadAttempt: this.snapshot.loadAttempt + 1 });
+    this.publish({
+      loadStatus: 'loading',
+      loadAttempt: this.snapshot.loadAttempt + 1,
+      assetLoads: this.loadingAssets(),
+    });
   }
   toggleLabels(sessionId: number) {
-    if (this.live(sessionId) && canManipulateMedical(this.snapshot))
+    if (
+      this.live(sessionId) &&
+      hasMedicalLabels(this.snapshot.modelId) &&
+      canManipulateMedical(this.snapshot)
+    )
       this.publish({ labelsVisible: !this.snapshot.labelsVisible });
   }
   setScale(scope: MedicalScope, value: number) {
