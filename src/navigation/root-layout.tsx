@@ -79,6 +79,7 @@ function LayoutInner() {
               screenOptions={{
                 contentStyle: { backgroundColor: shellColor },
                 headerShown: true,
+                orientation: 'portrait',
               }}>
               <Stack.Screen
                 name="index"
@@ -95,6 +96,9 @@ function LayoutInner() {
                   name={experience.route}
                   options={{
                     title: experience.title,
+                    ...(experience.route === 'arena-fighter'
+                      ? { orientation: 'landscape' as const, headerShown: false }
+                      : {}),
                     headerRight: () => (
                       <HeaderAction
                         label="Home"

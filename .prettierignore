@@ -3,3 +3,5 @@ node_modules/
 dist/
 src/uniwind-types.d.ts
 package-lock.json
+# Preserve the curated animation manifest byte-for-byte, including its provenance hash.
+assets/arena/fighter-animation-manifest.json
