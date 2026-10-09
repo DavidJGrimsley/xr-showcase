@@ -2,7 +2,7 @@ name: MDS PR Checks
 
 on:
   pull_request:
-    branches: [test, main]
+    branches: [test, main, phase-2-arena]
   push:
     branches: [test]
 
