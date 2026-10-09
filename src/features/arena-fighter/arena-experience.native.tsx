@@ -26,9 +26,10 @@ export default function ArenaExperience({
   useEffect(() => {
     clearTimeout(disposal.current);
     room?.start();
+    controller.setAppActive(AppState.currentState === 'active');
     const timer = setInterval(controller.poll, 100);
     const appState = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') controller.interrupt();
+      controller.setAppActive(state === 'active');
     });
     return () => {
       clearInterval(timer);
@@ -43,6 +44,7 @@ export default function ArenaExperience({
   return (
     <ARSessionBoundary
       enabled={landscape}
+      keepSessionOnInactive={!!room}
       activeOverlayLayout="fullscreen"
       renderNavigator={(context) => (
         <ArenaNavigator controller={controller} room={room} context={context} />

@@ -287,6 +287,8 @@ export default function ArenaHUD({
     controls.home();
   };
   const movementDisabled = snapshot.phase !== 'fighting' || !snapshot.animationsRunning;
+  const preparingSharedArena =
+    !!room && (!snapshot.placed || !snapshot.sharedPlacement) && snapshot.stage === 'lobby';
   const AttackLayout = fontScale > 1.3 ? Column : Row;
   const outcomeText =
     snapshot.outcome === 'draw'
@@ -307,23 +309,31 @@ export default function ArenaHUD({
       }}>
       <View pointerEvents="box-none" className="gap-2">
         <View className="flex-row items-center gap-3">
-          <Health
-            label={'Blue Mike · ' + (snapshot.localFighter === 'blue' ? 'You' : 'Opponent')}
-            health={snapshot.blue.health}
-            color="#38bdf8"
-          />
-          <Health
-            label={
-              'Red Mike · ' +
-              (snapshot.mode === 'solo'
-                ? 'CPU'
-                : snapshot.localFighter === 'red'
-                  ? 'You'
-                  : 'Opponent')
-            }
-            health={snapshot.red.health}
-            color="#fb923c"
-          />
+          {preparingSharedArena ? (
+            <Text className="flex-1 text-lg font-semibold" style={{ color: colors.text }}>
+              Arena Fighter · {snapshot.mode === 'host' ? 'Host' : 'Join'}
+            </Text>
+          ) : (
+            <>
+              <Health
+                label={'Blue Mike · ' + (snapshot.localFighter === 'blue' ? 'You' : 'Opponent')}
+                health={snapshot.blue.health}
+                color="#38bdf8"
+              />
+              <Health
+                label={
+                  'Red Mike · ' +
+                  (snapshot.mode === 'solo'
+                    ? 'CPU'
+                    : snapshot.localFighter === 'red'
+                      ? 'You'
+                      : 'Opponent')
+                }
+                health={snapshot.red.health}
+                color="#fb923c"
+              />
+            </>
+          )}
           <Host matchContents colorScheme="dark" seedColor={colors.primary}>
             <Button label="Home" onPress={home} style={buttonStyle} />
           </Host>
@@ -355,13 +365,15 @@ export default function ArenaHUD({
         ) : null}
       </View>
 
-      <View pointerEvents="box-none" className="min-h-0 flex-1 flex-row gap-3">
-        <SetupPanel
-          controller={controller}
-          controls={controls}
-          snapshot={snapshot}
-          buttonStyle={buttonStyle}
-        />
+      <View pointerEvents="box-none" className="min-h-0 flex-1 flex-row justify-end gap-3">
+        {!preparingSharedArena && (
+          <SetupPanel
+            controller={controller}
+            controls={controls}
+            snapshot={snapshot}
+            buttonStyle={buttonStyle}
+          />
+        )}
         {room && ['lobby', 'paused', 'abandoned'].includes(snapshot.stage) && (
           <ArenaRoomPanel room={room} controller={controller} />
         )}

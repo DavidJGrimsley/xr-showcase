@@ -71,6 +71,7 @@ export class ArenaMatch {
   private code: string | null = null;
   private networkMessage = '';
   private disposed = false;
+  private appActive = true;
   private previousTransforms: Record<FighterId, FighterTransform> | null = null;
   private transformAt = 0;
   private now: () => number;
@@ -107,6 +108,18 @@ export class ArenaMatch {
     this.round.setLandscape(value);
     this.checkReadiness();
   };
+  setAppActive = (active: boolean) => {
+    if (this.appActive === active) return;
+    this.appActive = active;
+    this.round.resetTrackingStability();
+    if (!active) {
+      this.localReady = false;
+      this.clearInput();
+      this.interrupt();
+    }
+    this.publish();
+  };
+  isAppActive = () => this.appActive;
   setTracking = (token: number, normal: boolean) => {
     this.round.setTracking(token, normal);
     this.checkReadiness();
@@ -178,7 +191,7 @@ export class ArenaMatch {
     this.publish();
   }
   capable() {
-    return this.round.isReady() && (this.mode === 'solo' || this.connected);
+    return this.appActive && this.round.isReady() && (this.mode === 'solo' || this.connected);
   }
   private peerCapable() {
     return (
@@ -394,11 +407,13 @@ export class ArenaMatch {
       ...this.held,
       commands: [...this.pending],
       capable: this.capable(),
-      pauseReason: this.capable()
-        ? null
-        : !this.connected
-          ? 'Connection interrupted.'
-          : this.round.getSnapshot().message,
+      pauseReason: !this.appActive
+        ? 'App interrupted. Return to the arena.'
+        : this.capable()
+          ? null
+          : !this.connected
+            ? 'Connection interrupted.'
+            : this.round.getSnapshot().message,
       paused: this.stage === 'paused',
       ready: this.localReady && this.readyEpoch === this.epoch,
       presentation: this.presentation?.done ? this.knockout!.id : null,

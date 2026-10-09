@@ -44,7 +44,7 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
   const [starting, setStarting] = useState(false);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { activeColors: colors } = useAppTheme();
+  const { activeColors: colors, activeScheme } = useAppTheme();
   const start = async (mode: ArenaMode) => {
     if (starting || controller) return;
     setError('');
@@ -165,11 +165,11 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
         {page === 'join' && (
           <>
             <TextInput
-              accessibilityLabel="Room code"
+              accessibilityLabel="Invite code"
               value={code}
               onChangeText={setCode}
-              placeholder="K7M 2QX"
-              placeholderTextColor={colors.text}
+              placeholder="Invite code"
+              placeholderTextColor={activeScheme === 'dark' ? '#9ca3af' : '#6b7280'}
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={12}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useMemo, useSyncExternalStore } from 'react';
 import { ViroARSceneNavigator } from '@reactvision/react-viro';
 
 import type { ARSceneContext } from '@/features/ar/ar-session-types';
@@ -26,10 +26,14 @@ export default function ArenaNavigator({
   room?: ArenaRoom;
 }) {
   const token = useSyncExternalStore(controller.subscribe, controller.getSessionToken);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const lease = controller.attachSession(context.sessionId);
-    return () => controller.detachSession(lease);
-  }, [controller, context.sessionId]);
+    return () => {
+      // Cancel while the descendant Viro navigator still has its native view.
+      room?.detach();
+      controller.detachSession(lease);
+    };
+  }, [controller, context.sessionId, room]);
   const binding = useMemo(
     () => ({ controller, context, token: token!, room }),
     [controller, context, token, room]

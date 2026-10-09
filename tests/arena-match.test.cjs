@@ -574,3 +574,22 @@ test('public status exposes remote interruption and per-device presentation read
   assert.deepEqual(p.host.snapshot().presentationReady, { local: true, peer: false });
   assert.equal(p.guest.snapshot().presentationReady.local, false);
 });
+
+test('temporary OS inactivity freezes combat and requires stable tracking plus both Resume', () => {
+  const p = pair();
+  p.guest.match.attack('uppercut');
+  p.step(0.2);
+  p.guest.match.setAppActive(false);
+  p.step(1);
+  assert.equal(p.host.snapshot().stage, 'paused');
+  assert.equal(p.host.snapshot().blue.health, 100);
+  assert.match(p.host.snapshot().remotePauseReason, /App interrupted/);
+  p.guest.match.setAppActive(true);
+  assert.equal(p.guest.match.resume(), false);
+  p.step(0.6);
+  assert.equal(p.host.match.resume(), true);
+  assert.equal(p.guest.match.resume(), true);
+  p.step(1);
+  assert.equal(p.host.snapshot().stage, 'fighting');
+  assert.equal(p.host.snapshot().blue.health, 100);
+});

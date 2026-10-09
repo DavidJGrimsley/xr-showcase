@@ -231,6 +231,10 @@ export class ArenaController {
     if (!normal) this.pause();
     this.publish();
   };
+  resetTrackingStability = () => {
+    this.stableTime = 0;
+    this.publish();
+  };
 
   setPlacement = (token: number, placed: boolean) => {
     if (!this.isCurrent(token) || this.placed === placed) return;

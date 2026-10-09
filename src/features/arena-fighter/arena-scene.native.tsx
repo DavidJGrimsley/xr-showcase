@@ -15,6 +15,7 @@ import {
 import { ARENA_LAYOUT, type FighterId, type FighterTransform } from './arena-controller';
 import type { ArenaSceneBinding } from './arena-navigator.native';
 import type { RoomView } from './arena-room.native';
+import { framePose } from './arena-placement';
 
 const sources = {
   // Metro packages binary assets through static require calls.
@@ -141,10 +142,26 @@ export default function ArenaScene({
     room?.getSnapshot ?? noRoom
   );
   useEffect(() => room?.attach(sceneNavigator), [room, sceneNavigator, token]);
-  const sharedPlaced = !!roomState?.frame && !!controller.placement;
+  const sharedPlaced = !!roomState?.preview || (!!roomState?.frame && !!controller.placement);
   useEffect(() => {
     if (room) controller.setPlacement(token, sharedPlaced);
   }, [room, controller, token, sharedPlaced]);
+  useEffect(() => {
+    if (room && roomState?.status === 'placing' && !roomState.preview) selector.current?.reset();
+  }, [room, roomState?.status, roomState?.preview]);
+  const frame = roomState?.frame;
+  const worldFrame = useMemo(
+    () =>
+      frame
+        ? framePose(frame)
+        : {
+            position: [0, 0, 0] as [number, number, number],
+            rotation: [0, 0, 0] as [number, number, number],
+          },
+    [frame]
+  );
+  const sharedArena =
+    roomState?.frame && controller.placement ? controller.placement : roomState?.preview;
   const source = roomState?.source;
   const sharedSource = useMemo(
     () => (source ? { ...source, key: source.key + ':' + token } : null),
@@ -213,35 +230,39 @@ export default function ArenaScene({
         }}
       />
       {(!room || (controller.mode === 'host' && !controller.placement)) && (
-        <ViroARPlaneSelector
-          ref={selector}
-          disableClickSelection={!!room && !roomState?.frame}
-          alignment="HorizontalUpward"
-          minWidth={0.6}
-          minHeight={0.6}
-          onPlaneSelected={(plane, point) => {
-            if (room) {
-              if (point) room.place(point);
-              return;
+        <ViroNode visible={!room || (roomState?.status === 'placing' && !roomState.preview)}>
+          <ViroARPlaneSelector
+            ref={selector}
+            disableClickSelection={
+              !!room && (roomState?.status !== 'placing' || !!roomState.preview)
             }
-            selectedPlane.current = plane.anchorId;
-            controller.setPlacement(token, true);
-          }}
-          onPlaneRemoved={(anchorId) => {
-            if (anchorId !== selectedPlane.current) return;
-            selectedPlane.current = null;
-            controller.setPlacement(token, false);
-          }}>
-          {!room && (
-            <ArenaModels
-              binding={binding}
-              version={version}
-              yaw={snapshot.arenaYaw}
-              blueNode={blueNode}
-              redNode={cpuNode}
-            />
-          )}
-        </ViroARPlaneSelector>
+            alignment="HorizontalUpward"
+            minWidth={0.6}
+            minHeight={0.6}
+            onPlaneSelected={(plane, point) => {
+              if (room) {
+                if (!point || !room.place(point)) selector.current?.reset();
+                return;
+              }
+              selectedPlane.current = plane.anchorId;
+              controller.setPlacement(token, true);
+            }}
+            onPlaneRemoved={(anchorId) => {
+              if (anchorId !== selectedPlane.current) return;
+              selectedPlane.current = null;
+              controller.setPlacement(token, false);
+            }}>
+            {!room && (
+              <ArenaModels
+                binding={binding}
+                version={version}
+                yaw={snapshot.arenaYaw}
+                blueNode={blueNode}
+                redNode={cpuNode}
+              />
+            )}
+          </ViroARPlaneSelector>
+        </ViroNode>
       )}
       {room && sharedSource && (
         <ViroSharedFrame
@@ -255,21 +276,21 @@ export default function ArenaScene({
           }}
           onLocalizeError={(error) => {
             if (controller.isCurrent(token)) room.fail(error);
-          }}>
-          {controller.placement && (
-            <ViroNode
-              position={controller.placement.position}
-              rotation={controller.placement.rotation}>
-              <ArenaModels
-                binding={binding}
-                version={version}
-                yaw={snapshot.arenaYaw}
-                blueNode={blueNode}
-                redNode={cpuNode}
-              />
-            </ViroNode>
-          )}
-        </ViroSharedFrame>
+          }}
+        />
+      )}
+      {room && sharedArena && (
+        <ViroNode position={worldFrame.position} rotation={worldFrame.rotation}>
+          <ViroNode position={sharedArena.position} rotation={sharedArena.rotation}>
+            <ArenaModels
+              binding={binding}
+              version={version}
+              yaw={snapshot.arenaYaw}
+              blueNode={blueNode}
+              redNode={cpuNode}
+            />
+          </ViroNode>
+        </ViroNode>
       )}
     </ViroARScene>
   );
