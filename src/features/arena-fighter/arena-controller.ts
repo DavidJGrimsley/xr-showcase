@@ -26,8 +26,10 @@ export const ARENA_RULES = {
   reach: 0.085,
   speed: 0.08,
   stableTracking: 0.5,
-  cpuFirstDelay: 0.7,
-  cpuRecovery: 0.9,
+  cpuFirstDelay: 0.3,
+  cpuRecovery: 0.18,
+  cpuReaction: 0.2,
+  cpuRangeMargin: 0.004,
   launchDuration: 0.8,
   launchHeight: 0.18,
   cpuEnabled: true,
@@ -139,6 +141,9 @@ export class ArenaController {
   private cpuAttackAt: number | null = null;
   private cpuRecoveryUntil = 0;
   private cpuAttacks = 0;
+  private cpuObservedAttack: number | null = null;
+  private cpuReactAt = 0;
+  private cpuThreats = 0;
   private preview: { fighter: FighterId; clip: string; elapsed: number } | null = null;
   private frameTotal = 0;
   private frameSamples = 0;
@@ -264,6 +269,9 @@ export class ArenaController {
     this.clock = 0;
     this.outcome = null;
     this.cpuAttacks = 0;
+    this.cpuThreats = 0;
+    this.cpuObservedAttack = null;
+    this.cpuReactAt = 0;
     this.cpuRecoveryUntil = 0;
     const side = this.blueStartsLeft ? -1 : 1;
     this.fighters = {
@@ -358,6 +366,7 @@ export class ArenaController {
       return;
     }
     this.clock += dt;
+    this.observeCPUOpponent();
     this.move(dt);
     this.decideCPU();
 
@@ -397,16 +406,14 @@ export class ArenaController {
           fighter.attack = null;
           fighter.buffered = null;
           this.setAnimation(fighter, 'idle', 'IdleAggro');
-          if (id === 'cpu')
-            this.cpuAttackAt = this.cpuRecoveryUntil = this.clock + this.rules.cpuRecovery;
+          if (id === 'cpu') this.recoverCPU();
           if (next) this.requestAttack(id, next);
         } else if (
           fighter.mode === 'hit' &&
           fighter.elapsed + epsilon >= clipDuration('HitFront')
         ) {
           this.setAnimation(fighter, 'idle', 'IdleAggro');
-          if (id === 'cpu')
-            this.cpuAttackAt = this.cpuRecoveryUntil = this.clock + this.rules.cpuRecovery;
+          if (id === 'cpu') this.recoverCPU();
         }
       }
     }
@@ -472,6 +479,8 @@ export class ArenaController {
         this.setAnimation(fighter, 'idle', 'IdleAggro');
     }
     this.cpuAttackAt = null;
+    this.cpuObservedAttack = null;
+    this.cpuReactAt = 0;
   }
   private requestAttack(id: FighterId, kind: AttackKind) {
     if (this.phase !== 'fighting' || !this.prerequisites()) return false;
@@ -509,10 +518,7 @@ export class ArenaController {
     const canMove = (fighter: Fighter) => fighter.mode === 'idle' || fighter.mode === 'walk';
     const directions = {
       blue: canMove(blue) ? Number(this.held.advance) - Number(this.held.retreat) : 0,
-      cpu:
-        this.rules.cpuEnabled && canMove(cpu) && Math.abs(cpu.x - blue.x) > this.rules.reach
-          ? 1
-          : 0,
+      cpu: this.rules.cpuEnabled && canMove(cpu) ? this.cpuMovement() : 0,
     };
     const before = { blue: blue.x, cpu: cpu.x };
     for (const id of ids) {
@@ -541,20 +547,61 @@ export class ArenaController {
       else this.setAnimation(fighter, 'walk', directions[id] > 0 ? 'WalkForward' : 'WalkBackward');
     }
   }
+  private observeCPUOpponent() {
+    if (!this.rules.cpuEnabled) return;
+    const blue = this.fighters.blue;
+    if (!blue.attack) {
+      this.cpuObservedAttack = null;
+      return;
+    }
+    if (this.cpuObservedAttack === blue.animationId) return;
+    // React to a visible clip, never held controls or the player's buffered next move.
+    this.cpuObservedAttack = blue.animationId;
+    this.cpuReactAt = this.clock + this.rules.cpuReaction;
+    this.cpuThreats++;
+  }
+  private cpuEvades() {
+    const attack = this.fighters.blue.attack;
+    return (
+      attack &&
+      !attack.hitChecked &&
+      this.clock + epsilon >= this.cpuReactAt &&
+      (attack.kind === 'uppercut' || this.cpuThreats % 3 !== 0)
+    );
+  }
+  private cpuCanRetreat() {
+    const outward = this.blueStartsLeft ? 1 : -1;
+    return this.fighters.cpu.x * outward < this.rules.boundary - epsilon;
+  }
+  private cpuMovement() {
+    const distance = Math.abs(this.fighters.cpu.x - this.fighters.blue.x);
+    if (this.cpuEvades()) return distance < this.rules.reach + this.rules.cpuRangeMargin ? -1 : 0;
+    // Keep a small spacing band: close the gap, but don't volunteer for point-blank chains.
+    const preferred = this.rules.reach - this.rules.cpuRangeMargin;
+    if (distance < preferred - this.rules.cpuRangeMargin) return -1;
+    return distance > preferred ? 1 : 0;
+  }
+  private recoverCPU() {
+    // A short, varied beat leaves counterplay without the old long idle opening.
+    const rhythm = [1, 1.4, 0.8][this.cpuAttacks % 3];
+    this.cpuAttackAt = this.cpuRecoveryUntil = this.clock + this.rules.cpuRecovery * rhythm;
+  }
   private decideCPU() {
     if (!this.rules.cpuEnabled) return;
     const cpu = this.fighters.cpu;
     if (cpu.attack || cpu.mode === 'hit') return;
-    if (Math.abs(cpu.x - this.fighters.blue.x) > this.rules.reach + epsilon) {
-      this.cpuAttackAt = null;
-      return;
-    }
+    const blue = this.fighters.blue;
+    if (Math.abs(cpu.x - blue.x) > this.rules.reach + epsilon) return;
     this.cpuAttackAt ??= Math.max(this.clock + this.rules.cpuFirstDelay, this.cpuRecoveryUntil);
     if (this.clock + epsilon < this.cpuAttackAt) return;
-    const kind =
-      (this.cpuAttacks + 1) % 3 === 0 && this.clock + epsilon >= cpu.uppercutAt
-        ? 'uppercut'
-        : 'punch';
+    if (this.cpuEvades() && this.cpuCanRetreat()) return;
+    // Use quick punches to interrupt/counter. Save slow uppercuts for an opening or finish.
+    const uppercutOpening =
+      !blue.attack &&
+      (blue.mode === 'hit' ||
+        (blue.health > this.rules.punchDamage && blue.health <= this.rules.uppercutDamage) ||
+        (this.cpuAttacks + 1) % 3 === 0);
+    const kind = uppercutOpening && this.clock + epsilon >= cpu.uppercutAt ? 'uppercut' : 'punch';
     if (this.requestAttack('cpu', kind)) {
       this.cpuAttacks++;
       this.cpuAttackAt = null;
