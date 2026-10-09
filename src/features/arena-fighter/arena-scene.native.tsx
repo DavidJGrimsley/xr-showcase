@@ -9,10 +9,12 @@ import {
   ViroGameLoopUtils,
   ViroNode,
   ViroTrackingStateConstants,
+  ViroSharedFrame,
 } from '@reactvision/react-viro';
 
 import { ARENA_LAYOUT, type FighterId, type FighterTransform } from './arena-controller';
 import type { ArenaSceneBinding } from './arena-navigator.native';
+import type { RoomView } from './arena-room.native';
 
 const sources = {
   // Metro packages binary assets through static require calls.
@@ -21,7 +23,7 @@ const sources = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   blue: require('../../../assets/arena/Mike_Player1_Blue_AR.glb'),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  cpu: require('../../../assets/arena/Mike_Player2_RedOrange_AR.glb'),
+  red: require('../../../assets/arena/Mike_Player2_RedOrange_AR.glb'),
 };
 const scale: [number, number, number] = Array(3).fill(ARENA_LAYOUT.fighterScale) as [
   number,
@@ -64,7 +66,7 @@ function FighterModel({
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const fighter = snapshot[id];
   const model = useRef<Viro3DObject>(null);
-  const appliedAnimation = useRef({ id: -1, name: 'IdleAggro', loop: true });
+  const appliedAnimation = useRef({ id: Number.NaN, name: 'IdleAggro', loop: true });
   const { clip, animationId } = fighter;
   const run = snapshot.animationsRunning;
   const animation = useMemo(() => ({ name: clip, loop: loopingClips.has(clip) }), [clip]);
@@ -85,9 +87,10 @@ function FighterModel({
     const frame = requestAnimationFrame(() => {
       writeAnimation(model.current, { ...animation, run: true, interruptible: true });
       appliedAnimation.current = { id: animationId, ...animation };
+      controller.animationApplied(id, animationId);
     });
     return () => cancelAnimationFrame(frame);
-  }, [animation, animationId, run]);
+  }, [animation, animationId, run, controller, id]);
   const [initialTransform] = useState(() => {
     const transform = controller.getTransform(id);
     return {
@@ -117,10 +120,12 @@ function FighterModel({
 export default function ArenaScene({
   sceneNavigator,
 }: {
-  sceneNavigator: { viroAppProps: ArenaSceneBinding };
+  sceneNavigator: { viroAppProps: ArenaSceneBinding } & Parameters<
+    NonNullable<ArenaSceneBinding['room']>['attach']
+  >[0];
 }) {
-  const binding = sceneNavigator.viroAppProps;
-  const { controller, context, token } = binding;
+  const binding: ArenaSceneBinding = sceneNavigator.viroAppProps;
+  const { controller, context, token, room } = binding;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const selector = useRef<ViroARPlaneSelector>(null);
   const selectedPlane = useRef<string | null>(null);
@@ -131,6 +136,20 @@ export default function ArenaScene({
   >({});
   const loaded = snapshot.assetsLoaded === 3;
   const version = snapshot.placementVersion;
+  const roomState = useSyncExternalStore<RoomView | null>(
+    room?.subscribe ?? noSubscribe,
+    room?.getSnapshot ?? noRoom
+  );
+  useEffect(() => room?.attach(sceneNavigator), [room, sceneNavigator, token]);
+  const sharedPlaced = !!roomState?.frame && !!controller.placement;
+  useEffect(() => {
+    if (room) controller.setPlacement(token, sharedPlaced);
+  }, [room, controller, token, sharedPlaced]);
+  const source = roomState?.source;
+  const sharedSource = useMemo(
+    () => (source ? { ...source, key: source.key + ':' + token } : null),
+    [source, token]
+  );
 
   const updateTransform = (id: FighterId, node: RefObject<ViroNode | null>) => {
     if (!node.current) {
@@ -169,6 +188,7 @@ export default function ArenaScene({
       onTrackingUpdated={(state) => {
         const normal = state === ViroTrackingStateConstants.TRACKING_NORMAL;
         controller.setTracking(token, normal);
+        if (controller.isCurrent(token)) room?.tracking(normal);
         if (normal) context.onReady();
       }}
       onAnchorFound={(anchor) => selector.current?.handleAnchorFound(anchor)}
@@ -189,38 +209,102 @@ export default function ArenaScene({
         onLateUpdate={({ dt }) => {
           if (__DEV__) controller.recordFrame(token, dt);
           updateTransform('blue', blueNode);
-          updateTransform('cpu', cpuNode);
+          updateTransform('red', cpuNode);
         }}
       />
-      <ViroARPlaneSelector
-        ref={selector}
-        alignment="HorizontalUpward"
-        minWidth={0.6}
-        minHeight={0.6}
-        onPlaneSelected={(plane) => {
-          selectedPlane.current = plane.anchorId;
-          controller.setPlacement(token, true);
-        }}
-        onPlaneRemoved={(anchorId) => {
-          if (anchorId !== selectedPlane.current) return;
-          selectedPlane.current = null;
-          controller.setPlacement(token, false);
-        }}>
-        <ViroNode key={version} rotation={[0, snapshot.arenaYaw, 0]}>
-          <Viro3DObject
-            source={sources.arena}
-            type="GLB"
-            scale={arenaScale}
-            position={[0, ARENA_LAYOUT.arenaBaseOffset, 0]}
-            onLoadEnd={() => controller.assetLoaded(token, version, 'arena')}
-            onError={() => {
-              if (controller.assetFailed(token, version, 'arena')) context.onError();
-            }}
-          />
-          <FighterModel binding={binding} id="blue" node={blueNode} />
-          <FighterModel binding={binding} id="cpu" node={cpuNode} />
-        </ViroNode>
-      </ViroARPlaneSelector>
+      {(!room || (controller.mode === 'host' && !controller.placement)) && (
+        <ViroARPlaneSelector
+          ref={selector}
+          disableClickSelection={!!room && !roomState?.frame}
+          alignment="HorizontalUpward"
+          minWidth={0.6}
+          minHeight={0.6}
+          onPlaneSelected={(plane, point) => {
+            if (room) {
+              if (point) room.place(point);
+              return;
+            }
+            selectedPlane.current = plane.anchorId;
+            controller.setPlacement(token, true);
+          }}
+          onPlaneRemoved={(anchorId) => {
+            if (anchorId !== selectedPlane.current) return;
+            selectedPlane.current = null;
+            controller.setPlacement(token, false);
+          }}>
+          {!room && (
+            <ArenaModels
+              binding={binding}
+              version={version}
+              yaw={snapshot.arenaYaw}
+              blueNode={blueNode}
+              redNode={cpuNode}
+            />
+          )}
+        </ViroARPlaneSelector>
+      )}
+      {room && sharedSource && (
+        <ViroSharedFrame
+          source={sharedSource}
+          arSceneNavigator={sceneNavigator}
+          onLocalized={(event) => {
+            if (controller.isCurrent(token)) room.localized(event.transform);
+          }}
+          onLocalizeProgress={({ message }) => {
+            if (controller.isCurrent(token)) room.progress(message);
+          }}
+          onLocalizeError={(error) => {
+            if (controller.isCurrent(token)) room.fail(error);
+          }}>
+          {controller.placement && (
+            <ViroNode
+              position={controller.placement.position}
+              rotation={controller.placement.rotation}>
+              <ArenaModels
+                binding={binding}
+                version={version}
+                yaw={snapshot.arenaYaw}
+                blueNode={blueNode}
+                redNode={cpuNode}
+              />
+            </ViroNode>
+          )}
+        </ViroSharedFrame>
+      )}
     </ViroARScene>
+  );
+}
+
+const noSubscribe = () => () => {};
+const noRoom = () => null;
+function ArenaModels({
+  binding,
+  version,
+  yaw,
+  blueNode,
+  redNode,
+}: {
+  binding: ArenaSceneBinding;
+  version: number;
+  yaw: number;
+  blueNode: RefObject<ViroNode | null>;
+  redNode: RefObject<ViroNode | null>;
+}) {
+  const { controller, token, context } = binding;
+  return (
+    <ViroNode key={version} rotation={[0, yaw, 0]}>
+      <Viro3DObject
+        source={sources.arena}
+        type="GLB"
+        scale={arenaScale}
+        position={[0, ARENA_LAYOUT.arenaBaseOffset, 0]}
+        onLoadEnd={() => controller.assetLoaded(token, version, 'arena')}
+        onError={() => {
+          if (controller.assetFailed(token, version, 'arena')) context.onError();
+        }}
+      />
+      <FighterModel binding={binding} id="blue" node={blueNode} />
+      <FighterModel binding={binding} id="red" node={redNode} />
+    </ViroNode>
   );
 }

@@ -1,0 +1,53 @@
+# Arena multiplayer, match rounds, and knockout presentation
+
+October 9, 2026. Scoped implementation on `arena-multiplayer`, based on `arena-cpu-opponent`. This implements the user's approved same-table multiplayer plan and supersedes the previous CPU tuning. It does not mark the historical Phase 2 or physical acceptance complete.
+
+## Delivered behavior
+
+The landscape title screen offers 1 Player and 2 Players before camera activation. Both modes support one round, best of three (default), and best of five. Host is Blue, guest is Red, and each sees local controls labeled You. Host scanning, surface selection, Swap sides and Rotate 90° precede Ready. Placement becomes fixed once the match starts. The guest can enter the normalized room code or scan a QR containing only `xr-showcase://arena-fighter?join=CODE&v=1`. The scanner unmounts before AR activation.
+
+Each series stops at one, two or three wins. Draws award no wins and replay. Both players must Ready, Resume or request a rematch in multiplayer. Solo requires one tap. Between rounds the entire knockout presentation finishes, then the score appears for two seconds before the three-second countdown. Attack controls and result panels are absent during the presentation. Uppercut finishes retain the 0.8-second, 18 cm launch followed by Defeat and DefeatedLoop; Victory also finishes before results.
+
+CPU difficulty now targets the requested middle setting: 0.5-second opening delay, 0.32–0.56-second recovery, 0.27-second reaction, and evasion of every fourth observed punch rather than two of three. Uppercuts remain telegraphed opportunities to evade/counter. Slightly closer preferred spacing and slower reactions let ordinary punches connect. Health, damage, stagger, reach and movement rules are identical to the player's. Simulation tests establish vulnerability and passive-player pressure; a human difficulty rating still needs phone feedback.
+
+## Architecture and recovery
+
+- `ArenaController`: blue/red round rules, symmetric simultaneous movement, simultaneous hit resolution; CPU enabled only for solo.
+- `ArenaMatch`: series, shared readiness, countdowns, score, input generations and pause/recovery. The host simulates at 60 Hz. Guest transforms interpolate over 50 ms; damage and outcomes are authoritative.
+- `ArenaPresentation`: each device clocks manifest-duration clips only after the renderer applies their animation command. Pauses stop that clock. Camera recreation reapplies the current clip. Host waits for both presentation acknowledgements; they never apply damage.
+- `ArenaNetwork`: Viro replication owns one host state entity and one guest input entity, 20 Hz state/held-input updates plus immediate phase changes. Sequenced attacks remain pending until acknowledged; session/match/round/epoch checks discard stale input. A third client receives Room full. Socket reconnect can reclaim the same in-memory client seat.
+- `ArenaRoom`: ReactVision room create/lookup, scan-quality guidance, hosted cloud anchor, frame-local arena transform and guest localization. Device-world coordinates are never replicated. Scanning waits for normal native tracking. Retry invalidates old operations and localization sources; native cloud operations are canceled on exit.
+
+Tracking, background and socket loss cancel unfinished attacks and clear input, freeze both fighters and playback, and preserve health/positions/cooldowns/score. Heartbeat silence pauses within one second. Recovery has a 30-second wall-clock limit and requires both Resume plus fresh localization after AR recreation. Timeout or leaving ends the session without a winner. There is no process-restart recovery or host migration.
+
+The shared AR boundary retains its existing defaults and permission/error UI. All native Viro imports remain behind the lazy experience entry. Solo uses provider `none`; shared play uses `reactvision`. All three GLBs remain packaged and byte-identical to the curated repaired assets; Studio playback is not involved.
+
+## Configuration and build
+
+Put `RV_API_KEY` in ignored `.env` for local development and in EAS's development environment. `RV_PROJECT_ID` defaults to the existing Action Figure Fighter project. `app.config.ts` passes the app SDK credentials into the Viro native plugin and the client room/replication configuration. **These are client-visible SDK credentials**, including in the native binary and Expo config; environment storage keeps them out of Git, not out of an installed app. The configured key was verified against the room lookup API without logging its value and saved to EAS development with sensitive visibility.
+
+Expo Camera and QR rendering are installed with SDK-compatible dependencies. A new iOS development client is required for the native camera/plugin configuration. Build with `eas build --platform ios --profile development`, install on provisioned devices, then run this branch with `npm start`. Internet is required for two-player mode.
+
+EAS currently lists one enabled iPhone. Registering the second phone requires `eas device:create` and a fresh local Apple login, then a profile refresh/re-sign or build covering both devices. No two-device provisioning or acceptance is claimed yet.
+
+## Automated validation
+
+MDS Doctor CI runs lint/Prettier, TypeScript, all AR/Qubit/Medical/Arena suites, Expo Doctor and the iOS export. All applicable checks passed; Expo Doctor is 21/21. Arena has 66 tests including the nine packaged-asset checks (hashes, all 23 clips, embedded resources, skin weights/interpolation/LED repairs, axis conversion and triangle count). Match and simulated transport coverage includes both-player controls, symmetric movement, simultaneous lethal hits, 1/3/5-round scoring, draws, rematches, delayed normal/launched presentations, pause/recreation, input coalescing/deduplication, stale generations, capacity, heartbeat timeout and reconnect.
+
+MDS score: 99, zero blocking errors. React Doctor: zero errors, ten advisory warnings (menu/HUD/shared-boundary complexity, existing safe-area ScrollViews, Fast Refresh exports and sequential local data writes). Four intentional skips: no API routes, native Viro animation outside the static animation detector, no web target, and development cloud build separate from CI export. `git diff --check` passes. JavaScript export and tests do not prove native shared-anchor rendering.
+
+## Physical acceptance still required
+
+Record both device models, iOS versions, build IDs and network conditions. On two provisioned iPhones:
+
+1. Validate both fighter clip sets through the solo development tester, including repeated punches, uppercuts, hit, defeat and victory. Assess the new middle CPU difficulty.
+2. Host/join with typed code and QR; test denied scanner permission, invalid/incompatible/inactive code, full room, connection Retry, and immediate Home. Confirm one camera owner.
+3. Scan the same table from opposite sides, compare anchor alignment against a marked point/ruler, swap host devices and starting sides, rotate before Ready, and walk around during combat. Record placement disagreement in centimetres.
+4. Test all match lengths, draws, both Ready/Resume/rematch, simultaneous movement and attack touches, cooldowns, and series stopping early. Verify no result/countdown covers normal or launched defeat on either phone, including delayed delivery.
+5. Obscure tracking, interrupt Wi-Fi, background either app during an attack and during knockout, recover within 30 seconds and exceed the timeout. Confirm localization/Resume gates, no delayed damage and no awarded forfeit win.
+6. Record guest button-to-animation latency (screen recording), sustained frame cadence on both phones for at least two minutes, thermal state/stalls and any optimization needed. Target at least 30 FPS with the unchanged 200,000-triangle arena. The development FPS counter measures Viro loop cadence, not GPU time.
+7. Check both landscape directions, large text, safe areas and Home/portrait navigation.
+
+No native two-phone rendering, shared-placement accuracy, real relay latency or sustained performance measurement has been performed in this workspace. Remote-location play, Android acceptance, matchmaking/accounts/spectators, competitive anti-cheat and Studio authoring remain outside this delivery.
+
+References: [Viro co-location](https://viro-community.readme.io/docs/co-location), [ReactVision setup](https://viro-community.readme.io/docs/reactvision-studio-setup), [Expo 57 Camera](https://docs.expo.dev/versions/v57.0.0/sdk/camera/).

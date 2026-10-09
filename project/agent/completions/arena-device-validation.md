@@ -2,6 +2,8 @@
 
 Prepared October 9, 2026. **Status: initial user gameplay feedback received; structured physical acceptance remains pending.** The user reports that landscape Arena Fighter works and the initial CPU is too easy. This confirms the reported orientation problem was withdrawn; it does not establish measured FPS or every visual/lifecycle check below. Automated checks and the JavaScript export are recorded separately in `phase-2-local-arena.md`.
 
+Follow-up: the user reported the first stronger CPU was much too difficult. The current middle-difficulty tuning, multiplayer native build requirements, rounds, knockout gates and two-phone acceptance checklist are recorded in [arena-multiplayer.md](arena-multiplayer.md). That report supersedes the CPU timing and Studio-credential statements below for the new multiplayer feature; this file retains the earlier solo acceptance history.
+
 ## Build and device
 
 The existing installed development client must be rebuilt for the new native orientation configuration. From `xr-showcase-phase-2-arena`, the configured physical-device profile is `development`: `eas build --platform ios --profile development`. The pull request and EAS build record track cloud build status. Install the resulting client on the registered iPhone, then start this worktree's Metro server with `npm start`. Expo Go does not provide this Viro runtime.
