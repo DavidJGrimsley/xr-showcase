@@ -19,12 +19,13 @@ import {
   ARROW_TRIANGLES,
   ARROW_VERTICES,
   BASIS_LABELS,
-  BLOCH_CENTER,
+  blochSpherePosition,
   BLOCH_RADIUS,
   ringPoints,
   type Point3,
 } from './qubit-geometry';
 import type { QubitRoundController, QubitSnapshot } from './qubit-round-controller';
+import { canManipulateQubit } from './qubit-round-controller';
 import { qubitMotion } from './qubit-motion';
 
 ViroMaterials.createMaterials({
@@ -153,11 +154,27 @@ function BlochSphere({ context, controller }: QubitSceneProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const reduceMotion = useQubitReducedMotion(controller, context, state);
   const motion = qubitMotion(state, reduceMotion);
+  const scope = {
+    sessionId: context.sessionId,
+    placementRevision: state.placementRevision,
+    roundId: state.roundId,
+  };
+  const interactive = canManipulateQubit(state);
   return (
     <ViroNode
-      position={[0, BLOCH_CENTER[1] * state.sphereScale, 0]}
+      position={blochSpherePosition(state.sphereScale, state.sphereHeight)}
+      rotation={[0, state.sphereYaw, 0]}
       scale={[state.sphereScale, state.sphereScale, state.sphereScale]}
-      onPinch={(gesture, factor) => controller.pinchSphere(context.sessionId, gesture, factor)}>
+      onPinch={
+        interactive
+          ? (gesture, factor) => controller.pinchSphere(scope, gesture, factor)
+          : undefined
+      }
+      onRotate={
+        interactive
+          ? (gesture, degrees) => controller.rotateSphere(scope, gesture, degrees)
+          : undefined
+      }>
       <ViroSphere
         radius={BLOCH_RADIUS}
         widthSegmentCount={64}
@@ -234,8 +251,13 @@ export default function QubitScene({
   sceneNavigator: { viroAppProps: QubitSceneProps };
 }) {
   const { context, controller } = sceneNavigator.viroAppProps;
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const selector = useRef<ViroARPlaneSelector>(null);
   const selected = useRef<string | null>(null);
+  useEffect(() => {
+    selected.current = null;
+    selector.current?.reset();
+  }, [state.placementRevision]);
   return (
     <ViroARScene
       anchorDetectionTypes={['PlanesHorizontal']}
@@ -263,19 +285,39 @@ export default function QubitScene({
         alignment="Horizontal"
         minWidth={0.3}
         minHeight={0.3}
+        hideOverlayOnSelection
+        disableClickSelection={!state.tracking || state.placed}
         onPlaneSelected={(plane) => {
-          selected.current = plane.anchorId;
-          controller.setPlaced(context.sessionId, true);
-          context.onInstruction('');
+          const current = controller.getSnapshot();
+          if (
+            current.sessionId !== context.sessionId ||
+            current.placementRevision !== state.placementRevision ||
+            !current.tracking ||
+            current.placed
+          ) {
+            if (!current.placed) selector.current?.reset();
+            return;
+          }
+          controller.setPlaced(context.sessionId, true, state.placementRevision);
+          if (controller.getSnapshot().placed) {
+            selected.current = plane.anchorId;
+            context.onInstruction('');
+          } else selector.current?.reset();
         }}
         onPlaneRemoved={(id) => {
+          const current = controller.getSnapshot();
+          if (
+            current.sessionId !== context.sessionId ||
+            current.placementRevision !== state.placementRevision
+          )
+            return;
           if (selected.current === id) {
             selected.current = null;
-            controller.setPlaced(context.sessionId, false);
+            controller.setPlaced(context.sessionId, false, state.placementRevision);
             context.onInstruction(PLACEMENT_CAPTION);
           }
         }}>
-        <BlochSphere context={context} controller={controller} />
+        {state.placed ? <BlochSphere context={context} controller={controller} /> : null}
       </ViroARPlaneSelector>
     </ViroARScene>
   );
