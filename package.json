@@ -22,8 +22,9 @@
     "expo-doctor": "npx expo-doctor",
     "post-create-check": "npx expo install --fix && npx expo-doctor",
     "ci:verify": "npx mds doctor --ci",
-    "test": "npm run lint && npm run typecheck && npm run test:ar",
+    "test": "npm run lint && npm run typecheck && npm run test:ar && npm run test:arena",
     "test:ar": "node --experimental-strip-types --test tests/ar-session.test.cjs",
+    "test:arena": "node --experimental-strip-types --test tests/arena-fighter.test.cjs tests/arena-assets.test.cjs",
     "build:ios": "expo export --platform ios",
     "react:check": "react-doctor -y --no-telemetry",
     "build": "npm run build:ios"

@@ -1,0 +1,500 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "file": "Mike_Player1_Blue_AR.glb",
+      "bytes": 17825316,
+      "sha256": "906e8fa6902683cebc3850806353be117e92db8ab4b8118f5e638ee112b4696d"
+    },
+    {
+      "file": "Mike_Player2_RedOrange_AR.glb",
+      "bytes": 16934564,
+      "sha256": "3dcbd37716c377d2314ab40c8f4542fc0d48905189f288ae5e7e455757e47948"
+    }
+  ],
+  "clips": [
+    {
+      "name": "Idle",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_Idle",
+      "durationSeconds": 1.5,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "IdleAggro",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_IdleAggro",
+      "durationSeconds": 1.5,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "WalkForward",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_Walk",
+      "durationSeconds": 1.4666666984558105,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "WalkBackward",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_Walk_Back",
+      "durationSeconds": 1.2999999523162842,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "StrafeLeft",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_WalkLeft",
+      "durationSeconds": 1.4666666984558105,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "StrafeRight",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_WalkRight",
+      "durationSeconds": 1.4666666984558105,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "Run",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_Run",
+      "durationSeconds": 0.8999999761581421,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "RunFast",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_Run_Faster",
+      "durationSeconds": 0.7666666507720947,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "PunchR",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_PunchR",
+      "durationSeconds": 1.5,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "PunchL",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_PunchL",
+      "durationSeconds": 1.5,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "UppercutL",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_UppercutL",
+      "durationSeconds": 1.5,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "UppercutR",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_UppercutR",
+      "durationSeconds": 1.5,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "HitFront",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_HitRegisterFront",
+      "durationSeconds": 0.5666666030883789,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "HitBack",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_HitRegisterBack",
+      "durationSeconds": 0.5666666030883789,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "HitLeft",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_HitRegisterL",
+      "durationSeconds": 0.5666666030883789,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "HitRight",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_HitRegisterR",
+      "durationSeconds": 0.5666666030883789,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "Defeat",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_HitRegisterFront_Death",
+      "durationSeconds": 0.8999999761581421,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "DefeatedLoop",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_DeathState",
+      "durationSeconds": 0.8999999761581421,
+      "loopRecommended": true,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "Victory",
+      "sourceAsset": "/Game/RadicalMike/Animations/Anim_ZMIKE_CalibrationStretches",
+      "durationSeconds": 2.299999952316284,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "Combo_PunchR",
+      "sourceAsset": "/Game/Quasicombo/Mike/Sequences/AN_Mike_PunchR",
+      "durationSeconds": 0.6499999761581421,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "Combo_UppercutL",
+      "sourceAsset": "/Game/Quasicombo/Mike/Sequences/AN_Mike_UppercutL",
+      "durationSeconds": 0.8999999761581421,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "Combo_PunchL",
+      "sourceAsset": "/Game/Quasicombo/Mike/Sequences/AN_Mike_PunchL",
+      "durationSeconds": 0.6499999761581421,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "Combo_UppercutR",
+      "sourceAsset": "/Game/Quasicombo/Mike/Sequences/AN_Mike_UppercutR",
+      "durationSeconds": 0.8999999761581421,
+      "loopRecommended": false,
+      "rootTranslationRangeMeters": {
+        "SK_ZMike": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "root": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "combo": [
+    {
+      "step": 1,
+      "clip": "Combo_PunchR",
+      "hand": "right",
+      "durationSeconds": 0.6499999761581421,
+      "hitCheckSeconds": 0.30000001192092896,
+      "comboCheckSeconds": 0.5199999809265137,
+      "sourceMontage": "/Game/Quasicombo/Mike/AM_Mike_Combo1.AM_Mike_Combo1"
+    },
+    {
+      "step": 2,
+      "clip": "Combo_UppercutL",
+      "hand": "left",
+      "durationSeconds": 0.8999999761581421,
+      "hitCheckSeconds": 0.47999998927116394,
+      "comboCheckSeconds": 0.7799999713897705,
+      "sourceMontage": "/Game/Quasicombo/Mike/AM_Mike_Combo2.AM_Mike_Combo2"
+    },
+    {
+      "step": 3,
+      "clip": "Combo_PunchR",
+      "hand": "right",
+      "durationSeconds": 0.6499999761581421,
+      "hitCheckSeconds": 0.30000001192092896,
+      "comboCheckSeconds": 0.5199999809265137,
+      "sourceMontage": "/Game/Quasicombo/Mike/AM_Mike_Combo3.AM_Mike_Combo3"
+    },
+    {
+      "step": 4,
+      "clip": "Combo_PunchL",
+      "hand": "left",
+      "durationSeconds": 0.6499999761581421,
+      "hitCheckSeconds": 0.30000001192092896,
+      "comboCheckSeconds": 0.5199999809265137,
+      "sourceMontage": "/Game/Quasicombo/Mike/AM_Mike_Combo4.AM_Mike_Combo4"
+    },
+    {
+      "step": 5,
+      "clip": "Combo_UppercutR",
+      "hand": "right",
+      "durationSeconds": 0.8999999761581421,
+      "hitCheckSeconds": 0.47999998927116394,
+      "comboCheckSeconds": 0.7799999713897705,
+      "sourceMontage": "/Game/Quasicombo/Mike/AM_Mike_Combo5.AM_Mike_Combo5"
+    }
+  ],
+  "victoryClip": "Victory",
+  "combatIdleClip": "IdleAggro",
+  "movement": {
+    "advanceClip": "WalkForward",
+    "retreatClip": "WalkBackward",
+    "dashClip": "Run",
+    "positionControlledByApp": true,
+    "observedRootTranslationRangeMeters": 0
+  },
+  "phoneOrientation": {
+    "fightScreen": "landscape",
+    "rotateBeforeArenaPlacement": true,
+    "controls": {
+      "left": "advance/retreat",
+      "right": "attack"
+    },
+    "implementationStatus": "planned"
+  },
+  "unrealNotifiesRequireAppImplementation": true,
+  "existingGeometrySkinMaterialsAndImagePayloadsPreservedInBlue": true,
+  "rawExportCount": 23,
+  "nativePhoneValidationOfNewPack": "pending"
+}

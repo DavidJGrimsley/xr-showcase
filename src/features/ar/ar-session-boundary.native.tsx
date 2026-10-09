@@ -56,12 +56,16 @@ function SceneRenderer({
   );
 }
 
-export default function ARSessionBoundary({ renderNavigator }: ARSessionBoundaryProps) {
+export default function ARSessionBoundary({
+  renderNavigator,
+  renderActiveOverlay,
+  enabled: featureEnabled = true,
+}: ARSessionBoundaryProps) {
   const { activeColors: colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const appState = useSyncExternalStore(subscribeAppState, () => AppState.currentState);
-  const enabled = focused && appState === 'active';
+  const enabled = featureEnabled && focused && appState === 'active';
   const [controller] = useState(() => new ARSessionController(nativeARRuntime));
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [settingsError, setSettingsError] = useState(false);
@@ -136,24 +140,33 @@ export default function ARSessionBoundary({ renderNavigator }: ARSessionBoundary
           <SceneRenderer context={context} renderNavigator={renderNavigator} />
         </SceneErrorBoundary>
       ) : null}
-      <View
-        pointerEvents="box-none"
-        className={mounting ? 'absolute inset-0 justify-end' : 'flex-1'}>
-        <ScrollView
-          className={mounting ? 'max-h-[55%]' : 'flex-1'}
-          style={mounting ? { flexGrow: 0 } : undefined}
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerClassName="grow justify-center px-5 pt-5"
-          contentContainerStyle={{
-            paddingBottom: Math.max(20, insets.bottom),
-            paddingLeft: Math.max(20, insets.left),
-            paddingRight: Math.max(20, insets.right),
-          }}>
-          <View className="items-center">
-            <View className="w-full max-w-[720px]">{panel}</View>
-          </View>
-        </ScrollView>
-      </View>
+      {mounting && renderActiveOverlay ? (
+        renderActiveOverlay({
+          status: snapshot.status as 'starting' | 'running',
+          instruction: snapshot.instruction,
+          home,
+          retry: controller.retry,
+        })
+      ) : (
+        <View
+          pointerEvents="box-none"
+          className={mounting ? 'absolute inset-0 justify-end' : 'flex-1'}>
+          <ScrollView
+            className={mounting ? 'max-h-[55%]' : 'flex-1'}
+            style={mounting ? { flexGrow: 0 } : undefined}
+            contentInsetAdjustmentBehavior="automatic"
+            contentContainerClassName="grow justify-center px-5 pt-5"
+            contentContainerStyle={{
+              paddingBottom: Math.max(20, insets.bottom),
+              paddingLeft: Math.max(20, insets.left),
+              paddingRight: Math.max(20, insets.right),
+            }}>
+            <View className="items-center">
+              <View className="w-full max-w-[720px]">{panel}</View>
+            </View>
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
