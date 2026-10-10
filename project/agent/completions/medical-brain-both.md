@@ -1,4 +1,8 @@
-# Medical brain and Both groundwork — 2026-10-09
+# Medical brain and Both delivery — 2026-10-09
+
+Current delivery: actual supplied brain and half-skull integrated; Skull, Brain, Half Skull, and Both selections enabled; fresh-entry default is Both. Validated implementation HEAD is `559be692209fdc736ad127cb6933db1c6723c4ee`. All 160 tests, Expo Doctor, iOS export, and MDS CI checks passed with no blocking errors. Physical AR acceptance remains pending. See the [current integration report](medical-brain-both-integration.md) for source hashes, alignment decisions, validation commands, and remaining acceptance.
+
+## Historical groundwork record (superseded by the integration above)
 
 Groundwork is complete at the owner's revised scope: use the existing skull file for all three asset slots, then supply the actual brain and half-skull afterward. Final MRI brain/half-skull integration and physical acceptance remain pending. The canonical task checkbox remains unchecked. The historical handoff is unchanged.
 
