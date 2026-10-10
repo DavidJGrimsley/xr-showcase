@@ -97,7 +97,7 @@ function LayoutInner() {
                   options={{
                     title: experience.title,
                     ...(experience.route === 'arena-fighter'
-                      ? { orientation: 'landscape' as const, headerShown: false }
+                      ? { orientation: 'default' as const, headerShown: false }
                       : {}),
                     headerRight: () => (
                       <HeaderAction

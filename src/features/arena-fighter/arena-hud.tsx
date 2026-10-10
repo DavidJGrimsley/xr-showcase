@@ -19,6 +19,8 @@ import { ArenaMatch, type MatchSnapshot } from './arena-match';
 import type { ArenaRoom } from './arena-room.native';
 import ArenaRoomPanel from './arena-room-panel.native';
 import { updateHeldTouches } from './arena-touch-input';
+import ArenaTransformControls from './arena-transform-controls.native';
+import type { ArenaTransformScope } from './arena-transform';
 
 function HUDButton(props: ComponentProps<typeof Button>) {
   const { activeColors: colors } = useAppTheme();
@@ -119,11 +121,15 @@ function SetupPanel({
   controls,
   snapshot,
   buttonStyle,
+  onTransform,
+  onRestart,
 }: {
   controller: ArenaMatch;
   controls: ARActiveOverlayContext;
   snapshot: MatchSnapshot;
   buttonStyle: ComponentProps<typeof Button>['style'];
+  onTransform: () => void;
+  onRestart: () => void;
 }) {
   const { activeColors: colors } = useAppTheme();
   const [tester, setTester] = useState(false);
@@ -161,7 +167,7 @@ function SetupPanel({
               {snapshot.mode !== 'guest' && (
                 <HUDButton
                   label="Swap sides"
-                  disabled={Boolean(snapshot.preview)}
+                  disabled={!snapshot.canTransform}
                   onPress={controller.swapSides}
                   variant="outlined"
                   style={buttonStyle}
@@ -170,7 +176,7 @@ function SetupPanel({
               {snapshot.mode !== 'guest' && (
                 <HUDButton
                   label="Rotate 90°"
-                  disabled={Boolean(snapshot.preview)}
+                  disabled={!snapshot.canTransform}
                   onPress={controller.rotateArena}
                   variant="outlined"
                   style={buttonStyle}
@@ -194,9 +200,18 @@ function SetupPanel({
           ) : null}
           {snapshot.mode === 'solo' && (
             <HUDButton
-              label="Replace arena"
+              label="Restart AR"
               variant="outlined"
-              onPress={controls.restartAR}
+              onPress={onRestart}
+              style={buttonStyle}
+            />
+          )}
+          {snapshot.mode === 'solo' && setup && snapshot.placed && (
+            <HUDButton
+              label="Transform"
+              variant="outlined"
+              disabled={!snapshot.canTransform}
+              onPress={onTransform}
               style={buttonStyle}
             />
           )}
@@ -274,6 +289,7 @@ export default function ArenaHUD({
   room?: ArenaRoom;
 }) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const [transformScope, setTransformScope] = useState<ArenaTransformScope | null>(null);
   const { activeColors: colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
@@ -286,6 +302,25 @@ export default function ArenaHUD({
     controller.dispose();
     controls.home();
   };
+  const openTransform = () => {
+    if (!snapshot.canTransform || snapshot.sessionToken === null) return;
+    controller.invalidatePlacementReady();
+    setTransformScope({
+      sessionToken: snapshot.sessionToken,
+      placementVersion: snapshot.placementVersion,
+    });
+  };
+  const restart = () => {
+    if (room && !room.prepareRestart()) return;
+    if (!room) controller.resetSetupTransform();
+    setTransformScope(null);
+    controls.restartAR();
+  };
+  const transforming =
+    !!transformScope &&
+    transformScope.sessionToken === snapshot.sessionToken &&
+    transformScope.placementVersion === snapshot.placementVersion &&
+    snapshot.stage === 'lobby';
   const movementDisabled = snapshot.phase !== 'fighting' || !snapshot.animationsRunning;
   const preparingSharedArena =
     !!room && (!snapshot.placed || !snapshot.sharedPlacement) && snapshot.stage === 'lobby';
@@ -348,7 +383,7 @@ export default function ArenaHUD({
             {snapshot.stage === 'finished' ? ' · Match complete' : ''}
           </Text>
         ) : null}
-        {snapshot.stage === 'countdown' && (
+        {snapshot.stage === 'countdown' && !snapshot.orientationPaused && (
           <Text
             accessibilityLiveRegion="polite"
             style={{ color: colors.text, textAlign: 'center', fontSize: 26 }}>
@@ -366,20 +401,59 @@ export default function ArenaHUD({
       </View>
 
       <View pointerEvents="box-none" className="min-h-0 flex-1 flex-row justify-end gap-3">
-        {!preparingSharedArena && (
-          <SetupPanel
-            controller={controller}
-            controls={controls}
-            snapshot={snapshot}
-            buttonStyle={buttonStyle}
-          />
-        )}
-        {room && ['lobby', 'paused', 'abandoned'].includes(snapshot.stage) && (
-          <ArenaRoomPanel room={room} controller={controller} />
+        {transforming ? (
+          <ScrollView
+            className="my-2 w-full max-w-[380px] rounded-xl"
+            style={{ backgroundColor: colors.surface, flexGrow: 0 }}
+            contentContainerClassName="gap-3 p-3">
+            <Text className="font-semibold text-lg" style={{ color: colors.text }}>
+              Transform arena
+            </Text>
+            <ArenaTransformControls
+              controller={controller}
+              state={snapshot}
+              scope={transformScope}
+              onReposition={() => {
+                if (room) room.reposition();
+                else controller.repositionSolo(transformScope);
+              }}
+              onDone={() => setTransformScope(null)}
+            />
+          </ScrollView>
+        ) : (
+          <>
+            {!preparingSharedArena && (
+              <SetupPanel
+                controller={controller}
+                controls={controls}
+                snapshot={snapshot}
+                buttonStyle={buttonStyle}
+                onTransform={openTransform}
+                onRestart={restart}
+              />
+            )}
+            {room && ['lobby', 'paused', 'abandoned'].includes(snapshot.stage) && (
+              <ArenaRoomPanel
+                room={room}
+                controller={controller}
+                onTransform={openTransform}
+                onRestart={restart}
+              />
+            )}
+          </>
         )}
       </View>
 
-      {snapshot.stage === 'fighting' && (
+      {snapshot.orientationPaused && !snapshot.localOrientationPaused && (
+        <Text
+          accessibilityLiveRegion="polite"
+          className="self-center rounded-xl p-3"
+          style={{ color: colors.text, backgroundColor: colors.surface }}>
+          Waiting for your opponent to return to landscape.
+        </Text>
+      )}
+
+      {snapshot.stage === 'fighting' && !snapshot.orientationPaused && (
         <View pointerEvents="box-none" className="flex-row items-end justify-between gap-3">
           <View className={fontScale > 1.3 ? 'flex-col gap-2' : 'flex-row gap-2'}>
             {/* Raw touch events keep each finger independent; claiming one RN responder cancels the other hold. */}

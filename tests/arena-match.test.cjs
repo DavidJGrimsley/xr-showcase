@@ -597,13 +597,182 @@ test('temporary OS inactivity freezes combat and requires stable tracking plus b
 test('a relay failure is not misreported as an expired room after thirty seconds', () => {
   let time = 0;
   const guest = new ArenaMatch('guest', 3, () => time);
-  const relay = fakeRelay(); const client = relay.port();
-  const net = new ArenaNetwork(guest, client, { roomId: 'test', apiKey: 'test', projectId: 'test' }, 'ABC234', () => time);
-  client.state = 'failed'; client.error = 'replication socket gave up reconnecting'; client.emit();
-  time = 31000; net.pump();
+  const relay = fakeRelay();
+  const client = relay.port();
+  const net = new ArenaNetwork(
+    guest,
+    client,
+    { roomId: 'test', apiKey: 'test', projectId: 'test' },
+    'ABC234',
+    () => time
+  );
+  client.state = 'failed';
+  client.error = 'replication socket gave up reconnecting';
+  client.emit();
+  time = 31000;
+  net.pump();
   assert.match(guest.getSnapshot().networkMessage, /Can’t reach the multiplayer server/);
   assert.doesNotMatch(guest.getSnapshot().networkMessage, /expired|socket/);
-  client.state = 'connecting'; client.emit();
+  client.state = 'connecting';
+  client.emit();
   assert.equal(guest.getSnapshot().networkMessage, 'Connecting to the multiplayer server…');
-  net.close(); guest.dispose();
+  net.close();
+  guest.dispose();
+});
+
+test('portrait freezes an accepted uppercut and its cooldown without replacing the session or cancelling its hit', () => {
+  const h = harness();
+  h.match.ready();
+  h.tick(3.1);
+  h.match.attack('uppercut');
+  h.tick(0.2);
+  const before = h.snapshot(),
+    position = h.match.getTransform('blue');
+  h.match.setMovement('advance', true);
+  h.match.setLandscape(false);
+  h.tick(40);
+  assert.equal(h.snapshot().stage, 'fighting');
+  assert.equal(h.snapshot().sessionToken, before.sessionToken);
+  assert.equal(h.snapshot().placementVersion, before.placementVersion);
+  assert.equal(h.snapshot().blue.animationId, before.blue.animationId);
+  assert.equal(h.snapshot().blue.uppercutRemaining, before.blue.uppercutRemaining);
+  assert.equal(h.snapshot().red.health, 100);
+  assert.deepEqual(h.match.getTransform('blue'), position);
+  assert.equal(h.snapshot().animationsRunning, false);
+  h.match.setLandscape(true);
+  h.tick(0.4);
+  assert.equal(h.snapshot().orientationPaused, true);
+  h.tick(0.1);
+  assert.equal(h.snapshot().orientationPaused, false);
+  h.tick(0.3);
+  assert.equal(h.snapshot().red.health, 85);
+  h.tick(1);
+  assert.deepEqual(h.match.getTransform('blue'), position);
+});
+
+test('portrait preserves the partially elapsed first countdown instead of restarting it', () => {
+  const h = harness();
+  h.match.ready();
+  h.tick(1);
+  const remaining = h.snapshot().countdown;
+  h.match.setLandscape(false);
+  h.tick(40);
+  assert.equal(h.snapshot().stage, 'countdown');
+  assert.equal(h.snapshot().countdown, remaining);
+  h.match.setLandscape(true);
+  h.tick(0.5);
+  assert.equal(h.snapshot().countdown, remaining);
+  h.tick(2.1);
+  assert.equal(h.snapshot().stage, 'fighting');
+});
+
+for (const attack of ['punch', 'uppercut']) {
+  test(`both devices freeze ${attack} knockout playback during a long portrait hold, then finish before results`, () => {
+    const p = pair({ health: attack === 'punch' ? 10 : 15 });
+    p.host.match.attack(attack);
+    p.step(attack === 'punch' ? 0.4 : 0.6);
+    assert.equal(p.host.snapshot().stage, 'presenting');
+    p.guest.match.setLandscape(false);
+    p.exchange();
+    const lift = p.host.match.getTransform('red').lift;
+    p.step(40);
+    assert.equal(p.host.snapshot().stage, 'presenting');
+    assert.equal(p.guest.snapshot().stage, 'presenting');
+    assert.equal(p.host.snapshot().outcome, null);
+    assert.equal(p.guest.snapshot().outcome, null);
+    assert.equal(p.host.match.getTransform('red').lift, lift);
+    assert.equal(p.host.snapshot().animationsRunning, false);
+    p.guest.match.setLandscape(true);
+    p.step(0.4);
+    assert.equal(p.host.snapshot().outcome, null);
+    p.step(0.3);
+    assert.equal(p.host.snapshot().outcome, null);
+    p.step(3);
+    assert.equal(p.host.snapshot().stage, 'finished');
+    assert.equal(p.guest.snapshot().stage, 'finished');
+  });
+}
+
+test('host portrait holds both humans; landscape recovery waits for both phones without new Ready taps', () => {
+  const p = pair();
+  p.host.match.setLandscape(false);
+  p.guest.match.setLandscape(false);
+  p.step(35);
+  assert.equal(p.host.snapshot().stage, 'fighting');
+  p.host.match.setLandscape(true);
+  p.step(1);
+  assert.equal(p.host.snapshot().orientationPaused, true);
+  p.guest.match.setLandscape(true);
+  p.step(0.6);
+  assert.equal(p.host.snapshot().orientationPaused, false);
+  assert.equal(p.guest.snapshot().orientationPaused, false);
+  assert.equal(p.host.snapshot().animationsRunning, true);
+});
+
+test('genuine network loss during portrait still uses the recovery timeout', () => {
+  const p = pair();
+  p.guest.match.setLandscape(false);
+  p.step(0.1);
+  p.unlink();
+  p.step(1.1);
+  assert.equal(p.host.snapshot().stage, 'paused');
+  p.step(30.1);
+  assert.equal(p.host.snapshot().stage, 'abandoned');
+  assert.equal(p.guest.snapshot().stage, 'abandoned');
+});
+
+test('transforms clamp values, preserve fighter-local distances, reject stale scopes and lock at the first countdown', () => {
+  const h = harness();
+  const scope = { sessionToken: h.token(), placementVersion: h.snapshot().placementVersion };
+  const local = h.match.getTransform('blue');
+  assert.equal(h.snapshot().canTransform, true);
+  h.match.setScale(scope, 7);
+  h.match.setYaw(scope, 450);
+  h.match.setHeight(scope, 10);
+  assert.deepEqual(h.snapshot().arenaTransform, { scale: 3, yaw: 90, height: 1.524 });
+  assert.deepEqual(h.match.getTransform('blue'), local);
+  h.match.setScale(scope, NaN);
+  h.match.setHeight({ ...scope, sessionToken: scope.sessionToken + 1 }, 0);
+  assert.equal(h.snapshot().arenaTransform.height, 1.524);
+  h.match.pinch(scope, 1, 1);
+  h.match.pinch(scope, 2, 0.2);
+  h.match.pinch(scope, 3, 0.2);
+  assert.ok(Math.abs(h.snapshot().arenaTransform.scale - 0.6) < 1e-7);
+  h.match.rotate(scope, 1, 0);
+  h.match.rotate(scope, 3, 90);
+  assert.equal(h.snapshot().arenaTransform.yaw, 0);
+  h.match.ready();
+  h.tick(0.1);
+  assert.equal(h.snapshot().canTransform, false);
+  const fixed = h.snapshot().arenaTransform;
+  h.match.setScale(scope, 1);
+  assert.deepEqual(h.snapshot().arenaTransform, fixed);
+});
+
+test('guest cannot edit shared transforms and host changes invalidate both Ready confirmations', () => {
+  const host = harness('host'),
+    guest = harness('guest');
+  host.match.setNetwork(true);
+  guest.match.setNetwork(true);
+  guest.match.receivePacket(host.match.packet());
+  host.match.receiveInput(guest.match.input());
+  host.match.ready();
+  guest.match.ready();
+  host.match.receiveInput(guest.match.input());
+  const scope = { sessionToken: host.token(), placementVersion: host.snapshot().placementVersion };
+  host.match.setScale(scope, 1.5);
+  guest.match.receivePacket(host.match.packet());
+  assert.equal(host.snapshot().localReady, false);
+  assert.equal(host.snapshot().peerReady, false);
+  assert.equal(guest.snapshot().localReady, false);
+  assert.equal(guest.snapshot().arenaTransform.scale, 1.5);
+  guest.match.setScale(
+    { sessionToken: guest.token(), placementVersion: guest.snapshot().placementVersion },
+    2
+  );
+  assert.equal(guest.snapshot().arenaTransform.scale, 1.5);
+  host.match.setTransformLocked(true);
+  host.match.setScale(scope, 2);
+  assert.equal(host.snapshot().canTransform, false);
+  assert.equal(host.snapshot().arenaTransform.scale, 1.5);
 });

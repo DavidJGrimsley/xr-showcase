@@ -163,6 +163,7 @@ export class ArenaController {
 
   getSnapshot = () => this.snapshot;
   isReady = () => this.prerequisites();
+  hasNormalTracking = () => this.tracking;
   pauseRound = () => {
     this.pause();
     this.publish();
@@ -219,7 +220,7 @@ export class ArenaController {
     this.landscape = landscape;
     if (!landscape) {
       this.stableTime = 0;
-      this.pause();
+      this.clearHeldMovement();
     }
     this.publish();
   };
@@ -228,7 +229,7 @@ export class ArenaController {
     if (!this.isCurrent(token) || this.tracking === normal) return;
     this.tracking = normal;
     this.stableTime = 0;
-    if (!normal) this.pause();
+    if (!normal && this.landscape) this.pause();
     this.publish();
   };
   resetTrackingStability = () => {
@@ -368,11 +369,11 @@ export class ArenaController {
     }
   };
 
-  tick = (token: number, dt: number) => {
+  tick = (token: number, dt: number, simulate = true) => {
     if (!this.isCurrent(token) || !Number.isFinite(dt) || dt <= 0 || dt > 0.1) return;
     if (this.tracking && this.landscape)
       this.stableTime = Math.min(this.rules.stableTracking, this.stableTime + dt);
-    if (!this.prerequisites()) {
+    if (!this.prerequisites() || !simulate) {
       this.publish();
       return;
     }
@@ -485,11 +486,14 @@ export class ArenaController {
       fighter.elapsed = 0;
     }
   }
-  private clearInput() {
+  clearHeldMovement = () => {
     this.held = {
       blue: { advance: false, retreat: false },
       red: { advance: false, retreat: false },
     };
+  };
+  private clearInput() {
+    this.clearHeldMovement();
     ids.forEach((id) => {
       this.fighters[id].buffered = null;
     });

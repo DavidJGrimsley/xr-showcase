@@ -26,6 +26,7 @@ export class ArenaNetwork {
   private claimed = false;
   private claiming = false;
   private lastStage = '';
+  private lastOrientation = false;
   private lastPeer = -1;
   private opened: number;
   private closed = false;
@@ -57,7 +58,12 @@ export class ArenaNetwork {
     this.seat = match.mode === 'host' ? 'host' : 'guest';
     this.stop = client.subscribe(() => this.read());
     this.stopMatch = match.subscribe(() => {
-      if (match.getSnapshot().stage === this.lastStage || this.phaseWriteQueued) return;
+      if (
+        (match.getSnapshot().stage === this.lastStage &&
+          match.getSnapshot().orientationPaused === this.lastOrientation) ||
+        this.phaseWriteQueued
+      )
+        return;
       this.phaseWriteQueued = true;
       // Flush the complete transition after the controller finishes its current tick.
       queueMicrotask(() => {
@@ -134,9 +140,21 @@ export class ArenaNetwork {
         this.match.setNetwork(false, 'Waiting for the host…', this.code);
         return;
       }
-    } else if (validInput(other?.fields.input) && other.fields.input.serial > this.lastPeer) {
-      this.lastPeer = other.fields.input.serial;
-      this.match.receiveInput(other.fields.input);
+    } else {
+      const input = other?.fields.input;
+      if (
+        input &&
+        typeof input === 'object' &&
+        'protocol' in input &&
+        input.protocol !== ARENA_PROTOCOL
+      ) {
+        this.fail('This room uses a different app version. Update both phones.');
+        return;
+      }
+      if (validInput(input) && input.serial > this.lastPeer) {
+        this.lastPeer = input.serial;
+        this.match.receiveInput(input);
+      }
     }
     this.match.setNetwork(true, '', this.code);
   }
@@ -155,9 +173,16 @@ export class ArenaNetwork {
     }
     if (!this.claimed || this.client.state !== 'synced') return;
     const stage = this.match.getSnapshot().stage;
-    if (this.now() - this.lastWrite < 50 && stage === this.lastStage) return;
+    const orientation = this.match.getSnapshot().orientationPaused;
+    if (
+      this.now() - this.lastWrite < 50 &&
+      stage === this.lastStage &&
+      orientation === this.lastOrientation
+    )
+      return;
     this.lastWrite = this.now();
     this.lastStage = stage;
+    this.lastOrientation = orientation;
     this.client.set(
       this.seat,
       this.seat === 'host'

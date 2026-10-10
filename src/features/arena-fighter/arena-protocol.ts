@@ -6,8 +6,9 @@ import {
   type AttackKind,
 } from './arena-controller.ts';
 import type { Knockout } from './arena-presentation.ts';
+import { validArenaTransform, type ArenaTransform } from './arena-transform.ts';
 
-export const ARENA_PROTOCOL = 1;
+export const ARENA_PROTOCOL = 2;
 export type ArenaMode = 'solo' | 'host' | 'guest';
 export type MatchLength = 1 | 3 | 5;
 export type MatchPhase =
@@ -44,6 +45,7 @@ export interface PeerInput {
   capable: boolean;
   pauseReason: string | null;
   paused: boolean;
+  orientationPaused: boolean;
   ready: boolean;
   presentation: string | null;
   leaving: boolean;
@@ -65,6 +67,8 @@ export interface ArenaPacket {
   hostCapable: boolean;
   hostReady: boolean;
   placement: ArenaPlacement | null;
+  arenaTransform: ArenaTransform;
+  orientationPaused: boolean;
 }
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -92,7 +96,7 @@ export function validInput(value: unknown): value is PeerInput {
   )
     return false;
   if (
-    !['advance', 'retreat', 'capable', 'paused', 'ready', 'leaving'].every(
+    !['advance', 'retreat', 'capable', 'paused', 'orientationPaused', 'ready', 'leaving'].every(
       (key) => typeof value[key] === 'boolean'
     )
   )
@@ -141,6 +145,8 @@ export function validPacket(value: unknown): value is ArenaPacket {
   if (
     typeof value.hostCapable !== 'boolean' ||
     typeof value.hostReady !== 'boolean' ||
+    typeof value.orientationPaused !== 'boolean' ||
+    !validArenaTransform(value.arenaTransform) ||
     !integer(value.round.roundId) ||
     !Number.isFinite(value.round.arenaYaw)
   )
@@ -181,14 +187,14 @@ export function validPacket(value: unknown): value is ArenaPacket {
 }
 
 export function joinLink(code: string) {
-  return 'xr-showcase://arena-fighter?join=' + encodeURIComponent(code) + '&v=1';
+  return 'xr-showcase://arena-fighter?join=' + encodeURIComponent(code) + '&v=' + ARENA_PROTOCOL;
 }
 export function parseJoinLink(value: string): string | null {
   try {
     const url = new URL(value);
     return url.protocol === 'xr-showcase:' &&
       url.hostname === 'arena-fighter' &&
-      url.searchParams.get('v') === '1'
+      url.searchParams.get('v') === String(ARENA_PROTOCOL)
       ? url.searchParams.get('join')
       : null;
   } catch {

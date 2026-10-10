@@ -1,20 +1,15 @@
 import { Button, Host, Picker } from '@expo/ui';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import {
-  ActivityIndicator,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/provider';
 import { ArenaMatch } from './arena-match';
 import { arenaConfiguration, type ArenaConfiguration } from './arena-configuration';
 import { checkArenaConnection, RELAY_UNREACHABLE } from './arena-connection';
-import type { ArenaMode, MatchLength } from './arena-protocol';
+import { ARENA_PROTOCOL, type ArenaMode, type MatchLength } from './arena-protocol';
+import ArenaOrientationGate, { useArenaLandscape } from './arena-orientation-gate.native';
+import { ArenaJoinIntent } from './arena-join-intent';
 
 const ArenaExperience = lazy(() => import('./arena-experience.native'));
 const ArenaQRScanner = lazy(() => import('./arena-qr-scanner.native'));
@@ -36,6 +31,20 @@ async function verifyArenaConnection(configuration: ArenaConfiguration, signal: 
     signal,
     __DEV__ ? (state) => console.log('[Arena preflight]', { state }) : undefined
   );
+}
+async function prepareArenaMatch(
+  mode: ArenaMode,
+  inviteCode: string,
+  rounds: MatchLength,
+  configuration: ArenaConfiguration | null,
+  signal: AbortSignal
+) {
+  const code = mode === 'guest' ? await normalizeRoomCode(inviteCode) : inviteCode;
+  if (signal.aborted) return null;
+  if (code === null || (mode === 'guest' && !code))
+    throw new Error('Enter the six-character room code.');
+  if (mode !== 'solo' && configuration) await verifyArenaConnection(configuration, signal);
+  return signal.aborted ? null : { code, controller: new ArenaMatch(mode, rounds) };
 }
 function ArenaMenuButton({
   label,
@@ -60,11 +69,13 @@ function ArenaMenuButton({
 export default function ArenaFighterScreen() {
   const params = useLocalSearchParams<{ join?: string; v?: string }>();
   return (
-    <ArenaMenu
-      key={(params.join ?? '') + ':' + (params.v ?? '')}
-      invite={params.join}
-      version={params.v}
-    />
+    <ArenaOrientationGate>
+      <ArenaMenu
+        key={(params.join ?? '') + ':' + (params.v ?? '')}
+        invite={params.join}
+        version={params.v}
+      />
+    </ArenaOrientationGate>
   );
 }
 function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
@@ -72,51 +83,70 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
     invite ? 'join' : 'title'
   );
   const [rounds, setRounds] = useState<MatchLength>(3);
-  const [code, setCode] = useState(version === '1' ? (invite ?? '') : '');
+  const [code, setCode] = useState(version === String(ARENA_PROTOCOL) ? (invite ?? '') : '');
   const [error, setError] = useState(
-    invite && version !== '1' ? 'This invite uses a different app version.' : ''
+    invite && version !== String(ARENA_PROTOCOL)
+      ? 'This invite uses a different app version. Update both phones.'
+      : ''
   );
   const [controller, setController] = useState<ArenaMatch | null>(null);
   const [starting, setStarting] = useState(false);
   const connectionCheck = useRef<AbortController | null>(null);
+  const attempt = useRef(false);
+  const [joinIntent] = useState(() => {
+    const intent = new ArenaJoinIntent();
+    if (invite && version === String(ARENA_PROTOCOL)) intent.offer(invite);
+    return intent;
+  });
+  const [inviteRevision, setInviteRevision] = useState(0);
+  const landscape = useArenaLandscape();
   useEffect(() => () => connectionCheck.current?.abort(), []);
-  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { activeColors: colors, activeScheme } = useAppTheme();
-  const start = async (mode: ArenaMode) => {
+  const start = useCallback(
+    (mode: ArenaMode, inviteCode = code) => {
+      if (attempt.current || controller || !landscape) return;
+      setError('');
+      const configuration = arenaConfiguration();
+      if (mode !== 'solo' && !configuration) {
+        setError(
+          'Two-player setup is missing from this build. Configure the ReactVision app key and install the new development build.'
+        );
+        return;
+      }
+      attempt.current = true;
+      setStarting(true);
+      const abort = new AbortController();
+      connectionCheck.current = abort;
+      void prepareArenaMatch(mode, inviteCode, rounds, configuration, abort.signal)
+        .then((result) => {
+          if (!result || abort.signal.aborted) return;
+          setCode(result.code);
+          setController(result.controller);
+        })
+        .catch((error: unknown) => {
+          if (!abort.signal.aborted)
+            setError(error instanceof Error ? error.message : RELAY_UNREACHABLE);
+        })
+        .finally(() => {
+          if (connectionCheck.current === abort) {
+            attempt.current = false;
+            setStarting(false);
+          }
+        });
+    },
+    [code, controller, landscape, rounds]
+  );
+  const startInvitation = useEffectEvent((pending: string) => start('guest', pending));
+  useEffect(() => {
     if (starting || controller) return;
-    setError('');
-    const configuration = arenaConfiguration();
-    if (mode !== 'solo' && !configuration) {
-      setError(
-        'Two-player setup is missing from this build. Configure the ReactVision app key and install the new development build.'
-      );
-      return;
-    }
-    setStarting(true);
-    const abort = new AbortController();
-    connectionCheck.current = abort;
-    try {
-      if (mode === 'guest') {
-        const normalized = await normalizeRoomCode(code);
-        if (!normalized) {
-          setError('Enter the six-character room code.');
-          setStarting(false);
-          return;
-        }
-        setCode(normalized);
-      }
-      if (mode !== 'solo' && configuration) {
-        await verifyArenaConnection(configuration, abort.signal);
-      }
-      if (abort.signal.aborted) return;
-      setController(new ArenaMatch(mode, rounds));
-    } catch (error) {
-      if (abort.signal.aborted) return;
-      setError(error instanceof Error ? error.message : RELAY_UNREACHABLE);
-    }
-    setStarting(false);
-  };
+    // Dispatch after the camera removal commit; cleanup cancels an obsolete dispatch.
+    const timer = setTimeout(() => {
+      const pending = joinIntent.take(landscape, page === 'scan');
+      if (pending) startInvitation(pending);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [landscape, page, starting, controller, inviteRevision, joinIntent]);
   if (controller)
     return (
       <Suspense fallback={<ActivityIndicator />}>
@@ -129,9 +159,11 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
         <ArenaQRScanner
           onClose={() => setPage('join')}
           onCode={(value) => {
+            if (!joinIntent.offer(value)) return;
             setCode(value);
             setPage('join');
             setError('');
+            setInviteRevision((revision) => revision + 1);
           }}
         />
       </Suspense>
@@ -165,11 +197,8 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
               ? 'Two iPhones. One arena.'
               : page === 'join'
                 ? 'Join your opponent'
-                : 'Choose your match'}
+                : 'Number of Rounds'}
         </Text>
-        {width <= height && (
-          <Text style={{ color: colors.text }}>Rotate to landscape to play.</Text>
-        )}
         {page === 'title' && (
           <View className="flex-row flex-wrap gap-4">
             <ArenaMenuButton label="1 Player" onPress={() => setPage('solo')} />
@@ -194,7 +223,7 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
             <ArenaMenuButton
               label={page === 'solo' ? 'Start' : 'Host match'}
               onPress={() => void start(page === 'solo' ? 'solo' : 'host')}
-              disabled={width <= height || starting}
+              disabled={starting}
             />
           </>
         )}
@@ -223,13 +252,16 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
             <View className="flex-row gap-4">
               <ArenaMenuButton
                 label="Scan QR"
-                onPress={() => setPage('scan')}
+                onPress={() => {
+                  joinIntent.beginScan();
+                  setPage('scan');
+                }}
                 disabled={starting}
               />
               <ArenaMenuButton
                 label="Join match"
                 onPress={() => void start('guest')}
-                disabled={width <= height || starting}
+                disabled={starting}
               />
             </View>
           </>
@@ -252,6 +284,9 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
             label="Back"
             onPress={() => {
               connectionCheck.current?.abort();
+              connectionCheck.current = null;
+              attempt.current = false;
+              joinIntent.cancel();
               setStarting(false);
               setPage(page === 'host' || page === 'join' ? 'two' : 'title');
               setError('');

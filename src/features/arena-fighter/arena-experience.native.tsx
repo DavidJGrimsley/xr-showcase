@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { AppState, useWindowDimensions } from 'react-native';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ArenaMatch } from './arena-match';
 import { arenaConfiguration } from './arena-configuration';
 import { ArenaRoom } from './arena-room.native';
 import ArenaNavigator from './arena-navigator.native';
 import ArenaHUD from './arena-hud';
+import { useArenaLandscape } from './arena-orientation-gate.native';
 
 export default function ArenaExperience({
   controller,
@@ -17,19 +18,20 @@ export default function ArenaExperience({
   const [room] = useState(() =>
     controller.mode === 'solo' ? undefined : new ArenaRoom(controller, arenaConfiguration()!, code)
   );
-  const { width, height } = useWindowDimensions();
-  const landscape = width > height;
+  const landscape = useArenaLandscape();
+  const [activated, setActivated] = useState(landscape);
+  if (landscape && !activated) setActivated(true);
   const disposal = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
+  useLayoutEffect(() => {
     controller.setLandscape(landscape);
   }, [controller, landscape]);
   useEffect(() => {
     clearTimeout(disposal.current);
     room?.start();
-    controller.setAppActive(AppState.currentState === 'active');
+    controller.setAppActive(AppState.currentState !== 'background');
     const timer = setInterval(controller.poll, 100);
     const appState = AppState.addEventListener('change', (state) => {
-      controller.setAppActive(state === 'active');
+      controller.setAppActive(state !== 'background');
     });
     return () => {
       clearInterval(timer);
@@ -43,8 +45,8 @@ export default function ArenaExperience({
   }, [controller, room]);
   return (
     <ARSessionBoundary
-      enabled={landscape}
-      keepSessionOnInactive={!!room}
+      enabled={activated}
+      keepSessionOnInactive
       activeOverlayLayout="fullscreen"
       renderNavigator={(context) => (
         <ArenaNavigator controller={controller} room={room} context={context} />

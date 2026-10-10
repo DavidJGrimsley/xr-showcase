@@ -8,6 +8,12 @@ import {
 } from './arena-controller.ts';
 import { ArenaPresentation, type Knockout } from './arena-presentation.ts';
 import {
+  DEFAULT_ARENA_TRANSFORM,
+  boundedArenaTransform,
+  type ArenaTransform,
+  type ArenaTransformScope,
+} from './arena-transform.ts';
+import {
   ARENA_PROTOCOL,
   type ArenaMode,
   type MatchLength,
@@ -35,6 +41,13 @@ export interface MatchSnapshot extends ArenaSnapshot {
   displayCode: string | null;
   networkMessage: string;
   recoverySeconds: number;
+  arenaTransform: ArenaTransform;
+  transformLocked: boolean;
+  canTransform: boolean;
+  pinching: boolean;
+  rotating: boolean;
+  orientationPaused: boolean;
+  localOrientationPaused: boolean;
 }
 export class ArenaMatch {
   readonly round: ArenaController;
@@ -72,6 +85,12 @@ export class ArenaMatch {
   private networkMessage = '';
   private disposed = false;
   private appActive = true;
+  private landscape = false;
+  private orientationRecovering = false;
+  private arenaTransform = { ...DEFAULT_ARENA_TRANSFORM };
+  private transformLocked = false;
+  private pinchStart: number | null = null;
+  private rotationStart: number | null = null;
   private previousTransforms: Record<FighterId, FighterTransform> | null = null;
   private transformAt = 0;
   private now: () => number;
@@ -105,8 +124,17 @@ export class ArenaMatch {
     return !this.disposed && this.getSessionToken() === token;
   }
   setLandscape = (value: boolean) => {
+    if (this.landscape === value) return;
+    this.landscape = value;
+    this.orientationRecovering = true;
+    this.held = { advance: false, retreat: false };
+    this.round.clearHeldMovement();
+    this.clearGestures();
     this.round.setLandscape(value);
+    if (value && this.getSessionToken() !== null && !this.round.hasNormalTracking())
+      this.interrupt();
     this.checkReadiness();
+    this.publish();
   };
   setAppActive = (active: boolean) => {
     if (this.appActive === active) return;
@@ -120,19 +148,32 @@ export class ArenaMatch {
     this.publish();
   };
   isAppActive = () => this.appActive;
+  isLandscape = () => this.landscape;
   setTracking = (token: number, normal: boolean) => {
+    if (!this.isCurrent(token)) return;
+    if (!normal) this.clearGestures();
     this.round.setTracking(token, normal);
+    if (this.isCurrent(token) && !normal && this.landscape) this.interrupt();
     this.checkReadiness();
   };
   setPlacement = (token: number, placed: boolean) => {
+    if (!this.isCurrent(token)) return;
+    if (!placed) this.clearGestures();
     this.round.setPlacement(token, placed);
+    if (!placed) this.interrupt();
     this.checkReadiness();
   };
-  attachSession = (id: number) => this.round.attachSession(id);
+  attachSession = (id: number) => {
+    this.clearGestures();
+    this.transformLocked = false;
+    return this.round.attachSession(id);
+  };
   detachSession = (token: number) => {
     if (!this.isCurrent(token)) return;
     this.presentation?.remounted();
+    this.clearGestures();
     this.round.detachSession(token);
+    this.interrupt();
     this.checkReadiness();
   };
   assetLoaded = (
@@ -146,6 +187,7 @@ export class ArenaMatch {
     asset: Parameters<ArenaController['assetFailed']>[2]
   ) => {
     const result = this.round.assetFailed(token, version, asset);
+    if (result) this.interrupt();
     this.checkReadiness();
     return result;
   };
@@ -160,7 +202,7 @@ export class ArenaMatch {
     this.mode === 'solo' && this.stage === 'lobby' && this.round.previewClip(...args);
   stopPreview = () => this.round.stopPreview();
   swapSides = () => {
-    if (this.mode !== 'guest' && this.stage === 'lobby') {
+    if (this.canTransform()) {
       this.localReady = false;
       this.epoch++;
       this.round.swapSides();
@@ -168,12 +210,109 @@ export class ArenaMatch {
     }
   };
   rotateArena = () => {
-    if (this.mode !== 'guest' && this.stage === 'lobby') {
-      this.localReady = false;
-      this.epoch++;
-      this.round.rotateArena();
-      this.publish();
+    if (!this.canTransform()) return;
+    this.changeTransform({ ...this.arenaTransform, yaw: this.arenaTransform.yaw + 90 });
+  };
+  private localOrientationPause() {
+    return !this.landscape || this.orientationRecovering;
+  }
+  private peerOrientationPause() {
+    return this.mode === 'guest'
+      ? this.remote?.orientationPaused === true
+      : this.mode === 'host' && this.peer?.orientationPaused === true;
+  }
+  private orientationPause() {
+    return this.localOrientationPause() || this.peerOrientationPause();
+  }
+  private clearGestures() {
+    this.pinchStart = this.rotationStart = null;
+  }
+  canTransform() {
+    const round = this.round.getSnapshot();
+    return (
+      this.mode !== 'guest' &&
+      this.stage === 'lobby' &&
+      !this.transformLocked &&
+      !this.localOrientationPause() &&
+      round.placed &&
+      this.round.isReady() &&
+      !round.preview
+    );
+  }
+  private currentTransformScope(scope: ArenaTransformScope) {
+    return (
+      this.isCurrent(scope.sessionToken) &&
+      scope.placementVersion === this.round.getSnapshot().placementVersion &&
+      this.canTransform()
+    );
+  }
+  invalidatePlacementReady = () => {
+    if (this.mode === 'guest' || this.stage !== 'lobby') return;
+    this.localReady = false;
+    this.epoch++;
+    this.publish();
+  };
+  setTransformLocked = (locked: boolean) => {
+    this.transformLocked = locked;
+    if (locked) this.clearGestures();
+    this.publish();
+  };
+  resetSetupTransform = () => {
+    if (this.mode === 'guest' || this.stage !== 'lobby') return;
+    this.clearGestures();
+    this.changeTransform({ ...DEFAULT_ARENA_TRANSFORM });
+  };
+  repositionSolo = (scope: ArenaTransformScope) => {
+    if (this.mode !== 'solo' || !this.currentTransformScope(scope)) return;
+    this.clearGestures();
+    this.invalidatePlacementReady();
+    this.setPlacement(scope.sessionToken, false);
+  };
+  private changeTransform(value: ArenaTransform) {
+    const next = boundedArenaTransform(value);
+    if (JSON.stringify(next) === JSON.stringify(this.arenaTransform)) return;
+    this.arenaTransform = next;
+    this.invalidatePlacementReady();
+  }
+  setScale = (scope: ArenaTransformScope, value: number) => {
+    if (!this.currentTransformScope(scope) || this.pinchStart !== null || !Number.isFinite(value))
+      return;
+    this.changeTransform({ ...this.arenaTransform, scale: value });
+  };
+  setYaw = (scope: ArenaTransformScope, value: number) => {
+    if (
+      !this.currentTransformScope(scope) ||
+      this.rotationStart !== null ||
+      !Number.isFinite(value)
+    )
+      return;
+    this.changeTransform({ ...this.arenaTransform, yaw: value });
+  };
+  setHeight = (scope: ArenaTransformScope, value: number) => {
+    if (!this.currentTransformScope(scope) || !Number.isFinite(value)) return;
+    this.changeTransform({ ...this.arenaTransform, height: value });
+  };
+  pinch = (scope: ArenaTransformScope, gesture: number, factor: number) => {
+    if (!this.currentTransformScope(scope) || ![1, 2, 3].includes(gesture)) return;
+    if (gesture === 1) {
+      this.pinchStart = this.arenaTransform.scale;
+      this.invalidatePlacementReady();
     }
+    if (this.pinchStart !== null && Number.isFinite(factor) && factor > 0)
+      this.changeTransform({ ...this.arenaTransform, scale: this.pinchStart * factor });
+    if (gesture === 3) this.pinchStart = null;
+    this.publish();
+  };
+  rotate = (scope: ArenaTransformScope, gesture: number, degrees: number) => {
+    if (!this.currentTransformScope(scope) || ![1, 2, 3].includes(gesture)) return;
+    if (gesture === 1) {
+      this.rotationStart = this.arenaTransform.yaw;
+      this.invalidatePlacementReady();
+    }
+    if (this.rotationStart !== null && Number.isFinite(degrees))
+      this.changeTransform({ ...this.arenaTransform, yaw: this.rotationStart - degrees });
+    if (gesture === 3) this.rotationStart = null;
+    this.publish();
   };
   setSharedPlacement(placement: ArenaPlacement) {
     if (this.mode !== 'guest' && this.stage === 'lobby') {
@@ -211,7 +350,9 @@ export class ArenaMatch {
     if (
       !this.capable() ||
       !this.peerCapable() ||
-      !['lobby', 'paused', 'finished'].includes(this.stage)
+      !['lobby', 'paused', 'finished'].includes(this.stage) ||
+      this.orientationPause() ||
+      this.transformLocked
     )
       return false;
     this.round.stopPreview();
@@ -260,10 +401,19 @@ export class ArenaMatch {
     return ['countdown', 'fighting', 'presenting', 'intermission'].includes(this.stage);
   }
   private checkReadiness() {
-    if (this.stage === 'lobby' && this.localReady && (!this.capable() || !this.peerCapable())) {
+    // Orientation is a presentation hold, not a recovery or a new generation.
+    // Socket loss/background still interrupt even when a phone is in portrait.
+    const connectionLost =
+      this.mode !== 'solo' && (!this.connected || this.now() - this.lastPeerAt >= 1000);
+    const unavailable =
+      !this.appActive ||
+      connectionLost ||
+      (!this.capable() && !this.localOrientationPause()) ||
+      (!this.peerCapable() && !this.peerOrientationPause());
+    if (this.stage === 'lobby' && this.localReady && unavailable) {
       this.localReady = false;
     }
-    if (this.active() && (!this.capable() || !this.peerCapable())) this.interrupt();
+    if (this.active() && unavailable) this.interrupt();
   }
   interrupt() {
     if (!this.active()) return;
@@ -316,7 +466,8 @@ export class ArenaMatch {
   tick = (token: number, dt: number) => {
     if (!this.isCurrent(token) || !Number.isFinite(dt) || dt <= 0 || dt > 0.1) return;
     this.checkReadiness();
-    if (this.mode !== 'guest' && this.stage === 'fighting') {
+    const simulate = !this.orientationPause() && this.capable() && this.peerCapable();
+    if (this.mode !== 'guest' && this.stage === 'fighting' && simulate) {
       for (const movement of ['advance', 'retreat'] as const) {
         this.round.setMovement(movement, this.held[movement], undefined, 'blue');
         if (this.mode === 'host')
@@ -334,10 +485,12 @@ export class ArenaMatch {
         this.acceptCommand(command, 'red');
       }
     }
-    this.round.tick(token, dt);
-    if (this.mode !== 'guest') this.advanceMatch(dt);
-    if (this.presentation && this.stage === 'presenting' && this.capable() && this.peerCapable())
-      this.presentation.tick(dt);
+    this.round.tick(token, dt, simulate);
+    if (this.landscape && this.orientationRecovering && this.round.isReady())
+      this.orientationRecovering = false;
+    if (this.orientationPause()) this.round.clearHeldMovement();
+    if (this.mode !== 'guest' && simulate) this.advanceMatch(dt);
+    if (this.presentation && this.stage === 'presenting' && simulate) this.presentation.tick(dt);
     this.publish();
   };
   private advanceMatch(dt: number) {
@@ -415,6 +568,7 @@ export class ArenaMatch {
             ? 'Connection interrupted.'
             : this.round.getSnapshot().message,
       paused: this.stage === 'paused',
+      orientationPaused: this.localOrientationPause(),
       ready: this.localReady && this.readyEpoch === this.epoch,
       presentation: this.presentation?.done ? this.knockout!.id : null,
       leaving: this.disposed || this.stage === 'abandoned',
@@ -438,6 +592,8 @@ export class ArenaMatch {
       hostCapable: this.capable(),
       hostReady: this.localReady,
       placement: this.placement,
+      arenaTransform: { ...this.arenaTransform },
+      orientationPaused: this.orientationPause(),
     };
   }
   receiveInput(input: PeerInput) {
@@ -450,6 +606,10 @@ export class ArenaMatch {
     )
       return;
     this.peer = input;
+    if (input.orientationPaused) {
+      this.held = { advance: false, retreat: false };
+      this.round.clearHeldMovement();
+    }
     this.lastPeerAt = this.now();
     if (input.leaving) this.abandon();
     else if (input.paused && input.epoch === this.epoch) this.interrupt();
@@ -480,6 +640,8 @@ export class ArenaMatch {
     this.wins = packet.wins;
     this.countdown = packet.countdown;
     this.placement = packet.placement;
+    this.arenaTransform = { ...packet.arenaTransform };
+    if (packet.orientationPaused) this.held = { advance: false, retreat: false };
     if (packet.stage === 'abandoned' && !this.networkMessage)
       this.networkMessage = 'Match ended. No winner awarded.';
     // The guest cannot overrule a local interruption with an older host packet.
@@ -539,7 +701,8 @@ export class ArenaMatch {
               ? null
               : (this.remote?.round.message ?? 'Waiting for the host.')
             : (this.peer?.pauseReason ?? null);
-    const canAct = this.stage === 'fighting' && capable && this.peerCapable();
+    const orientationPaused = this.orientationPause();
+    const canAct = this.stage === 'fighting' && capable && this.peerCapable() && !orientationPaused;
     const fighter = (id: FighterId) => {
       const pose = this.presentation?.get(id);
       return pose
@@ -565,10 +728,17 @@ export class ArenaMatch {
     const next: MatchSnapshot = {
       ...local,
       sharedPlacement: this.placement,
+      arenaTransform: { ...this.arenaTransform },
+      transformLocked: this.transformLocked,
+      canTransform: this.canTransform(),
+      pinching: this.pinchStart !== null,
+      rotating: this.rotationStart !== null,
+      orientationPaused,
+      localOrientationPaused: this.localOrientationPause(),
       blue: fighter('blue'),
       red: fighter('red'),
       roundId: combat.roundId,
-      arenaYaw: combat.arenaYaw,
+      arenaYaw: this.arenaTransform.yaw,
       blueStartsLeft: combat.blueStartsLeft,
       outcome: ['intermission', 'finished'].includes(this.stage)
         ? (this.knockout?.outcome ?? null)
@@ -583,10 +753,20 @@ export class ArenaMatch {
               : this.stage === 'paused'
                 ? 'paused'
                 : 'ended',
-      animationsRunning: capable && this.stage !== 'paused' && this.stage !== 'abandoned',
+      animationsRunning:
+        capable &&
+        this.peerCapable() &&
+        !orientationPaused &&
+        this.stage !== 'paused' &&
+        this.stage !== 'abandoned',
       canAttack: canAct,
-      canReady: capable && this.peerCapable() && !this.localReady,
-      canResume: capable && this.peerCapable() && !this.localReady,
+      canReady:
+        capable &&
+        this.peerCapable() &&
+        !this.localReady &&
+        !this.transformLocked &&
+        !orientationPaused,
+      canResume: capable && this.peerCapable() && !this.localReady && !orientationPaused,
       canRematch: capable && this.peerCapable() && this.stage === 'finished' && !this.localReady,
       message,
       mode: this.mode,

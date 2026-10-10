@@ -59,6 +59,7 @@ export interface RoomView {
   preview: ArenaPlacement | null;
   source: ViroFrameSource | null;
   frame: number[] | null;
+  repositioning: boolean;
 }
 export class ArenaRoom {
   private match: ArenaMatch;
@@ -82,6 +83,7 @@ export class ArenaRoom {
     preview: null,
     source: null,
     frame: null,
+    repositioning: false,
   };
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
@@ -89,6 +91,7 @@ export class ArenaRoom {
   private trackingNormal = false;
   private awaitingTracking = false;
   private scanStartedAt = 0;
+  private captureStarted = false;
   private hostingStartedAt = 0;
   constructor(
     match: ArenaMatch,
@@ -147,6 +150,8 @@ export class ArenaRoom {
     this.busy = false;
     this.scanPoll = false;
     this.lastPoll = 0;
+    this.captureStarted = false;
+    this.match.setTransformLocked(false);
     this.update({
       frame: null,
       source: null,
@@ -154,6 +159,7 @@ export class ArenaRoom {
       scanProgress: 0,
       hostStep: null,
       hostSeconds: 0,
+      repositioning: false,
     });
     if (this.room?.cloudAnchorId)
       this.update({
@@ -181,6 +187,8 @@ export class ArenaRoom {
     this.scanPoll = false;
     this.trackingNormal = false;
     this.awaitingTracking = false;
+    this.captureStarted = false;
+    this.match.setTransformLocked(false);
     this.view = { ...this.view, frame: null, source: null, canFinish: false, preview: null };
     this.cancel(nav);
   }
@@ -230,15 +238,17 @@ export class ArenaRoom {
         return;
       }
       try {
-        this.navigator.startScan();
-        this.scanStartedAt = Date.now();
+        if (!this.captureStarted) {
+          this.navigator.startScan();
+          this.scanStartedAt = Date.now();
+          this.captureStarted = true;
+          this.update({ canFinish: false, scanProgress: 0 });
+        }
         this.update({
           status: 'scanning',
           message:
-            'Walk slowly around the arena and look at nearby objects so the other phone can find it.',
+            'Move slowly around the placed arena so your opponent’s phone can align with yours.',
           source: null,
-          canFinish: false,
-          scanProgress: 0,
         });
       } catch {
         if (generation === this.generation)
@@ -319,10 +329,13 @@ export class ArenaRoom {
       !this.trackingNormal ||
       this.busy ||
       !this.view.preview ||
-      !this.view.canFinish
+      !this.view.canFinish ||
+      !this.match.isLandscape() ||
+      this.view.repositioning
     )
       return;
     this.busy = true;
+    this.match.setTransformLocked(true);
     this.hostingStartedAt = Date.now();
     const generation = this.generation;
     const point = this.view.preview.position;
@@ -424,7 +437,10 @@ export class ArenaRoom {
         );
       }
     } finally {
-      if (generation === this.generation) this.busy = false;
+      if (generation === this.generation) {
+        this.busy = false;
+        this.match.setTransformLocked(false);
+      }
     }
   };
   localized = (transform: string) => {
@@ -453,22 +469,53 @@ export class ArenaRoom {
       this.disposed ||
       !this.navigator ||
       this.match.mode !== 'host' ||
-      this.room ||
+      this.busy ||
       this.view.status !== 'placing' ||
       !this.trackingNormal ||
       !this.match.isAppActive() ||
+      !this.match.isLandscape() ||
       !point.every(Number.isFinite)
     )
       return false;
     this.update({ preview: { position: [...point], rotation: [0, 0, 0] } });
+    this.match.invalidatePlacementReady();
+    this.match.setTransformLocked(false);
+    if (this.room && this.view.frame) {
+      this.match.setSharedPlacement(arenaInFrame(this.view.frame, point));
+      this.update({
+        status: 'ready',
+        repositioning: false,
+        message: 'Shared arena position updated.',
+      });
+      return true;
+    }
+    this.update({ repositioning: false });
     void this.prepare(this.generation);
     return true;
   }
   reposition = () => {
-    if (this.disposed || this.room || this.match.mode !== 'host' || !this.navigator) return;
-    this.cancel(this.navigator);
-    this.update({ preview: null });
-    this.prepareAttachment();
+    if (
+      this.disposed ||
+      !this.match.canTransform() ||
+      !this.navigator ||
+      this.busy ||
+      (this.room && !this.view.frame)
+    )
+      return;
+    this.match.invalidatePlacementReady();
+    this.match.setTransformLocked(true);
+    this.update({
+      status: 'placing',
+      preview: null,
+      repositioning: true,
+      message: 'Tap a highlighted surface to move the arena. Your shared-space capture is saved.',
+    });
+  };
+  prepareRestart = () => {
+    if (this.disposed || this.busy) return false;
+    if (!this.room) this.match.resetSetupTransform();
+    this.detach();
+    return true;
   };
   fail = (message: string) =>
     this.update({ status: 'error', message, canFinish: false, hostStep: null });
@@ -476,6 +523,8 @@ export class ArenaRoom {
     if (this.disposed || this.view.status !== 'hosting' || this.room) return;
     this.generation++;
     this.busy = false;
+    this.captureStarted = false;
+    this.match.setTransformLocked(false);
     this.cancel(this.navigator);
     this.fail(
       'Sharing cancelled. Your arena position is saved. Tap Retry connection to capture it again.'

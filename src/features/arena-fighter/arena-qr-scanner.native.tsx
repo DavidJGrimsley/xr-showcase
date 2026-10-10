@@ -5,6 +5,7 @@ import { AppState, Linking, Text, View } from 'react-native';
 import { useIsFocused } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { parseJoinLink } from './arena-protocol';
+import { useArenaLandscape } from './arena-orientation-gate.native';
 
 const subscribeAppState = (listener: () => void) => {
   const subscription = AppState.addEventListener('change', listener);
@@ -23,7 +24,8 @@ export default function ArenaQRScanner({
   const [error, setError] = useState('');
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
-  const active = useSyncExternalStore(subscribeAppState, () => AppState.currentState) === 'active';
+  const appState = useSyncExternalStore(subscribeAppState, () => AppState.currentState);
+  const landscape = useArenaLandscape();
   return (
     <View
       className="flex-1 bg-black"
@@ -33,9 +35,10 @@ export default function ArenaQRScanner({
         paddingLeft: Math.max(16, insets.left),
         paddingRight: Math.max(16, insets.right),
       }}>
-      {permission?.granted && focused && active ? (
+      {permission?.granted && focused && appState !== 'background' ? (
         <CameraView
           style={{ flex: 1 }}
+          active={landscape && appState === 'active'}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onBarcodeScanned={({ data }) => {
             if (handled.current) return;

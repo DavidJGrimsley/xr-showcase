@@ -1,5 +1,7 @@
 # Arena multiplayer, match rounds, and knockout presentation
 
+Current setup/orientation/QR behavior is recorded in [Arena setup controls and portrait pause](arena-setup-controls.md). That follow-up advances invites to version 2 and requires a new client for native blur; the paragraphs below retain the initial delivery and device-test history.
+
 October 9, 2026. Scoped implementation on `arena-multiplayer`, based on `arena-cpu-opponent`. This implements the user's approved same-table multiplayer plan and supersedes the previous CPU tuning. It does not mark the historical Phase 2 or physical acceptance complete.
 
 ## Delivered behavior

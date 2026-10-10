@@ -88,6 +88,7 @@ function harness(mode = 'host', overrides = {}) {
     },
   };
   const match = new ArenaMatch(mode);
+  match.setLandscape(true);
   const room = new ArenaRoom(match, { apiKey: 'test', projectId: 'test' }, 'ABC234', services);
   return {
     room,
@@ -114,51 +115,84 @@ test('multiplayer retains AR for a permission dialog, releases it for background
 
 test('sharing shows native and invite stages, elapsed time, and handles a delayed native result', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
-  const anchor = deferred(), invite = deferred();
+  const anchor = deferred(),
+    invite = deferred();
   const events = [];
-  const h = harness('host', { createColocationRoom: () => invite.promise, observeHosting: event => events.push(event) });
+  const h = harness('host', {
+    createColocationRoom: () => invite.promise,
+    observeHosting: (event) => events.push(event),
+  });
   h.nav.finishScan = () => anchor.promise;
-  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
-  t.mock.timers.tick(1050); await flush();
+  h.room.attach(h.nav);
+  h.room.tracking(true);
+  h.room.place([1, 0, 2]);
+  h.room.start();
+  t.mock.timers.tick(1050);
+  await flush();
   const finish = h.room.finishScan();
   assert.equal(h.room.getSnapshot().hostStep, 'anchor');
-  t.mock.timers.tick(65000); await flush();
+  t.mock.timers.tick(65000);
+  await flush();
   assert.equal(h.room.getSnapshot().status, 'hosting');
   assert.equal(h.room.getSnapshot().hostSeconds, 65);
   anchor.resolve({ success: true, cloudAnchorId: 'anchor', locationTransform: 'frame' });
   await flush();
   assert.equal(h.room.getSnapshot().hostStep, 'invite');
   assert.match(h.room.getSnapshot().message, /Creating your invite code/);
-  invite.resolve(roomResult); await finish;
+  invite.resolve(roomResult);
+  await finish;
   assert.equal(h.room.getSnapshot().status, 'ready');
-  assert.deepEqual(events.map(event => [event.step, event.result]), [['anchor', 'started'], ['anchor', 'completed'], ['invite', 'started'], ['invite', 'completed']]);
+  assert.deepEqual(
+    events.map((event) => [event.step, event.result]),
+    [
+      ['anchor', 'started'],
+      ['anchor', 'completed'],
+      ['invite', 'started'],
+      ['invite', 'completed'],
+    ]
+  );
   h.room.dispose();
 });
 
 test('sharing timeout retains placement and rejects a late native result', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
   const anchor = deferred();
-  const h = harness(); h.nav.finishScan = () => anchor.promise;
-  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
-  t.mock.timers.tick(1050); await flush();
+  const h = harness();
+  h.nav.finishScan = () => anchor.promise;
+  h.room.attach(h.nav);
+  h.room.tracking(true);
+  h.room.place([1, 0, 2]);
+  h.room.start();
+  t.mock.timers.tick(1050);
+  await flush();
   const finish = h.room.finishScan();
-  t.mock.timers.tick(120000); await finish;
+  t.mock.timers.tick(120000);
+  await finish;
   assert.equal(h.room.getSnapshot().status, 'error');
   assert.match(h.room.getSnapshot().message, /took too long/);
   assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
-  anchor.resolve({ success: true, cloudAnchorId: 'anchor', locationTransform: 'frame' }); await flush();
+  anchor.resolve({ success: true, cloudAnchorId: 'anchor', locationTransform: 'frame' });
+  await flush();
   assert.equal(h.calls.connect, 0);
   h.room.dispose();
 });
 
 test('cancelling sharing ignores its late result and leaves the preview available to retry', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
-  const anchor = deferred(); const h = harness(); h.nav.finishScan = () => anchor.promise;
-  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
-  t.mock.timers.tick(1050); await flush();
-  const finish = h.room.finishScan(); h.room.cancelHosting();
+  const anchor = deferred();
+  const h = harness();
+  h.nav.finishScan = () => anchor.promise;
+  h.room.attach(h.nav);
+  h.room.tracking(true);
+  h.room.place([1, 0, 2]);
+  h.room.start();
+  t.mock.timers.tick(1050);
+  await flush();
+  const finish = h.room.finishScan();
+  h.room.cancelHosting();
   assert.match(h.room.getSnapshot().message, /cancelled/);
-  anchor.resolve({ success: true, cloudAnchorId: 'old', locationTransform: 'frame' }); await finish;
+  anchor.resolve({ success: true, cloudAnchorId: 'old', locationTransform: 'frame' });
+  await finish;
   assert.equal(h.calls.connect, 0);
   h.room.retry();
   assert.equal(h.room.getSnapshot().status, 'scanning');
@@ -169,8 +203,13 @@ test('cancelling sharing ignores its late result and leaves the preview availabl
 test('retrying a relay connection retains the localized shared frame without rescanning', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
   const h = harness();
-  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
-  t.mock.timers.tick(1050); await flush(); await h.room.finishScan();
+  h.room.attach(h.nav);
+  h.room.tracking(true);
+  h.room.place([1, 0, 2]);
+  h.room.start();
+  t.mock.timers.tick(1050);
+  await flush();
+  await h.room.finishScan();
   const frame = h.room.getSnapshot().frame;
   const source = h.room.getSnapshot().source;
   const cancelled = h.calls.cancel;
@@ -384,7 +423,9 @@ test('sharing converts the preview into a rotated location frame while preservin
   await flush();
   await h.room.finishScan();
   assert.deepEqual(h.match.placement.position, [-2, 0.5, 1]);
-  h.match.placement.rotation.forEach((value, i) => assert.ok(Math.abs(value - [0, -90, 0][i]) < 1e-9));
+  h.match.placement.rotation.forEach((value, i) =>
+    assert.ok(Math.abs(value - [0, -90, 0][i]) < 1e-9)
+  );
   assert.deepEqual(h.room.getSnapshot().preview.position, [11, 2.5, 6]);
   assert.equal(h.room.getSnapshot().status, 'ready');
   assert.equal(h.room.place([0, 0, 0]), false);
@@ -437,7 +478,7 @@ test('retry preserves the chosen spot but a new native session requires fresh pl
   h.room.dispose();
 });
 
-test('moving the arena invalidates pending hosting and requires a new placement and scan', async (t) => {
+test('placement edits are blocked during upload without cancelling the room creation', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
   const hosted = deferred();
   const h = harness();
@@ -450,15 +491,148 @@ test('moving the arena invalidates pending hosting and requires a new placement 
   await flush();
   const oldFinish = h.room.finishScan();
   h.room.reposition();
-  assert.equal(h.room.getSnapshot().status, 'placing');
-  assert.equal(h.room.getSnapshot().preview, null);
-  h.room.place([3, 0, 4]);
+  assert.equal(h.room.getSnapshot().status, 'hosting');
+  assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
+  assert.equal(h.room.place([3, 0, 4]), false);
   hosted.resolve({ success: true, cloudAnchorId: 'old-anchor', locationTransform: 'old-frame' });
   await oldFinish;
-  assert.equal(h.calls.connect, 0);
-  assert.equal(h.match.placement, null);
-  assert.equal(h.room.getSnapshot().status, 'scanning');
-  assert.deepEqual(h.room.getSnapshot().preview.position, [3, 0, 4]);
+  assert.equal(h.calls.connect, 1);
+  assert.deepEqual(h.match.placement.position, [1, 0, 2]);
+  assert.equal(h.room.getSnapshot().status, 'ready');
+  assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
   assert.equal(h.room.getSnapshot().canFinish, false);
+  h.room.dispose();
+});
+
+function loadMatch(h) {
+  const token = h.match.attachSession(1);
+  h.match.setTracking(token, true);
+  h.match.setPlacement(token, true);
+  for (const asset of ['arena', 'blue', 'red'])
+    h.match.assetLoaded(token, h.match.getSnapshot().placementVersion, asset);
+  for (let i = 0; i < 31; i++) h.match.tick(token, 1 / 60);
+  return { sessionToken: token, placementVersion: h.match.getSnapshot().placementVersion };
+}
+
+test('reposition before Create room preserves captured surroundings and all adjusted transforms', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const h = harness();
+  h.room.attach(h.nav);
+  h.room.tracking(true);
+  h.room.place([1, 0, 2]);
+  const scope = loadMatch(h);
+  h.match.setScale(scope, 1.5);
+  h.match.setHeight(scope, 0.15);
+  h.match.setYaw(scope, 90);
+  h.room.start();
+  t.mock.timers.tick(1050);
+  await flush();
+  assert.equal(h.room.getSnapshot().canFinish, true);
+  const progress = h.room.getSnapshot().scanProgress;
+  h.room.reposition();
+  assert.equal(h.room.getSnapshot().status, 'placing');
+  assert.equal(h.room.getSnapshot().repositioning, true);
+  assert.equal(h.calls.cancel, 0);
+  assert.equal(h.room.place([3, 0, 4]), true);
+  assert.equal(h.calls.start, 1);
+  assert.equal(h.room.getSnapshot().scanProgress, progress);
+  await h.room.finishScan();
+  assert.deepEqual(h.match.placement.position, [3, 0, 4]);
+  assert.deepEqual(h.match.getSnapshot().arenaTransform, { scale: 1.5, height: 0.15, yaw: 90 });
+  h.room.reposition();
+  assert.equal(h.room.place([4, 0, 5]), true);
+  assert.deepEqual(h.match.placement.position, [4, 0, 5]);
+  assert.equal(h.calls.start, 1);
+  assert.equal(h.calls.connect, 1);
+  h.room.dispose();
+});
+
+test('portrait preserves capture and pending hosting for more than thirty seconds', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const hosted = deferred();
+  const h = harness();
+  h.nav.finishScan = () => hosted.promise;
+  h.room.attach(h.nav);
+  h.room.tracking(true);
+  h.room.place([1, 0, 2]);
+  h.room.start();
+  t.mock.timers.tick(1050);
+  await flush();
+  const progress = h.room.getSnapshot().scanProgress;
+  h.match.setLandscape(false);
+  t.mock.timers.tick(35000);
+  await flush();
+  assert.equal(h.room.getSnapshot().scanProgress, progress);
+  assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
+  assert.equal(h.calls.start, 1);
+  assert.equal(h.calls.cancel, 0);
+  await h.room.finishScan();
+  assert.equal(h.room.getSnapshot().status, 'scanning');
+  h.match.setLandscape(true);
+  const completion = h.room.finishScan();
+  h.match.setLandscape(false);
+  t.mock.timers.tick(35000);
+  hosted.resolve({ success: true, cloudAnchorId: 'anchor', locationTransform: 'frame' });
+  await completion;
+  assert.equal(h.room.getSnapshot().status, 'ready');
+  assert.deepEqual(h.match.placement.position, [1, 0, 2]);
+  assert.equal(h.calls.connect, 1);
+  assert.equal(h.calls.cancel, 0);
+  assert.equal(h.match.getSnapshot().stage, 'lobby');
+  h.room.dispose();
+});
+
+test('a room lookup completed in portrait retains the room and invite without repeating lookup', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const lookup = deferred();
+  let calls = 0;
+  const h = harness('guest', {
+    lookupColocationRoom: () => {
+      calls++;
+      return lookup.promise;
+    },
+  });
+  h.room.attach(h.nav);
+  h.match.setLandscape(false);
+  lookup.resolve(roomResult);
+  await flush();
+  assert.equal(h.room.getSnapshot().status, 'aligning');
+  h.room.localized('frame');
+  h.match.setLandscape(true);
+  assert.equal(h.calls.connect, 1);
+  assert.equal(calls, 1);
+  assert.equal(h.calls.cancel, 0);
+  h.room.dispose();
+});
+
+test('Restart AR clears unshared capture and defaults; an existing room recovers its anchor and adjusted pose', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const h = harness();
+  h.room.attach(h.nav);
+  h.room.tracking(true);
+  h.room.place([1, 0, 2]);
+  let scope = loadMatch(h);
+  h.match.setScale(scope, 2);
+  assert.equal(h.room.prepareRestart(), true);
+  assert.equal(h.room.getSnapshot().preview, null);
+  assert.equal(h.match.getSnapshot().arenaTransform.scale, 1);
+  h.room.attach({ ...h.nav });
+  h.room.tracking(true);
+  h.room.place([3, 0, 4]);
+  scope = loadMatch(h);
+  h.match.setScale(scope, 1.5);
+  h.room.start();
+  t.mock.timers.tick(1050);
+  await flush();
+  await h.room.finishScan();
+  const placement = h.match.placement;
+  assert.equal(h.room.prepareRestart(), true);
+  h.room.attach({ ...h.nav });
+  assert.equal(h.room.getSnapshot().status, 'aligning');
+  assert.deepEqual(h.match.placement, placement);
+  assert.equal(h.match.getSnapshot().arenaTransform.scale, 1.5);
+  h.room.localized('frame');
+  assert.equal(h.room.getSnapshot().status, 'ready');
+  assert.equal(h.calls.connect, 1);
   h.room.dispose();
 });

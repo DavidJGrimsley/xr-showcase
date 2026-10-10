@@ -148,7 +148,11 @@ export default function ArenaScene({
   }, [room, controller, token, sharedPlaced]);
   useEffect(() => {
     if (room && roomState?.status === 'placing' && !roomState.preview) selector.current?.reset();
-  }, [room, roomState?.status, roomState?.preview]);
+    if (!room && !snapshot.placed) {
+      selectedPlane.current = null;
+      selector.current?.reset();
+    }
+  }, [room, roomState?.status, roomState?.preview, snapshot.placed, version]);
   const frame = roomState?.frame;
   const worldFrame = useMemo(
     () =>
@@ -229,7 +233,8 @@ export default function ArenaScene({
           updateTransform('red', cpuNode);
         }}
       />
-      {(!room || (controller.mode === 'host' && !controller.placement)) && (
+      {(!room ||
+        (controller.mode === 'host' && (!controller.placement || roomState?.repositioning))) && (
         <ViroNode visible={!room || (roomState?.status === 'placing' && !roomState.preview)}>
           <ViroARPlaneSelector
             ref={selector}
@@ -256,7 +261,6 @@ export default function ArenaScene({
               <ArenaModels
                 binding={binding}
                 version={version}
-                yaw={snapshot.arenaYaw}
                 blueNode={blueNode}
                 redNode={cpuNode}
               />
@@ -285,7 +289,6 @@ export default function ArenaScene({
             <ArenaModels
               binding={binding}
               version={version}
-              yaw={snapshot.arenaYaw}
               blueNode={blueNode}
               redNode={cpuNode}
             />
@@ -301,19 +304,34 @@ const noRoom = () => null;
 function ArenaModels({
   binding,
   version,
-  yaw,
   blueNode,
   redNode,
 }: {
   binding: ArenaSceneBinding;
   version: number;
-  yaw: number;
   blueNode: RefObject<ViroNode | null>;
   redNode: RefObject<ViroNode | null>;
 }) {
   const { controller, token, context } = binding;
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { scale, height, yaw } = state.arenaTransform;
+  const scope = { sessionToken: token, placementVersion: version };
   return (
-    <ViroNode key={version} rotation={[0, yaw, 0]}>
+    <ViroNode
+      key={version}
+      position={[0, height, 0]}
+      rotation={[0, yaw, 0]}
+      scale={[scale, scale, scale]}
+      onPinch={
+        state.canTransform
+          ? (gesture, factor) => controller.pinch(scope, gesture, factor)
+          : undefined
+      }
+      onRotate={
+        state.canTransform
+          ? (gesture, degrees) => controller.rotate(scope, gesture, degrees)
+          : undefined
+      }>
       <Viro3DObject
         source={sources.arena}
         type="GLB"
