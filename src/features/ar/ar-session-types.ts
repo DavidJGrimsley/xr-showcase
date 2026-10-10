@@ -9,6 +9,8 @@ export interface ARSceneContext {
 
 export interface ARSessionBoundaryProps {
   enabled?: boolean;
+  // Keep the native view through temporary OS dialogs; background still tears it down.
+  keepSessionOnInactive?: boolean;
   activeOverlayLayout?: 'panel' | 'fullscreen';
   // A feature can supply a Viro or Studio navigator. The boundary owns its lifecycle.
   renderNavigator?: (context: ARSceneContext) => ReactNode;

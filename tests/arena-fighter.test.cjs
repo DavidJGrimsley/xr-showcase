@@ -6,8 +6,8 @@ const {
 } = require('../src/features/arena-fighter/arena-controller.ts');
 const { updateHeldTouches } = require('../src/features/arena-fighter/arena-touch-input.ts');
 
-function harness(rules = {}, ready = true) {
-  const controller = new ArenaController({ cpuEnabled: false, ...rules });
+function harness(rules = {}, ready = true, random = () => 0) {
+  const controller = new ArenaController({ cpuEnabled: false, ...rules }, random);
   let token = controller.attachSession(1);
   const tick = (seconds) => {
     for (let i = 0; i < Math.round(seconds * 60); i++) controller.tick(token, 1 / 60);
@@ -17,7 +17,7 @@ function harness(rules = {}, ready = true) {
     controller.setTracking(token, true);
     controller.setPlacement(token, true);
     const version = controller.getSnapshot().placementVersion;
-    for (const asset of ['arena', 'blue', 'cpu']) controller.assetLoaded(token, version, asset);
+    for (const asset of ['arena', 'blue', 'red']) controller.assetLoaded(token, version, asset);
     tick(0.5);
   };
   load();
@@ -82,7 +82,7 @@ test('Ready waits for all assets, placement, landscape and half a second of norm
   controller.assetLoaded(token, version, 'blue');
   for (let i = 0; i < 29; i++) controller.tick(token, 1 / 60);
   assert.equal(controller.ready(), false);
-  controller.assetLoaded(token, version, 'cpu');
+  controller.assetLoaded(token, version, 'red');
   assert.equal(controller.ready(), false);
   controller.tick(token, 1 / 60);
   assert.equal(controller.getSnapshot().canReady, true);
@@ -111,8 +111,8 @@ test('movement uses held input, arena X, 8cm/s, bounds and minimum separation', 
   close(h.controller.getTransform('blue').x, -0.14);
   h.controller.setMovement('retreat', false);
   h.tick(4);
-  close(h.controller.getTransform('cpu').x - h.controller.getTransform('blue').x, 0.055);
-  close(h.controller.getTransform('cpu').x, 0.095);
+  close(h.controller.getTransform('red').x - h.controller.getTransform('blue').x, 0.055);
+  close(h.controller.getTransform('red').x, 0.095);
   assert.equal(h.snapshot().blue.clip, 'IdleAggro');
 });
 
@@ -123,7 +123,7 @@ test('swapped sides reverse advance/retreat and facing while arena rotation leav
   assert.equal(h.snapshot().arenaYaw, 90);
   close(h.controller.getTransform('blue').x, 0.095);
   assert.equal(h.controller.getTransform('blue').yaw, -90);
-  assert.equal(h.controller.getTransform('cpu').yaw, 90);
+  assert.equal(h.controller.getTransform('red').yaw, 90);
   h.controller.ready();
   h.controller.setMovement('retreat', true);
   h.tick(2);
@@ -131,7 +131,7 @@ test('swapped sides reverse advance/retreat and facing while arena rotation leav
   h.controller.setMovement('retreat', false);
   h.controller.setMovement('advance', true);
   h.tick(4);
-  close(h.controller.getTransform('blue').x - h.controller.getTransform('cpu').x, 0.055);
+  close(h.controller.getTransform('blue').x - h.controller.getTransform('red').x, 0.055);
   h.controller.rotateArena();
   assert.equal(h.snapshot().arenaYaw, 90);
 });
@@ -150,8 +150,10 @@ test('movement stops during attacks, resumes a still-held touch afterward and id
   assert.equal(h.snapshot().blue.clip, 'IdleAggro');
 });
 
-test('jab hands repeat left left right left right right and held movement never repeats an attack', () => {
-  const h = harness();
+test('punch hands are sampled independently when an attack starts and held movement never repeats an attack', () => {
+  const samples = [0.9, 0.8, 0.1, 0.7, 0.2, 0.3, 0.6, 0.4];
+  let calls = 0;
+  const h = harness({}, true, () => samples[calls++]);
   const hands = [];
   for (let i = 0; i < 8; i++) {
     assert.equal(h.controller.attack('punch'), true);
@@ -160,11 +162,110 @@ test('jab hands repeat left left right left right right and held movement never 
   }
   assert.deepEqual(
     hands,
-    ['L', 'L', 'R', 'L', 'R', 'R', 'L', 'L'].map((hand) => `Combo_Punch${hand}`)
+    ['R', 'R', 'L', 'R', 'L', 'L', 'R', 'L'].map((hand) => `Combo_Punch${hand}`)
   );
+  assert.equal(calls, 8);
   h.tick(2);
   assert.equal(h.snapshot().blue.mode, 'idle');
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
+});
+
+test('a landed fourth punch adds stun and leaves enough time for a buffered uppercut to connect', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+    assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  }
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.equal(h.snapshot().red.health, 60);
+  assert.ok(h.snapshot().blue.uppercutWindowRemaining > 0.8);
+  assert.equal(h.controller.attack('uppercut'), true);
+  h.tick(0.35);
+  assert.equal(h.snapshot().blue.clip, 'Combo_UppercutL');
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(0.3);
+  assert.equal(h.snapshot().red.mode, 'hit');
+  assert.equal(h.controller.attack('punch', 'red'), false);
+  h.tick(0.2);
+  assert.equal(h.snapshot().red.health, 45);
+});
+
+test('missing the fourth punch grants no stun or cue and the next punch starts a new string', () => {
+  const h = harness();
+  for (let punch = 0; punch < 4; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  assert.equal(h.snapshot().red.health, 100);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.near();
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(0.6);
+  assert.equal(h.snapshot().red.mode, 'idle');
+});
+
+test('a finisher never offers a cooling-down uppercut and the opening expires without input', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  h.controller.attack('uppercut');
+  h.tick(0.9);
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.ok(h.snapshot().blue.uppercutRemaining > 0);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(1.35);
+  assert.equal(h.snapshot().red.mode, 'idle');
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(2);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+});
+
+test('simultaneous fourth punches stun both fighters without granting an ordering-dependent opening', () => {
+  for (const order of [
+    ['blue', 'red'],
+    ['red', 'blue'],
+  ]) {
+    const h = harness({ spawn: 0.04 });
+    for (let punch = 0; punch < 4; punch++) {
+      for (const id of order) h.controller.attack('punch', id);
+      h.tick(punch < 3 ? 0.9 : 0.3);
+    }
+    for (const id of order) {
+      assert.equal(h.snapshot()[id].health, 60);
+      assert.equal(h.snapshot()[id].uppercutWindowRemaining, 0);
+    }
+    h.tick(0.6);
+    assert.equal(h.snapshot().blue.mode, 'hit');
+    assert.equal(h.snapshot().red.mode, 'hit');
+  }
+});
+
+test('portrait preserves a finisher opening while a real tracking interruption clears it', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  h.controller.attack('punch');
+  h.tick(0.3);
+  const window = h.snapshot().blue.uppercutWindowRemaining;
+  h.controller.setLandscape(false);
+  h.tick(40);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, window);
+  assert.equal(h.snapshot().red.mode, 'hit');
+  h.controller.setLandscape(true);
+  h.tick(0.5);
+  assert.ok(h.snapshot().blue.uppercutWindowRemaining > 0);
+  h.controller.setTracking(h.token, false);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  assert.equal(h.snapshot().red.mode, 'idle');
 });
 
 test('uppercut hands alternate independently and its three-second cooldown starts on misses', () => {
@@ -182,7 +283,39 @@ test('uppercut hands alternate independently and its three-second cooldown start
   h.tick(1 / 60);
   assert.equal(h.controller.attack('uppercut'), true);
   assert.equal(h.snapshot().blue.clip, 'Combo_UppercutR');
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
+});
+
+test('buffered punches choose their random hand and advance the string only when they start', () => {
+  let samples = 0;
+  const h = harness({}, true, () => (samples++ % 2 ? 0.9 : 0.1));
+  h.controller.attack('punch');
+  assert.equal(samples, 1);
+  assert.equal(h.controller.attack('punch'), true);
+  assert.equal(samples, 1);
+  assert.equal(h.controller.attack('punch'), false);
+  h.tick(0.65);
+  assert.equal(samples, 2);
+  assert.equal(h.snapshot().blue.clip, 'Combo_PunchR');
+});
+
+test('a rematch resets the four-punch finisher count and clears any remaining cue', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 10; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  h.tick(2.4);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  assert.equal(h.controller.rematch(), true);
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+    assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  }
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.ok(h.snapshot().blue.uppercutWindowRemaining > 0);
 });
 
 test('one buffered move is first-wins, starts after the current clip and rejects unavailable uppercuts', () => {
@@ -205,23 +338,23 @@ test('damage is timed once per clip and an uppercut deals 1.5 times punch damage
   h.near();
   h.controller.attack('punch');
   h.tick(17 / 60);
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
   h.tick(1 / 60);
-  assert.equal(h.snapshot().cpu.health, 90);
+  assert.equal(h.snapshot().red.health, 90);
   h.tick(0.7);
-  assert.equal(h.snapshot().cpu.health, 90);
+  assert.equal(h.snapshot().red.health, 90);
   h.controller.attack('uppercut');
   h.tick(28 / 60);
-  assert.equal(h.snapshot().cpu.health, 90);
+  assert.equal(h.snapshot().red.health, 90);
   h.tick(1 / 60);
-  assert.equal(h.snapshot().cpu.health, 75);
-  close(h.controller.getTransform('cpu').lift, 0);
-  assert.equal(h.snapshot().cpu.clip, 'HitFront');
+  assert.equal(h.snapshot().red.health, 75);
+  close(h.controller.getTransform('red').lift, 0);
+  assert.equal(h.snapshot().red.clip, 'HitFront');
 });
 
 test('reach is checked at the hit event: retreat can turn a started attack into a miss', () => {
   const h = harness({ spawn: 0.04 });
-  h.controller.attack('punch', 'cpu');
+  h.controller.attack('punch', 'red');
   h.controller.setMovement('retreat', true);
   h.tick(0.3);
   assert.equal(h.snapshot().blue.health, 100);
@@ -231,49 +364,49 @@ test('reach is checked at the hit event: retreat can turn a started attack into 
 
 test('a hit cancels staggered attacks and buffered input, preserving an interrupted uppercut cooldown', () => {
   const h = harness({ spawn: 0.04 });
-  h.controller.attack('uppercut', 'cpu');
-  h.controller.attack('punch', 'cpu');
+  h.controller.attack('uppercut', 'red');
+  h.controller.attack('punch', 'red');
   h.controller.attack('punch');
   h.tick(0.3);
-  assert.equal(h.snapshot().cpu.health, 90);
-  assert.equal(h.snapshot().cpu.mode, 'hit');
-  assert.equal(h.controller.attack('punch', 'cpu'), false);
+  assert.equal(h.snapshot().red.health, 90);
+  assert.equal(h.snapshot().red.mode, 'hit');
+  assert.equal(h.controller.attack('punch', 'red'), false);
   h.tick(1);
   assert.equal(h.snapshot().blue.health, 100);
-  assert.equal(h.snapshot().cpu.mode, 'idle');
-  assert.ok(h.snapshot().cpu.uppercutRemaining > 0);
+  assert.equal(h.snapshot().red.mode, 'idle');
+  assert.ok(h.snapshot().red.uppercutRemaining > 0);
   h.tick(1.7);
-  assert.equal(h.snapshot().cpu.clip, 'IdleAggro');
-  assert.equal(h.controller.attack('uppercut', 'cpu'), true);
-  assert.equal(h.snapshot().cpu.clip, 'Combo_UppercutR');
+  assert.equal(h.snapshot().red.clip, 'IdleAggro');
+  assert.equal(h.controller.attack('uppercut', 'red'), true);
+  assert.equal(h.snapshot().red.clip, 'Combo_UppercutR');
 });
 
 test('hits due in the same step damage both fighters independent of attack command order', () => {
   for (const order of [
-    ['blue', 'cpu'],
-    ['cpu', 'blue'],
+    ['blue', 'red'],
+    ['red', 'blue'],
   ]) {
     const h = harness({ spawn: 0.04 });
     for (const id of order) h.controller.attack('punch', id);
     h.tick(0.3);
     assert.equal(h.snapshot().blue.health, 90);
-    assert.equal(h.snapshot().cpu.health, 90);
+    assert.equal(h.snapshot().red.health, 90);
     assert.equal(h.snapshot().blue.mode, 'hit');
-    assert.equal(h.snapshot().cpu.mode, 'hit');
+    assert.equal(h.snapshot().red.mode, 'hit');
   }
 });
 
 test('simultaneous lethal attacks produce a draw, stop combat and settle both defeated poses', () => {
   const h = harness({ spawn: 0.04, health: 10 });
   h.controller.attack('punch');
-  h.controller.attack('punch', 'cpu');
+  h.controller.attack('punch', 'red');
   h.tick(0.3);
   assert.equal(h.snapshot().outcome, 'draw');
   assert.equal(h.snapshot().phase, 'ending');
   assert.equal(h.controller.attack('punch'), false);
   h.tick(1);
   assert.equal(h.snapshot().blue.clip, 'DefeatedLoop');
-  assert.equal(h.snapshot().cpu.clip, 'DefeatedLoop');
+  assert.equal(h.snapshot().red.clip, 'DefeatedLoop');
   assert.equal(h.snapshot().canRematch, true);
 });
 
@@ -281,15 +414,15 @@ test('lethal punch stays grounded, plays defeat and one 2.3-second victory befor
   const h = harness({ spawn: 0.04, health: 10 });
   h.controller.attack('punch');
   h.tick(0.3);
-  assert.equal(h.snapshot().cpu.clip, 'Defeat');
+  assert.equal(h.snapshot().red.clip, 'Defeat');
   assert.equal(h.snapshot().blue.clip, 'Victory');
-  close(h.controller.getTransform('cpu').lift, 0);
+  close(h.controller.getTransform('red').lift, 0);
   assert.equal(h.controller.rematch(), false);
   h.tick(2.2833333333);
   assert.equal(h.snapshot().canRematch, false);
   h.tick(1 / 60);
   assert.equal(h.snapshot().blue.clip, 'IdleAggro');
-  assert.equal(h.snapshot().cpu.clip, 'DefeatedLoop');
+  assert.equal(h.snapshot().red.clip, 'DefeatedLoop');
   assert.equal(h.snapshot().canRematch, true);
 });
 
@@ -297,14 +430,14 @@ test('only a finishing uppercut launches through a 0.8-second arc with an 18cm a
   const h = harness({ spawn: 0.04, health: 15 });
   h.controller.attack('uppercut');
   h.tick(29 / 60);
-  assert.equal(h.snapshot().cpu.mode, 'launch');
+  assert.equal(h.snapshot().red.mode, 'launch');
   h.tick(0.4);
-  close(h.controller.getTransform('cpu').lift, 0.18);
+  close(h.controller.getTransform('red').lift, 0.18);
   h.tick(0.4);
-  close(h.controller.getTransform('cpu').lift, 0);
-  assert.equal(h.snapshot().cpu.clip, 'Defeat');
+  close(h.controller.getTransform('red').lift, 0);
+  assert.equal(h.snapshot().red.clip, 'Defeat');
   h.tick(0.9);
-  assert.equal(h.snapshot().cpu.clip, 'DefeatedLoop');
+  assert.equal(h.snapshot().red.clip, 'DefeatedLoop');
   assert.equal(h.snapshot().canRematch, false);
   h.tick(0.6);
   assert.equal(h.snapshot().canRematch, true);
@@ -322,7 +455,7 @@ test('rematch resets health, spawn, hands, cooldown, buffers and outcome while r
   h.tick(2.4);
   assert.equal(h.controller.rematch(), true);
   assert.equal(h.snapshot().blue.health, 15);
-  assert.equal(h.snapshot().cpu.health, 15);
+  assert.equal(h.snapshot().red.health, 15);
   assert.equal(h.snapshot().blue.uppercutRemaining, 0);
   assert.equal(h.snapshot().outcome, null);
   assert.equal(h.snapshot().placed, true);
@@ -351,7 +484,7 @@ test('tracking loss freezes combat/cooldowns, cancels pending damage and input, 
   assert.equal(h.snapshot().blue.clip, 'IdleAggro');
   h.tick(10);
   assert.equal(h.snapshot().blue.uppercutRemaining, remaining);
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
   h.controller.setTracking(h.token, true);
   h.tick(29 / 60);
   assert.equal(h.controller.resume(), false);
@@ -359,32 +492,34 @@ test('tracking loss freezes combat/cooldowns, cancels pending damage and input, 
   assert.equal(h.snapshot().animationsRunning, false);
   assert.equal(h.controller.resume(), true);
   h.tick(0.7);
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
   close(h.controller.getTransform('blue').x, -0.04);
   assert.equal(h.snapshot().blue.clip, 'IdleAggro');
 });
 
-test('tracking loss freezes a knockout arc until Resume; background replacement restores its settled outcome', () => {
+test('tracking loss and background replacement preserve an unfinished knockout until Resume', () => {
   const h = harness({ spawn: 0.04, health: 15 });
   h.controller.attack('uppercut');
   h.tick(29 / 60);
   h.tick(0.2);
-  const lift = h.controller.getTransform('cpu').lift;
+  const lift = h.controller.getTransform('red').lift;
   h.controller.setTracking(h.token, false);
   h.tick(5);
-  close(h.controller.getTransform('cpu').lift, lift);
+  close(h.controller.getTransform('red').lift, lift);
   h.controller.setTracking(h.token, true);
   h.tick(0.5);
   h.controller.resume();
   h.tick(0.2);
-  close(h.controller.getTransform('cpu').lift, 0.18);
+  close(h.controller.getTransform('red').lift, 0.18);
   h.controller.detachSession(h.token);
-  assert.equal(h.snapshot().phase, 'ended');
-  assert.equal(h.snapshot().cpu.clip, 'DefeatedLoop');
-  close(h.controller.getTransform('cpu').lift, 0);
+  assert.equal(h.snapshot().phase, 'paused');
+  close(h.controller.getTransform('red').lift, 0.18);
   h.replace();
   h.load();
   assert.equal(h.snapshot().outcome, 'blue');
+  assert.equal(h.snapshot().canRematch, false);
+  assert.equal(h.controller.resume(), true);
+  h.tick(3);
   assert.equal(h.snapshot().canRematch, true);
 });
 
@@ -402,7 +537,7 @@ test('background or direct session replacement keeps health/positions but requir
   assert.equal(h.snapshot().placed, false);
   assert.equal(h.controller.resume(), false);
   h.controller.assetLoaded(oldToken, oldVersion, 'blue');
-  assert.equal(h.controller.assetFailed(oldToken, oldVersion, 'cpu'), false);
+  assert.equal(h.controller.assetFailed(oldToken, oldVersion, 'red'), false);
   h.controller.setTracking(oldToken, true);
   h.controller.setPlacement(oldToken, true);
   h.controller.tick(oldToken, 1 / 60);
@@ -411,7 +546,7 @@ test('background or direct session replacement keeps health/positions but requir
   h.load();
   assert.equal(h.controller.resume(), true);
   h.tick(1);
-  assert.equal(h.snapshot().cpu.health, 90);
+  assert.equal(h.snapshot().red.health, 90);
   close(h.controller.getTransform('blue').x, x);
 });
 
@@ -422,12 +557,12 @@ test('plane removal rejects stale asset callbacks; failures recover only after s
   assert.equal(h.snapshot().phase, 'paused');
   assert.equal(h.snapshot().animationsRunning, false);
   assert.equal(h.controller.assetFailed(h.token, oldVersion, 'arena'), false);
-  h.controller.assetLoaded(h.token, oldVersion, 'cpu');
+  h.controller.assetLoaded(h.token, oldVersion, 'red');
   assert.equal(h.snapshot().assetsLoaded, 0);
   const version = h.snapshot().placementVersion;
-  assert.equal(h.controller.assetFailed(h.token, version, 'cpu'), true);
+  assert.equal(h.controller.assetFailed(h.token, version, 'red'), true);
   assert.match(h.snapshot().error, /Red fighter/);
-  h.controller.assetLoaded(h.token, version, 'cpu');
+  h.controller.assetLoaded(h.token, version, 'red');
   assert.equal(h.snapshot().assetsLoaded, 0);
   h.replace();
   h.load();
@@ -443,9 +578,9 @@ test('CPU applies pressure after a short opening beat, varies recovery and obeys
   while (attacks.length < 7 && elapsed < 8) {
     h.tick(1 / 60);
     elapsed += 1 / 60;
-    const mode = h.snapshot().cpu.mode;
+    const mode = h.snapshot().red.mode;
     if (mode === 'attack' && lastMode !== 'attack')
-      attacks.push({ time: elapsed, clip: h.snapshot().cpu.clip });
+      attacks.push({ time: elapsed, clip: h.snapshot().red.clip });
     lastMode = mode;
   }
   assert.equal(attacks.length, 7);
@@ -453,7 +588,7 @@ test('CPU applies pressure after a short opening beat, varies recovery and obeys
   assert.ok(attacks[0].time <= ARENA_RULES.cpuFirstDelay + 2 / 60);
   const firstGap = attacks[1].time - attacks[0].time;
   const secondGap = attacks[2].time - attacks[1].time;
-  assert.ok(firstGap >= 0.65 + ARENA_RULES.cpuRecovery - 1 / 60 && firstGap < 1);
+  assert.ok(firstGap >= 0.65 + ARENA_RULES.cpuRecovery - 1 / 60 && firstGap < 1.3);
   assert.ok(secondGap >= 0.65 && secondGap < firstGap);
   assert.deepEqual(
     attacks.slice(0, 3).map((entry) => entry.clip),
@@ -463,66 +598,66 @@ test('CPU applies pressure after a short opening beat, varies recovery and obeys
   assert.equal(uppercuts.length, 2);
   assert.ok(uppercuts[1].time - uppercuts[0].time >= ARENA_RULES.uppercutCooldown);
   assert.equal(uppercuts[1].clip, 'Combo_UppercutR');
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
 });
 
 test('CPU approaches using the same line and stops walking when in reach', () => {
   const h = harness({ cpuEnabled: true });
   h.tick(0.5);
-  assert.equal(h.snapshot().cpu.clip, 'WalkForward');
-  close(h.controller.getTransform('cpu').x, 0.055);
-  h.tick(0.9);
+  assert.equal(h.snapshot().red.clip, 'WalkForward');
+  close(h.controller.getTransform('red').x, 0.055);
+  h.tick(1.05);
   assert.ok(
-    Math.abs(h.controller.getTransform('cpu').x - h.controller.getTransform('blue').x) <=
+    Math.abs(h.controller.getTransform('red').x - h.controller.getTransform('blue').x) <=
       ARENA_RULES.reach
   );
-  assert.equal(h.snapshot().cpu.clip, 'IdleAggro');
+  assert.equal(h.snapshot().red.clip, 'IdleAggro');
   assert.equal(h.snapshot().blue.health, 100);
 });
 
 test('leaving and re-entering reach cannot bypass the CPU recovery delay', () => {
   const h = harness({ cpuEnabled: true, spawn: 0.04, cpuFirstDelay: 0, cpuRecovery: 0.9 });
   h.tick(1 / 60);
-  assert.equal(h.snapshot().cpu.mode, 'attack');
+  assert.equal(h.snapshot().red.mode, 'attack');
   h.controller.setMovement('retreat', true);
   h.tick(0.5);
   assert.ok(
-    Math.abs(h.controller.getTransform('cpu').x - h.controller.getTransform('blue').x) >
+    Math.abs(h.controller.getTransform('red').x - h.controller.getTransform('blue').x) >
       ARENA_RULES.reach
   );
   assert.equal(h.snapshot().blue.health, 100);
   h.controller.setMovement('retreat', false);
   h.tick(8 / 60);
-  assert.equal(h.snapshot().cpu.mode, 'idle');
+  assert.equal(h.snapshot().red.mode, 'idle');
   h.controller.setMovement('advance', true);
   h.tick(14 / 60);
   h.controller.setMovement('advance', false);
   assert.ok(
-    Math.abs(h.controller.getTransform('cpu').x - h.controller.getTransform('blue').x) <=
+    Math.abs(h.controller.getTransform('red').x - h.controller.getTransform('blue').x) <=
       ARENA_RULES.reach
   );
   h.tick(0.8);
-  assert.equal(h.snapshot().cpu.mode, 'idle');
+  assert.equal(h.snapshot().red.mode, 'idle');
   h.tick(0.25);
-  assert.equal(h.snapshot().cpu.mode, 'attack');
+  assert.equal(h.snapshot().red.mode, 'attack');
 });
 
-test('CPU gives a visible attack 200ms before evading, then closes and punishes the miss', () => {
-  const h = harness({ cpuEnabled: true, spawn: 0.04 });
+test('CPU reacts to a telegraphed uppercut after a visible delay and punishes the miss', () => {
+  const h = harness({ cpuEnabled: true, spawn: 0.038 });
   h.controller.attack('uppercut');
-  const start = h.controller.getTransform('cpu').x;
+  const start = h.controller.getTransform('red').x;
   h.tick(ARENA_RULES.cpuReaction);
-  close(h.controller.getTransform('cpu').x, start);
-  h.tick(1 / 60);
-  assert.equal(h.snapshot().cpu.clip, 'WalkBackward');
-  assert.ok(h.controller.getTransform('cpu').x > start);
+  close(h.controller.getTransform('red').x, start);
+  h.tick(2 / 60);
+  assert.equal(h.snapshot().red.clip, 'WalkBackward');
+  assert.ok(h.controller.getTransform('red').x > start);
   h.tick(16 / 60);
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
   h.tick(4 / 60);
-  assert.equal(h.snapshot().cpu.clip, 'Combo_PunchL');
+  assert.equal(h.snapshot().red.clip, 'Combo_PunchL');
   h.tick(0.3);
   assert.equal(h.snapshot().blue.health, 90);
-  assert.equal(h.snapshot().cpu.health, 100);
+  assert.equal(h.snapshot().red.health, 100);
   assert.ok(h.snapshot().blue.uppercutRemaining > 2);
 });
 
@@ -530,12 +665,12 @@ test('a close punch can catch the CPU and its stagger prevents moving or attacki
   const h = harness({ cpuEnabled: true, spawn: ARENA_RULES.separation / 2 });
   h.controller.attack('punch');
   h.tick(0.3);
-  assert.equal(h.snapshot().cpu.health, 90);
-  assert.equal(h.snapshot().cpu.clip, 'HitFront');
-  const hitPosition = h.controller.getTransform('cpu').x;
+  assert.equal(h.snapshot().red.health, 90);
+  assert.equal(h.snapshot().red.clip, 'HitFront');
+  const hitPosition = h.controller.getTransform('red').x;
   h.tick(0.4);
-  close(h.controller.getTransform('cpu').x, hitPosition);
-  assert.equal(h.snapshot().cpu.mode, 'hit');
+  close(h.controller.getTransform('red').x, hitPosition);
+  assert.equal(h.snapshot().red.mode, 'hit');
   assert.equal(h.snapshot().blue.health, 100);
 });
 
@@ -545,24 +680,24 @@ test('CPU protects its spacing when approached and keeps speed, bounds and separ
     if (swapped) h.controller.swapSides();
     h.controller.ready();
     h.controller.setMovement('advance', true);
-    let previous = h.controller.getTransform('cpu').x;
-    h.tick(4 / 60);
-    assert.equal(h.snapshot().cpu.clip, 'WalkBackward');
+    let previous = h.controller.getTransform('red').x;
+    h.tick(10 / 60);
+    assert.equal(h.snapshot().red.clip, 'WalkBackward');
     assert.ok(
       swapped
-        ? h.controller.getTransform('cpu').x < previous
-        : h.controller.getTransform('cpu').x > previous
+        ? h.controller.getTransform('red').x < previous
+        : h.controller.getTransform('red').x > previous
     );
-    previous = h.controller.getTransform('cpu').x;
+    previous = h.controller.getTransform('red').x;
     for (let frame = 0; frame < 60 * 10; frame++) {
       if (frame % 90 === 0) h.controller.attack('uppercut');
       h.tick(1 / 60);
-      const cpu = h.controller.getTransform('cpu').x;
+      const red = h.controller.getTransform('red').x;
       const blue = h.controller.getTransform('blue').x;
-      assert.ok(Math.abs(cpu - previous) <= ARENA_RULES.speed / 60 + 1e-7);
-      assert.ok(Math.abs(cpu) <= ARENA_RULES.boundary + 1e-7);
-      assert.ok(Math.abs(cpu - blue) >= ARENA_RULES.separation - 1e-7);
-      previous = cpu;
+      assert.ok(Math.abs(red - previous) <= ARENA_RULES.speed / 60 + 1e-7);
+      assert.ok(Math.abs(red) <= ARENA_RULES.boundary + 1e-7);
+      assert.ok(Math.abs(red - blue) >= ARENA_RULES.separation - 1e-7);
+      previous = red;
     }
   }
 });
@@ -570,12 +705,12 @@ test('CPU protects its spacing when approached and keeps speed, bounds and separ
 test('CPU uses an available uppercut to finish 11-15 health and a fast punch for 10 health', () => {
   for (const health of [10, 15]) {
     const h = harness({ cpuEnabled: true, spawn: 0.04, health });
-    h.tick(20 / 60);
-    assert.equal(h.snapshot().cpu.clip, health === 15 ? 'Combo_UppercutL' : 'Combo_PunchL');
+    h.tick(32 / 60);
+    assert.equal(h.snapshot().red.clip, health === 15 ? 'Combo_UppercutL' : 'Combo_PunchL');
     h.tick(0.5);
-    assert.equal(h.snapshot().outcome, 'cpu');
+    assert.equal(h.snapshot().outcome, 'red');
     assert.equal(h.snapshot().blue.health, 0);
-    assert.equal(h.snapshot().cpu.health, health);
+    assert.equal(h.snapshot().red.health, health);
   }
 });
 
@@ -584,35 +719,40 @@ test('a cornered CPU counters rather than waiting forever for room to evade', ()
   // Keep Red busy at its starting boundary while Blue closes the initial gap.
   h.controller.setMovement('advance', true);
   for (let frame = 0; frame < 195; frame++) {
-    h.controller.attack('punch', 'cpu');
+    h.controller.attack('punch', 'red');
     h.tick(1 / 60);
   }
   h.controller.setMovement('advance', false);
   for (
     let frame = 0;
-    frame < 60 && (h.snapshot().cpu.mode === 'attack' || h.snapshot().blue.mode === 'hit');
+    frame < 60 && (h.snapshot().red.mode === 'attack' || h.snapshot().blue.mode === 'hit');
     frame++
   )
     h.tick(1 / 60);
-  close(h.controller.getTransform('cpu').x, ARENA_RULES.boundary);
+  close(h.controller.getTransform('red').x, ARENA_RULES.boundary);
   assert.equal(h.controller.attack('uppercut'), true);
   h.tick(0.35);
-  close(h.controller.getTransform('cpu').x, ARENA_RULES.boundary);
-  assert.equal(h.snapshot().cpu.mode, 'attack');
-  assert.ok(h.snapshot().cpu.clip.includes('Punch'));
+  close(h.controller.getTransform('red').x, ARENA_RULES.boundary);
+  assert.equal(h.snapshot().red.mode, 'attack');
+  assert.ok(h.snapshot().red.clip.includes('Punch'));
 });
 
-test('CPU can defeat relentless attack buffering without extra health or damage', () => {
-  for (const mixed of [false, true]) {
-    const h = harness({ cpuEnabled: true, spawn: 0.04 });
-    for (let frame = 0; frame < 60 * 25 && h.snapshot().phase === 'fighting'; frame++) {
-      if (!mixed || !h.controller.attack('uppercut')) h.controller.attack('punch');
-      h.tick(1 / 60);
-    }
-    assert.equal(h.snapshot().outcome, 'cpu');
-    assert.equal(h.snapshot().blue.health, 0);
-    assert.ok(h.snapshot().cpu.health > 0 && h.snapshot().cpu.health < ARENA_RULES.health);
+test('medium CPU allows ordinary punches to land and loses to sustained close-range pressure', () => {
+  const h = harness({ cpuEnabled: true, spawn: 0.04 });
+  for (let frame = 0; frame < 60 * 20 && h.snapshot().phase === 'fighting'; frame++) {
+    h.controller.attack('punch');
+    h.tick(1 / 60);
   }
+  assert.equal(h.snapshot().outcome, 'blue');
+  assert.equal(h.snapshot().red.health, 0);
+});
+
+test('medium CPU still defeats a passive opponent using ordinary damage and health', () => {
+  const h = harness({ cpuEnabled: true, spawn: 0.04 });
+  h.tick(20);
+  assert.equal(h.snapshot().outcome, 'red');
+  assert.equal(h.snapshot().blue.health, 0);
+  assert.equal(h.snapshot().red.health, ARENA_RULES.health);
 });
 
 test('CPU reaction and attack scheduling freeze on tracking loss and restart fairly on Resume/rematch', () => {
@@ -620,42 +760,42 @@ test('CPU reaction and attack scheduling freeze on tracking loss and restart fai
   h.controller.attack('uppercut');
   h.tick(0.1);
   h.controller.setTracking(h.token, false);
-  const cpuPosition = h.controller.getTransform('cpu').x;
+  const cpuPosition = h.controller.getTransform('red').x;
   h.tick(5);
-  assert.equal(h.snapshot().cpu.mode, 'idle');
-  close(h.controller.getTransform('cpu').x, cpuPosition);
+  assert.equal(h.snapshot().red.mode, 'idle');
+  close(h.controller.getTransform('red').x, cpuPosition);
   assert.equal(h.snapshot().blue.health, 15);
   h.controller.setTracking(h.token, true);
   h.tick(0.5);
   h.controller.resume();
-  h.tick(0.3);
-  assert.equal(h.snapshot().cpu.mode, 'idle');
-  h.tick(1 / 60);
-  assert.equal(h.snapshot().cpu.clip, 'Combo_UppercutL');
   h.tick(0.5);
-  assert.equal(h.snapshot().outcome, 'cpu');
+  assert.equal(h.snapshot().red.mode, 'idle');
+  h.tick(1 / 60);
+  assert.equal(h.snapshot().red.clip, 'Combo_UppercutL');
+  h.tick(0.5);
+  assert.equal(h.snapshot().outcome, 'red');
   h.tick(2.4);
   assert.equal(h.controller.rematch(), true);
-  h.tick(20 / 60);
-  assert.equal(h.snapshot().cpu.clip, 'Combo_UppercutL');
-  assert.equal(h.snapshot().cpu.health, 15);
+  h.tick(32 / 60);
+  assert.equal(h.snapshot().red.clip, 'Combo_UppercutL');
+  assert.equal(h.snapshot().red.health, 15);
   assert.equal(h.snapshot().blue.health, 15);
 });
 
 test('clip tester changes either loaded model without fighting, and interruption restores idle', () => {
   const h = harness({}, false);
-  assert.equal(h.controller.previewClip('cpu', 'Victory'), true);
+  assert.equal(h.controller.previewClip('red', 'Victory'), true);
   assert.equal(h.controller.ready(), false);
-  assert.equal(h.snapshot().cpu.clip, 'Victory');
+  assert.equal(h.snapshot().red.clip, 'Victory');
   h.tick(2.3);
-  assert.equal(h.snapshot().cpu.clip, 'IdleAggro');
+  assert.equal(h.snapshot().red.clip, 'IdleAggro');
   h.controller.previewClip('blue', 'WalkForward');
   h.tick(3);
   close(h.controller.getTransform('blue').x, -0.095);
   h.controller.setTracking(h.token, false);
   assert.equal(h.snapshot().preview, null);
   assert.equal(h.snapshot().blue.clip, 'IdleAggro');
-  assert.equal(h.controller.previewClip('cpu', 'missing'), false);
+  assert.equal(h.controller.previewClip('red', 'missing'), false);
 });
 
 test('ordinary movement ticks keep the HUD snapshot stable; frame sampling reports observed cadence', () => {

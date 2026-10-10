@@ -1,4 +1,4 @@
-import { Button, Column, Host, Picker, Row } from '@expo/ui';
+import { Button, Host, Picker, Row } from '@expo/ui';
 import { useEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
@@ -14,15 +14,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useAppTheme } from '@/theme/provider';
 
-import {
-  ARENA_CLIPS,
-  ARENA_RULES,
-  ArenaController,
-  type ArenaSnapshot,
-  type FighterId,
-  type Movement,
-} from './arena-controller';
+import { ARENA_CLIPS, ARENA_RULES, type FighterId, type Movement } from './arena-controller';
+import { ArenaMatch, type MatchSnapshot } from './arena-match';
+import type { ArenaRoom } from './arena-room.native';
+import ArenaRoomPanel from './arena-room-panel.native';
 import { updateHeldTouches } from './arena-touch-input';
+import ArenaTransformControls from './arena-transform-controls.native';
+import type { ArenaTransformScope } from './arena-transform';
 
 function HUDButton(props: ComponentProps<typeof Button>) {
   const { activeColors: colors } = useAppTheme();
@@ -60,7 +58,7 @@ function MovementButton({
   movement,
   disabled,
 }: {
-  controller: ArenaController;
+  controller: ArenaMatch;
   movement: Movement;
   disabled: boolean;
 }) {
@@ -86,7 +84,9 @@ function MovementButton({
       pointerEvents="box-only"
       accessibilityRole="button"
       accessibilityLabel={
-        movement === 'advance' ? 'Hold to advance toward Red Mike' : 'Hold to retreat from Red Mike'
+        movement === 'advance'
+          ? 'Hold to advance toward your opponent'
+          : 'Hold to retreat from your opponent'
       }
       accessibilityState={{ disabled }}
       accessibilityHint="Touch and hold to move. Release to stop."
@@ -121,18 +121,22 @@ function SetupPanel({
   controls,
   snapshot,
   buttonStyle,
+  onTransform,
+  onRestart,
 }: {
-  controller: ArenaController;
+  controller: ArenaMatch;
   controls: ARActiveOverlayContext;
-  snapshot: ArenaSnapshot;
+  snapshot: MatchSnapshot;
   buttonStyle: ComponentProps<typeof Button>['style'];
+  onTransform: () => void;
+  onRestart: () => void;
 }) {
   const { activeColors: colors } = useAppTheme();
   const [tester, setTester] = useState(false);
   const [testFighter, setTestFighter] = useState<FighterId>('blue');
   const [testClip, setTestClip] = useState('IdleAggro');
   const setup = snapshot.phase === 'setup';
-  if (snapshot.phase === 'fighting' || snapshot.phase === 'ending') return null;
+  if (!['lobby', 'paused', 'finished', 'abandoned'].includes(snapshot.stage)) return null;
   return (
     <View pointerEvents="box-none" className="my-2 min-h-0 flex-1 justify-start">
       <ScrollView
@@ -155,25 +159,29 @@ function SetupPanel({
           {setup ? (
             <>
               <HUDButton
-                label="Ready"
+                label={snapshot.localReady ? 'Waiting…' : 'Ready'}
                 disabled={!snapshot.canReady || tester}
                 onPress={controller.ready}
                 style={buttonStyle}
               />
-              <HUDButton
-                label="Swap sides"
-                disabled={Boolean(snapshot.preview)}
-                onPress={controller.swapSides}
-                variant="outlined"
-                style={buttonStyle}
-              />
-              <HUDButton
-                label="Rotate 90°"
-                disabled={Boolean(snapshot.preview)}
-                onPress={controller.rotateArena}
-                variant="outlined"
-                style={buttonStyle}
-              />
+              {snapshot.mode !== 'guest' && (
+                <HUDButton
+                  label="Swap sides"
+                  disabled={!snapshot.canTransform}
+                  onPress={controller.swapSides}
+                  variant="outlined"
+                  style={buttonStyle}
+                />
+              )}
+              {snapshot.mode === 'solo' && snapshot.placed && (
+                <HUDButton
+                  label="Transform"
+                  disabled={!snapshot.canTransform}
+                  onPress={onTransform}
+                  variant="outlined"
+                  style={buttonStyle}
+                />
+              )}
             </>
           ) : snapshot.phase === 'paused' ? (
             <HUDButton
@@ -182,26 +190,39 @@ function SetupPanel({
               onPress={controller.resume}
               style={buttonStyle}
             />
-          ) : (
+          ) : snapshot.stage === 'finished' ? (
             <HUDButton
               label="Rematch"
               disabled={!snapshot.canRematch}
               onPress={controller.rematch}
               style={buttonStyle}
             />
+          ) : null}
+          {snapshot.mode === 'solo' && (
+            <HUDButton
+              label="Restart AR"
+              variant="outlined"
+              onPress={onRestart}
+              style={buttonStyle}
+            />
           )}
-          <HUDButton
-            label="Replace arena"
-            variant="outlined"
-            onPress={controls.restartAR}
-            style={buttonStyle}
-          />
         </View>
-        {__DEV__ && setup ? (
+        {snapshot.mode !== 'solo' && (
+          <Text style={{ color: colors.text }}>
+            You: {!snapshot.connected ? 'Connecting' : snapshot.localReady ? 'Ready' : 'Connected'}{' '}
+            · Opponent:{' '}
+            {!snapshot.peerConnected ? 'Connecting' : snapshot.peerReady ? 'Ready' : 'Connected'}
+            {snapshot.stage === 'paused' ? ' · Recovery ' + snapshot.recoverySeconds + 's' : ''}
+          </Text>
+        )}
+        {snapshot.stage === 'paused' && snapshot.remotePauseReason && (
+          <Text style={{ color: colors.text }}>Opponent: {snapshot.remotePauseReason}</Text>
+        )}
+        {__DEV__ && setup && snapshot.mode === 'solo' ? (
           <>
             <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor={colors.primary}>
               <Button
-                label={tester ? 'Close clip tester' : 'Test fighter clips'}
+                label={tester ? 'Close animation preview' : 'Preview animations (dev)'}
                 variant="text"
                 onPress={() => {
                   controller.stopPreview();
@@ -213,7 +234,8 @@ function SetupPanel({
             {tester ? (
               <>
                 <Text className="text-sm" style={{ color: colors.text }}>
-                  Development clip test. Place the arena and wait for both fighters to load.
+                  Developer tool: play a fighter animation without combat. Place the arena and wait
+                  for both fighters to load.
                 </Text>
                 <Host
                   matchContents={{ vertical: true }}
@@ -222,7 +244,7 @@ function SetupPanel({
                   <Row spacing={12}>
                     <Picker selectedValue={testFighter} onValueChange={setTestFighter}>
                       <Picker.Item label="Blue Mike" value="blue" />
-                      <Picker.Item label="Red Mike" value="cpu" />
+                      <Picker.Item label="Red Mike" value="red" />
                     </Picker>
                     <Picker selectedValue={testClip} onValueChange={setTestClip}>
                       {ARENA_CLIPS.map((clip) => (
@@ -252,11 +274,14 @@ function SetupPanel({
 export default function ArenaHUD({
   controller,
   controls,
+  room,
 }: {
-  controller: ArenaController;
+  controller: ArenaMatch;
   controls: ARActiveOverlayContext;
+  room?: ArenaRoom;
 }) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const [transformScope, setTransformScope] = useState<ArenaTransformScope | null>(null);
   const { activeColors: colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
@@ -265,17 +290,43 @@ export default function ArenaHUD({
     paddingHorizontal: 12,
   };
   const home = () => {
+    room?.dispose();
     controller.dispose();
     controls.home();
   };
+  const openTransform = () => {
+    if (!snapshot.canTransform || snapshot.sessionToken === null) return;
+    controller.invalidatePlacementReady();
+    setTransformScope({
+      sessionToken: snapshot.sessionToken,
+      placementVersion: snapshot.placementVersion,
+    });
+  };
+  const restart = () => {
+    if (room && !room.prepareRestart()) return;
+    if (!room) controller.resetSetupTransform();
+    setTransformScope(null);
+    controls.restartAR();
+  };
+  const transforming =
+    !!transformScope &&
+    transformScope.sessionToken === snapshot.sessionToken &&
+    transformScope.placementVersion === snapshot.placementVersion &&
+    snapshot.stage === 'lobby';
   const movementDisabled = snapshot.phase !== 'fighting' || !snapshot.animationsRunning;
-  const AttackLayout = fontScale > 1.3 ? Column : Row;
+  const preparingSharedArena =
+    !!room && (!snapshot.placed || !snapshot.sharedPlacement) && snapshot.stage === 'lobby';
+  const localFighter = snapshot[snapshot.localFighter];
+  const uppercutOpening =
+    snapshot.canAttack &&
+    localFighter.uppercutWindowRemaining > 0 &&
+    localFighter.uppercutRemaining === 0;
   const outcomeText =
     snapshot.outcome === 'draw'
       ? 'Draw · double knockout'
-      : snapshot.outcome === 'blue'
+      : snapshot.outcome === snapshot.localFighter
         ? 'You won!'
-        : 'Red Mike won';
+        : 'Opponent won';
 
   return (
     <View
@@ -289,8 +340,31 @@ export default function ArenaHUD({
       }}>
       <View pointerEvents="box-none" className="gap-2">
         <View className="flex-row items-center gap-3">
-          <Health label="Blue Mike · You" health={snapshot.blue.health} color="#38bdf8" />
-          <Health label="Red Mike · CPU" health={snapshot.cpu.health} color="#fb923c" />
+          {preparingSharedArena ? (
+            <Text className="flex-1 text-lg font-semibold" style={{ color: colors.text }}>
+              Arena Fighter · {snapshot.mode === 'host' ? 'Host' : 'Join'}
+            </Text>
+          ) : (
+            <>
+              <Health
+                label={'Blue Mike · ' + (snapshot.localFighter === 'blue' ? 'You' : 'Opponent')}
+                health={snapshot.blue.health}
+                color="#38bdf8"
+              />
+              <Health
+                label={
+                  'Red Mike · ' +
+                  (snapshot.mode === 'solo'
+                    ? 'CPU'
+                    : snapshot.localFighter === 'red'
+                      ? 'You'
+                      : 'Opponent')
+                }
+                health={snapshot.red.health}
+                color="#fb923c"
+              />
+            </>
+          )}
           <Host matchContents colorScheme="dark" seedColor={colors.primary}>
             <Button label="Home" onPress={home} style={buttonStyle} />
           </Host>
@@ -301,9 +375,17 @@ export default function ArenaHUD({
             accessibilityLiveRegion="polite"
             className="self-center rounded-lg px-3 py-1 text-lg font-semibold"
             style={{ color: colors.text, backgroundColor: colors.surface }}>
-            {outcomeText}
+            {outcomeText} · {snapshot.wins.blue}–{snapshot.wins.red}
+            {snapshot.stage === 'finished' ? ' · Match complete' : ''}
           </Text>
         ) : null}
+        {snapshot.stage === 'countdown' && !snapshot.orientationPaused && (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ color: colors.text, textAlign: 'center', fontSize: 26 }}>
+            Fight in {snapshot.countdown}…
+          </Text>
+        )}
         {__DEV__ && snapshot.fps !== null ? (
           <Text
             pointerEvents="none"
@@ -314,40 +396,123 @@ export default function ArenaHUD({
         ) : null}
       </View>
 
-      <SetupPanel
-        controller={controller}
-        controls={controls}
-        snapshot={snapshot}
-        buttonStyle={buttonStyle}
-      />
+      <View pointerEvents="box-none" className="min-h-0 flex-1 flex-row justify-end gap-3">
+        {transforming ? (
+          <ScrollView
+            className="my-2 w-full max-w-[380px] rounded-xl"
+            style={{ backgroundColor: colors.surface, flexGrow: 0 }}
+            contentContainerClassName="gap-3 p-3">
+            <ArenaTransformControls
+              controller={controller}
+              state={snapshot}
+              scope={transformScope}
+              onDone={() => setTransformScope(null)}
+            />
+          </ScrollView>
+        ) : (
+          <>
+            {!preparingSharedArena && (
+              <SetupPanel
+                controller={controller}
+                controls={controls}
+                snapshot={snapshot}
+                buttonStyle={buttonStyle}
+                onTransform={openTransform}
+                onRestart={restart}
+              />
+            )}
+            {room && ['lobby', 'paused', 'abandoned'].includes(snapshot.stage) && (
+              <ArenaRoomPanel
+                room={room}
+                controller={controller}
+                onTransform={openTransform}
+                onRestart={restart}
+              />
+            )}
+          </>
+        )}
+      </View>
 
-      <View pointerEvents="box-none" className="flex-row items-end justify-between gap-3">
-        <View className={fontScale > 1.3 ? 'flex-col gap-2' : 'flex-row gap-2'}>
-          {/* Raw touch events keep each finger independent; claiming one RN responder cancels the other hold. */}
-          <MovementButton controller={controller} movement="retreat" disabled={movementDisabled} />
-          <MovementButton controller={controller} movement="advance" disabled={movementDisabled} />
-        </View>
-        <Host matchContents colorScheme="dark" seedColor={colors.primary}>
-          <AttackLayout spacing={8}>
-            <Button
+      {snapshot.orientationPaused && !snapshot.localOrientationPaused && (
+        <Text
+          accessibilityLiveRegion="polite"
+          className="self-center rounded-xl p-3"
+          style={{ color: colors.text, backgroundColor: colors.surface }}>
+          Waiting for your opponent to return to landscape.
+        </Text>
+      )}
+
+      {snapshot.stage === 'fighting' && !snapshot.orientationPaused && (
+        <View pointerEvents="box-none" className="flex-row items-end justify-between gap-3">
+          <View className={fontScale > 1.3 ? 'flex-col gap-2' : 'flex-row gap-2'}>
+            {/* Raw touch events keep each finger independent; claiming one RN responder cancels the other hold. */}
+            <MovementButton
+              controller={controller}
+              movement="retreat"
+              disabled={movementDisabled}
+            />
+            <MovementButton
+              controller={controller}
+              movement="advance"
+              disabled={movementDisabled}
+            />
+          </View>
+          <View
+            style={{
+              flexDirection: fontScale > 1.3 ? 'column' : 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}>
+            <HUDButton
               label="Punch"
               disabled={!snapshot.canAttack}
-              onPress={() => controller.attack('punch', 'blue', snapshot.roundId)}
+              onPress={() => controller.attack('punch', snapshot.roundId)}
               style={buttonStyle}
             />
-            <Button
-              label={
-                snapshot.blue.uppercutRemaining > 0
-                  ? `Uppercut ${snapshot.blue.uppercutRemaining.toFixed(1)}s`
-                  : 'Uppercut'
-              }
-              disabled={!snapshot.canAttack || snapshot.blue.uppercutRemaining > 0}
-              onPress={() => controller.attack('uppercut', 'blue', snapshot.roundId)}
-              style={buttonStyle}
-            />
-          </AttackLayout>
-        </Host>
-      </View>
+            <View
+              testID="arena-uppercut-cue"
+              style={{
+                padding: 4,
+                borderRadius: 20,
+                borderWidth: 3,
+                borderColor: uppercutOpening ? colors.secondary : 'transparent',
+                boxShadow: uppercutOpening
+                  ? [
+                      {
+                        offsetX: 0,
+                        offsetY: 0,
+                        blurRadius: 28,
+                        spreadDistance: 9,
+                        color: colors.secondary,
+                      },
+                      {
+                        offsetX: 0,
+                        offsetY: 0,
+                        blurRadius: 10,
+                        spreadDistance: 3,
+                        color: colors.secondary,
+                      },
+                    ]
+                  : [],
+              }}>
+              <HUDButton
+                label={
+                  localFighter.uppercutRemaining > 0
+                    ? `Uppercut ${localFighter.uppercutRemaining.toFixed(1)}s`
+                    : uppercutOpening
+                      ? 'Uppercut!'
+                      : 'Uppercut'
+                }
+                disabled={
+                  !snapshot.canAttack || snapshot[snapshot.localFighter].uppercutRemaining > 0
+                }
+                onPress={() => controller.attack('uppercut', snapshot.roundId)}
+                style={buttonStyle}
+              />
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/provider';
 
 import { nativeARRuntime } from './ar-runtime.native';
+import { shouldActivateAR } from './ar-activation';
 import { ARSessionController } from './ar-session-controller';
 import type { ARSceneContext, ARSessionBoundaryProps } from './ar-session-types';
 import ARStatusPanel from './ar-status-panel';
@@ -61,12 +62,13 @@ export default function ARSessionBoundary({
   renderActiveOverlay,
   activeOverlayLayout = 'panel',
   enabled: featureEnabled = true,
+  keepSessionOnInactive = false,
 }: ARSessionBoundaryProps) {
   const { activeColors: colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const appState = useSyncExternalStore(subscribeAppState, () => AppState.currentState);
-  const enabled = featureEnabled && focused && appState === 'active';
+  const enabled = shouldActivateAR(featureEnabled, focused, appState, keepSessionOnInactive);
   const [controller] = useState(() => new ARSessionController(nativeARRuntime));
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [settingsError, setSettingsError] = useState(false);

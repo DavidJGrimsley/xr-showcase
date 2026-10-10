@@ -7,28 +7,30 @@ interface AnimationManifest {
 }
 const manifest: AnimationManifest = exportedManifest;
 
-export type FighterId = 'blue' | 'cpu';
+export type FighterId = 'blue' | 'red';
 export type AttackKind = 'punch' | 'uppercut';
 export type Movement = 'advance' | 'retreat';
 export type ArenaPhase = 'setup' | 'fighting' | 'paused' | 'ending' | 'ended';
 export type FighterMode =
   'idle' | 'walk' | 'attack' | 'hit' | 'launch' | 'defeat' | 'defeated' | 'victory';
-export type ArenaAsset = 'arena' | 'blue' | 'cpu';
+export type ArenaAsset = 'arena' | 'blue' | 'red';
 
 export const ARENA_RULES = {
   health: 100,
   punchDamage: 10,
   uppercutDamage: 15,
   uppercutCooldown: 3,
+  punchStringLength: 4,
+  finisherStunBonus: 0.75,
   spawn: 0.095,
   boundary: 0.14,
   separation: 0.055,
   reach: 0.085,
   speed: 0.08,
   stableTracking: 0.5,
-  cpuFirstDelay: 0.3,
-  cpuRecovery: 0.18,
-  cpuReaction: 0.2,
+  cpuFirstDelay: 0.5,
+  cpuRecovery: 0.4,
+  cpuReaction: 0.27,
   cpuRangeMargin: 0.004,
   launchDuration: 0.8,
   launchHeight: 0.18,
@@ -51,9 +53,18 @@ const clipDuration = (name: string) => {
   if (!clip) throw new Error(`Missing fighter clip: ${name}`);
   return clip.durationSeconds;
 };
-const punchHands = ['L', 'L', 'R', 'L', 'R', 'R'] as const;
-const ids: FighterId[] = ['blue', 'cpu'];
+const ids: FighterId[] = ['blue', 'red'];
 const epsilon = 1e-7;
+const attackTimings = new Map(manifest.combo.map((entry) => [entry.clip, entry]));
+function attackTiming(clip: string) {
+  const timing = attackTimings.get(clip);
+  if (!timing) throw new Error(`Missing fighter attack timing: ${clip}`);
+  return timing;
+}
+const uppercutHitAt = Math.max(
+  attackTiming('Combo_UppercutL').hitCheckSeconds,
+  attackTiming('Combo_UppercutR').hitCheckSeconds
+);
 
 interface Attack {
   kind: AttackKind;
@@ -61,6 +72,7 @@ interface Attack {
   duration: number;
   hitAt: number;
   hitChecked: boolean;
+  finisher: boolean;
 }
 interface Fighter {
   health: number;
@@ -75,6 +87,8 @@ interface Fighter {
   uppercutIndex: number;
   attack: Attack | null;
   buffered: AttackKind | null;
+  staggerUntil: number;
+  uppercutWindowUntil: number;
 }
 
 export interface FighterView {
@@ -83,13 +97,14 @@ export interface FighterView {
   clip: string;
   animationId: number;
   uppercutRemaining: number;
+  uppercutWindowRemaining: number;
 }
 export interface ArenaSnapshot {
   sessionToken: number | null;
   roundId: number;
   phase: ArenaPhase;
   blue: FighterView;
-  cpu: FighterView;
+  red: FighterView;
   assetsLoaded: number;
   placementVersion: number;
   placed: boolean;
@@ -116,6 +131,7 @@ export interface FighterTransform {
 /** Owns every gameplay event. Native callbacks only supply readiness, never damage. */
 export class ArenaController {
   private rules: typeof ARENA_RULES;
+  private random: () => number;
   private fighters: Record<FighterId, Fighter>;
   private listeners = new Set<() => void>();
   private snapshot!: ArenaSnapshot;
@@ -135,7 +151,10 @@ export class ArenaController {
   private clock = 0;
   private outcome: FighterId | 'draw' | null = null;
   private error: string | null = null;
-  private held = { advance: false, retreat: false };
+  private held = {
+    blue: { advance: false, retreat: false },
+    red: { advance: false, retreat: false },
+  };
   private blueStartsLeft = true;
   private arenaYaw = 0;
   private cpuAttackAt: number | null = null;
@@ -149,16 +168,29 @@ export class ArenaController {
   private frameSamples = 0;
   private fps: number | null = null;
 
-  constructor(rules: Partial<typeof ARENA_RULES> = {}) {
+  constructor(rules: Partial<typeof ARENA_RULES> = {}, random: () => number = Math.random) {
     this.rules = { ...ARENA_RULES, ...rules };
+    this.random = random;
     this.fighters = {
       blue: this.newFighter(-this.rules.spawn),
-      cpu: this.newFighter(this.rules.spawn),
+      red: this.newFighter(this.rules.spawn),
     };
     this.publish();
   }
 
   getSnapshot = () => this.snapshot;
+  isReady = () => this.prerequisites();
+  hasNormalTracking = () => this.tracking;
+  pauseRound = () => {
+    this.pause();
+    this.publish();
+  };
+  // Prepare the next round without letting combat run during its countdown.
+  prepareRound = () => {
+    if (!this.rematch()) return false;
+    this.pauseRound();
+    return true;
+  };
   getSessionToken = () => this.snapshot.sessionToken;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -185,7 +217,6 @@ export class ArenaController {
   detachSession = (token: number) => {
     if (!this.isCurrent(token)) return;
     this.pause();
-    if (this.outcome) this.settleOutcome();
     this.attached = false;
     this.token++;
     this.placed = false;
@@ -206,7 +237,7 @@ export class ArenaController {
     this.landscape = landscape;
     if (!landscape) {
       this.stableTime = 0;
-      this.pause();
+      this.clearHeldMovement();
     }
     this.publish();
   };
@@ -215,7 +246,11 @@ export class ArenaController {
     if (!this.isCurrent(token) || this.tracking === normal) return;
     this.tracking = normal;
     this.stableTime = 0;
-    if (!normal) this.pause();
+    if (!normal && this.landscape) this.pause();
+    this.publish();
+  };
+  resetTrackingStability = () => {
+    this.stableTime = 0;
     this.publish();
   };
 
@@ -238,14 +273,14 @@ export class ArenaController {
 
   assetFailed = (token: number, version: number, asset: ArenaAsset) => {
     if (!this.isCurrent(token) || version !== this.placementVersion) return false;
-    this.error = `${asset === 'cpu' ? 'Red fighter' : asset === 'blue' ? 'Blue fighter' : 'Arena'} could not load. Retry the AR scene.`;
+    this.error = `${asset === 'red' ? 'Red fighter' : asset === 'blue' ? 'Blue fighter' : 'Arena'} could not load. Retry the AR scene.`;
     this.pause();
     this.publish();
     return true;
   };
 
   firstMissingAsset = (): ArenaAsset | undefined =>
-    (['arena', 'blue', 'cpu'] as const).find((asset) => !this.assets.has(asset));
+    (['arena', 'blue', 'red'] as const).find((asset) => !this.assets.has(asset));
 
   ready = () => {
     if (this.phase !== 'setup' || !this.prerequisites() || this.preview) return false;
@@ -276,7 +311,7 @@ export class ArenaController {
     const side = this.blueStartsLeft ? -1 : 1;
     this.fighters = {
       blue: this.newFighter(side * this.rules.spawn),
-      cpu: this.newFighter(-side * this.rules.spawn),
+      red: this.newFighter(-side * this.rules.spawn),
     };
     this.clearInput();
     this.phase = 'fighting';
@@ -290,7 +325,7 @@ export class ArenaController {
     if (this.phase !== 'setup' || this.preview) return;
     this.blueStartsLeft = !this.blueStartsLeft;
     this.fighters.blue.x *= -1;
-    this.fighters.cpu.x *= -1;
+    this.fighters.red.x *= -1;
     this.publish();
   };
 
@@ -300,9 +335,14 @@ export class ArenaController {
     this.publish();
   };
 
-  setMovement = (movement: Movement, held: boolean, roundId = this.roundId) => {
+  setMovement = (
+    movement: Movement,
+    held: boolean,
+    roundId = this.roundId,
+    id: FighterId = 'blue'
+  ) => {
     if (roundId !== this.roundId) return;
-    this.held[movement] = held && this.phase === 'fighting' && this.prerequisites();
+    this.held[id][movement] = held && this.phase === 'fighting' && this.prerequisites();
   };
 
   attack = (kind: AttackKind, id: FighterId = 'blue', roundId = this.roundId) =>
@@ -327,13 +367,17 @@ export class ArenaController {
 
   getTransform = (id: FighterId): FighterTransform => {
     const fighter = this.fighters[id];
-    const other = this.fighters[id === 'blue' ? 'cpu' : 'blue'];
+    const other = this.fighters[id === 'blue' ? 'red' : 'blue'];
     return { x: fighter.x, lift: fighter.lift, yaw: other.x > fighter.x ? 90 : -90 };
   };
 
-  recordFrame = (token: number, dt: number) => {
+  recordFrame = (
+    token: number,
+    dt: number,
+    active = this.phase === 'fighting' || this.phase === 'ending' || !!this.preview
+  ) => {
     if (!this.isCurrent(token) || !this.prerequisites() || !Number.isFinite(dt) || dt <= 0) return;
-    if (this.phase !== 'fighting' && this.phase !== 'ending' && !this.preview) return;
+    if (!active) return;
     this.frameTotal += dt;
     this.frameSamples++;
     if (this.frameSamples % 60 === 0) {
@@ -342,11 +386,11 @@ export class ArenaController {
     }
   };
 
-  tick = (token: number, dt: number) => {
+  tick = (token: number, dt: number, simulate = true) => {
     if (!this.isCurrent(token) || !Number.isFinite(dt) || dt <= 0 || dt > 0.1) return;
     if (this.tracking && this.landscape)
       this.stableTime = Math.min(this.rules.stableTracking, this.stableTime + dt);
-    if (!this.prerequisites()) {
+    if (!this.prerequisites() || !simulate) {
       this.publish();
       return;
     }
@@ -371,7 +415,12 @@ export class ArenaController {
     this.decideCPU();
 
     // Capture all eligible hits before applying any stagger/KO: simultaneous attacks are fair.
-    const hits: { defender: FighterId; kind: AttackKind }[] = [];
+    const hits: {
+      attacker: FighterId;
+      defender: FighterId;
+      kind: AttackKind;
+      finisher: boolean;
+    }[] = [];
     for (const id of ids) {
       const fighter = this.fighters[id];
       fighter.elapsed += dt;
@@ -380,8 +429,13 @@ export class ArenaController {
       attack.elapsed += dt;
       if (!attack.hitChecked && attack.elapsed + epsilon >= attack.hitAt) {
         attack.hitChecked = true;
-        if (Math.abs(this.fighters.blue.x - this.fighters.cpu.x) <= this.rules.reach + epsilon) {
-          hits.push({ defender: id === 'blue' ? 'cpu' : 'blue', kind: attack.kind });
+        if (Math.abs(this.fighters.blue.x - this.fighters.red.x) <= this.rules.reach + epsilon) {
+          hits.push({
+            attacker: id,
+            defender: id === 'blue' ? 'red' : 'blue',
+            kind: attack.kind,
+            finisher: attack.finisher,
+          });
         }
       }
     }
@@ -393,8 +447,25 @@ export class ArenaController {
       );
       fighter.attack = null;
       fighter.buffered = null;
+      fighter.uppercutWindowUntil = 0;
+      const staggerDuration =
+        clipDuration('HitFront') + (hit.finisher ? this.rules.finisherStunBonus : 0);
+      fighter.staggerUntil = Math.max(fighter.staggerUntil, this.clock + staggerDuration);
       this.setAnimation(fighter, 'hit', 'HitFront', true);
-      if (hit.defender === 'cpu') this.cpuAttackAt = null;
+      if (hit.defender === 'red') this.cpuAttackAt = null;
+    }
+    // Grant openings after all hits resolve, so a simultaneous counter cannot create a stale cue.
+    for (const hit of hits) {
+      const attacker = this.fighters[hit.attacker];
+      const defender = this.fighters[hit.defender];
+      if (
+        !hit.finisher ||
+        attacker.mode === 'hit' ||
+        attacker.health === 0 ||
+        defender.health === 0
+      )
+        continue;
+      attacker.uppercutWindowUntil = defender.staggerUntil - uppercutHitAt - 1 / 60;
     }
     if (ids.some((id) => this.fighters[id].health === 0)) {
       this.endRound(hits);
@@ -406,14 +477,11 @@ export class ArenaController {
           fighter.attack = null;
           fighter.buffered = null;
           this.setAnimation(fighter, 'idle', 'IdleAggro');
-          if (id === 'cpu') this.recoverCPU();
+          if (id === 'red') this.recoverCPU();
           if (next) this.requestAttack(id, next);
-        } else if (
-          fighter.mode === 'hit' &&
-          fighter.elapsed + epsilon >= clipDuration('HitFront')
-        ) {
+        } else if (fighter.mode === 'hit' && this.clock + epsilon >= fighter.staggerUntil) {
           this.setAnimation(fighter, 'idle', 'IdleAggro');
-          if (id === 'cpu') this.recoverCPU();
+          if (id === 'red') this.recoverCPU();
         }
       }
     }
@@ -434,6 +502,8 @@ export class ArenaController {
       uppercutIndex: 0,
       attack: null,
       buffered: null,
+      staggerUntil: 0,
+      uppercutWindowUntil: 0,
     };
   }
 
@@ -459,8 +529,14 @@ export class ArenaController {
       fighter.elapsed = 0;
     }
   }
+  clearHeldMovement = () => {
+    this.held = {
+      blue: { advance: false, retreat: false },
+      red: { advance: false, retreat: false },
+    };
+  };
   private clearInput() {
-    this.held = { advance: false, retreat: false };
+    this.clearHeldMovement();
     ids.forEach((id) => {
       this.fighters[id].buffered = null;
     });
@@ -475,6 +551,8 @@ export class ArenaController {
     for (const id of ids) {
       const fighter = this.fighters[id];
       fighter.attack = null;
+      fighter.staggerUntil = 0;
+      fighter.uppercutWindowUntil = 0;
       if (['attack', 'hit', 'walk'].includes(fighter.mode))
         this.setAnimation(fighter, 'idle', 'IdleAggro');
     }
@@ -492,35 +570,46 @@ export class ArenaController {
       fighter.buffered = kind;
       return true;
     }
+    const finisher = kind === 'punch' && ++fighter.punchIndex % this.rules.punchStringLength === 0;
     const hand =
       kind === 'punch'
-        ? punchHands[fighter.punchIndex++ % punchHands.length]
+        ? this.random() < 0.5
+          ? 'L'
+          : 'R'
         : fighter.uppercutIndex++ % 2 === 0
           ? 'L'
           : 'R';
     const clip = `Combo_${kind === 'punch' ? 'Punch' : 'Uppercut'}${hand}`;
-    const timing = manifest.combo.find((entry) => entry.clip === clip)!;
+    const timing = attackTiming(clip);
     fighter.attack = {
       kind,
       elapsed: 0,
       duration: timing.durationSeconds,
       hitAt: timing.hitCheckSeconds,
       hitChecked: false,
+      finisher,
     };
-    if (kind === 'uppercut') fighter.uppercutAt = this.clock + this.rules.uppercutCooldown;
+    if (kind === 'uppercut') {
+      fighter.uppercutAt = this.clock + this.rules.uppercutCooldown;
+      fighter.uppercutWindowUntil = 0;
+    }
     this.setAnimation(fighter, 'attack', clip, true);
     this.publish();
     return true;
   }
   private move(dt: number) {
     const blue = this.fighters.blue;
-    const cpu = this.fighters.cpu;
+    const red = this.fighters.red;
     const canMove = (fighter: Fighter) => fighter.mode === 'idle' || fighter.mode === 'walk';
     const directions = {
-      blue: canMove(blue) ? Number(this.held.advance) - Number(this.held.retreat) : 0,
-      cpu: this.rules.cpuEnabled && canMove(cpu) ? this.cpuMovement() : 0,
+      blue: canMove(blue) ? Number(this.held.blue.advance) - Number(this.held.blue.retreat) : 0,
+      red: canMove(red)
+        ? this.rules.cpuEnabled
+          ? this.cpuMovement()
+          : Number(this.held.red.advance) - Number(this.held.red.retreat)
+        : 0,
     };
-    const before = { blue: blue.x, cpu: cpu.x };
+    const before = { blue: blue.x, red: red.x };
     for (const id of ids) {
       const fighter = this.fighters[id];
       const toward = this.blueStartsLeft === (id === 'blue') ? 1 : -1;
@@ -529,13 +618,13 @@ export class ArenaController {
         Math.min(this.rules.boundary, fighter.x + toward * directions[id] * this.rules.speed * dt)
       );
     }
-    const left = this.blueStartsLeft ? blue : cpu;
-    const right = this.blueStartsLeft ? cpu : blue;
+    const left = this.blueStartsLeft ? blue : red;
+    const right = this.blueStartsLeft ? red : blue;
     if (right.x - left.x < this.rules.separation) {
       const overlap = this.rules.separation - (right.x - left.x);
       // Only move fighters that actually tried to advance; stationary opponents aren't pushed.
-      const leftMoving = this.blueStartsLeft ? directions.blue > 0 : directions.cpu > 0;
-      const rightMoving = this.blueStartsLeft ? directions.cpu > 0 : directions.blue > 0;
+      const leftMoving = this.blueStartsLeft ? directions.blue > 0 : directions.red > 0;
+      const rightMoving = this.blueStartsLeft ? directions.red > 0 : directions.blue > 0;
       left.x -= overlap * (leftMoving && rightMoving ? 0.5 : leftMoving ? 1 : 0);
       right.x += overlap * (leftMoving && rightMoving ? 0.5 : rightMoving ? 1 : 0);
     }
@@ -566,18 +655,18 @@ export class ArenaController {
       attack &&
       !attack.hitChecked &&
       this.clock + epsilon >= this.cpuReactAt &&
-      (attack.kind === 'uppercut' || this.cpuThreats % 3 !== 0)
+      (attack.kind === 'uppercut' || this.cpuThreats % 4 === 0)
     );
   }
   private cpuCanRetreat() {
     const outward = this.blueStartsLeft ? 1 : -1;
-    return this.fighters.cpu.x * outward < this.rules.boundary - epsilon;
+    return this.fighters.red.x * outward < this.rules.boundary - epsilon;
   }
   private cpuMovement() {
-    const distance = Math.abs(this.fighters.cpu.x - this.fighters.blue.x);
+    const distance = Math.abs(this.fighters.red.x - this.fighters.blue.x);
     if (this.cpuEvades()) return distance < this.rules.reach + this.rules.cpuRangeMargin ? -1 : 0;
     // Keep a small spacing band: close the gap, but don't volunteer for point-blank chains.
-    const preferred = this.rules.reach - this.rules.cpuRangeMargin;
+    const preferred = this.rules.reach - 2 * this.rules.cpuRangeMargin;
     if (distance < preferred - this.rules.cpuRangeMargin) return -1;
     return distance > preferred ? 1 : 0;
   }
@@ -588,10 +677,10 @@ export class ArenaController {
   }
   private decideCPU() {
     if (!this.rules.cpuEnabled) return;
-    const cpu = this.fighters.cpu;
-    if (cpu.attack || cpu.mode === 'hit') return;
+    const red = this.fighters.red;
+    if (red.attack || red.mode === 'hit') return;
     const blue = this.fighters.blue;
-    if (Math.abs(cpu.x - blue.x) > this.rules.reach + epsilon) return;
+    if (Math.abs(red.x - blue.x) > this.rules.reach + epsilon) return;
     this.cpuAttackAt ??= Math.max(this.clock + this.rules.cpuFirstDelay, this.cpuRecoveryUntil);
     if (this.clock + epsilon < this.cpuAttackAt) return;
     if (this.cpuEvades() && this.cpuCanRetreat()) return;
@@ -601,15 +690,15 @@ export class ArenaController {
       (blue.mode === 'hit' ||
         (blue.health > this.rules.punchDamage && blue.health <= this.rules.uppercutDamage) ||
         (this.cpuAttacks + 1) % 3 === 0);
-    const kind = uppercutOpening && this.clock + epsilon >= cpu.uppercutAt ? 'uppercut' : 'punch';
-    if (this.requestAttack('cpu', kind)) {
+    const kind = uppercutOpening && this.clock + epsilon >= red.uppercutAt ? 'uppercut' : 'punch';
+    if (this.requestAttack('red', kind)) {
       this.cpuAttacks++;
       this.cpuAttackAt = null;
     }
   }
   private endRound(hits: { defender: FighterId; kind: AttackKind }[]) {
     this.outcome =
-      this.fighters.blue.health === 0 ? (this.fighters.cpu.health === 0 ? 'draw' : 'cpu') : 'blue';
+      this.fighters.blue.health === 0 ? (this.fighters.red.health === 0 ? 'draw' : 'red') : 'blue';
     this.phase = 'ending';
     this.clearInput();
     for (const id of ids) {
@@ -647,19 +736,6 @@ export class ArenaController {
     if (ids.every((id) => ['idle', 'defeated'].includes(this.fighters[id].mode)))
       this.phase = 'ended';
   }
-  private settleOutcome() {
-    this.phase = 'ended';
-    for (const id of ids) {
-      const fighter = this.fighters[id];
-      fighter.lift = 0;
-      this.setAnimation(
-        fighter,
-        fighter.health > 0 ? 'idle' : 'defeated',
-        fighter.health > 0 ? 'IdleAggro' : 'DefeatedLoop',
-        true
-      );
-    }
-  }
   private publish() {
     const capable = this.prerequisites();
     const message =
@@ -694,13 +770,20 @@ export class ArenaController {
       animationId: fighter.animationId,
       uppercutRemaining:
         Math.ceil(Math.max(0, fighter.uppercutAt - this.clock - epsilon) * 10) / 10,
+      uppercutWindowRemaining:
+        this.phase === 'fighting' &&
+        fighter.mode !== 'hit' &&
+        this.clock + epsilon >= fighter.uppercutAt &&
+        (!fighter.buffered || fighter.buffered === 'uppercut')
+          ? Math.ceil(Math.max(0, fighter.uppercutWindowUntil - this.clock - epsilon) * 10) / 10
+          : 0,
     });
     const snapshot: ArenaSnapshot = {
       sessionToken: this.attached ? this.token : null,
       roundId: this.roundId,
       phase: this.phase,
       blue: view(this.fighters.blue),
-      cpu: view(this.fighters.cpu),
+      red: view(this.fighters.red),
       assetsLoaded: this.assets.size,
       placementVersion: this.placementVersion,
       placed: this.placed,
