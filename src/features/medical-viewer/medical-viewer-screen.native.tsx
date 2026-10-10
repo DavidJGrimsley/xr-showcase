@@ -13,7 +13,7 @@ import { ARControl } from '@/features/ar/ar-control.native';
 import { MedicalInfoButton, MedicalInfoModal } from './medical-info.native';
 import { MedicalModelPicker } from './medical-model-picker.native';
 import { MedicalTransformControls } from './medical-transform-controls.native';
-import { hasMedicalLabels, medicalPlaceholderNotice } from './medical-models';
+import { hasMedicalLabels } from './medical-models';
 
 const MedicalNavigator = lazy(() => import('./medical-navigator.native'));
 
@@ -108,11 +108,6 @@ function MedicalControls({
       className="gap-3 rounded-2xl p-4"
       style={{ backgroundColor: '#10191fe6' }}>
       <MedicalStatus state={state} />
-      {medicalPlaceholderNotice(state.modelId) ? (
-        <Text accessibilityLiveRegion="polite" className="text-center text-sm text-amber-200">
-          {medicalPlaceholderNotice(state.modelId)}
-        </Text>
-      ) : null}
       {state.loadStatus === 'error' ? (
         <View className="items-center">
           <ARControl

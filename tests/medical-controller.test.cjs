@@ -15,16 +15,18 @@ const scope = (controller) => {
 function placed() {
   const controller = new MedicalController();
   controller.attach(1);
+  controller.selectModel(1, 'skull');
   controller.setTracking(1, true);
   controller.selectPlane(1, scope(controller).placementRevision, 'table');
   controller.finishLoad(scope(controller), 'skull', true);
   return controller;
 }
 
-test('starts with Skull and labels off; missing assets cannot be selected', () => {
+test('falls back to Skull when default Both is missing; unavailable modes cannot be selected', () => {
   const c = new MedicalController((id) => id === 'skull');
   c.attach(1);
   c.selectModel(1, 'brain');
+  c.selectModel(1, 'half-skull');
   c.selectModel(1, 'both');
   assert.equal(c.getSnapshot().modelId, 'skull');
   assert.equal(c.getSnapshot().labelsVisible, false);
@@ -32,10 +34,12 @@ test('starts with Skull and labels off; missing assets cannot be selected', () =
   assert.equal(canManipulateMedical(c.getSnapshot()), false);
 });
 
-test('all three modes can be selected before placement; same-mode selection does not reload', () => {
+test('defaults to Both and all four modes can be selected without placement; same mode does not reload', () => {
   const c = new MedicalController();
+  assert.equal(c.getSnapshot().modelId, 'both');
+  assert.equal(c.getSnapshot().labelsVisible, false);
   c.attach(1);
-  for (const modelId of ['skull', 'brain', 'both']) {
+  for (const modelId of ['skull', 'brain', 'half-skull', 'both']) {
     c.selectModel(1, modelId);
     assert.equal(c.getSnapshot().modelId, modelId);
     assert.equal(c.getSnapshot().loadStatus, 'idle');
@@ -83,6 +87,41 @@ test('changing modes preserves placement and pose, clears gestures and invalidat
   assert.equal(c.getSnapshot().scale, 1.8);
   assert.equal(c.getSnapshot().yaw, 65);
   assert.equal(c.getSnapshot().height, 0.9);
+});
+
+test('Half Skull is a single-asset mode and switching to Both rejects its earlier load and errors', () => {
+  const c = placed();
+  c.selectModel(1, 'half-skull');
+  assert.match(medicalStatus(c.getSnapshot()), /Loading half skull/);
+  assert.deepEqual(c.getSnapshot().assetLoads, { 'half-skull': 'loading' });
+  const half = scope(c);
+  c.finishLoad(half, 'half-skull', true);
+  assert.equal(canManipulateMedical(c.getSnapshot()), true);
+  c.toggleLabels(1);
+  assert.equal(c.getSnapshot().labelsVisible, false);
+  c.selectModel(1, 'both');
+  c.finishLoad(half, 'half-skull', true);
+  c.finishLoad(half, 'half-skull', false);
+  assert.equal(c.getSnapshot().loadStatus, 'loading');
+  assert.deepEqual(c.getSnapshot().assetLoads, { 'half-skull': 'loading', brain: 'loading' });
+  c.finishLoad(scope(c), 'half-skull', true);
+  assert.equal(c.getSnapshot().loadStatus, 'loading');
+  c.finishLoad(scope(c), 'brain', true);
+  assert.equal(c.getSnapshot().loadStatus, 'ready');
+});
+
+test('fresh default Both waits for both loads and returns as default after Home teardown', () => {
+  const c = new MedicalController();
+  c.attach(1);
+  c.setTracking(1, true);
+  c.selectPlane(1, scope(c).placementRevision, 'table');
+  c.finishLoad(scope(c), 'brain', true);
+  assert.equal(canManipulateMedical(c.getSnapshot()), false);
+  c.finishLoad(scope(c), 'half-skull', true);
+  assert.equal(canManipulateMedical(c.getSnapshot()), true);
+  c.selectModel(1, 'half-skull');
+  c.detach(1);
+  assert.equal(new MedicalController().getSnapshot().modelId, 'both');
 });
 
 test('Both requires two distinct load completions in either order and blocks partial readiness', () => {
@@ -142,7 +181,7 @@ test('failure before either completion remains an error and switching mode recov
   c.finishLoad(token, 'half-skull', true);
   assert.equal(c.getSnapshot().loadStatus, 'error');
   c.finishLoad(token, 'half-skull', false);
-  assert.match(medicalStatus(c.getSnapshot()), /Half-skull and Brain could not load/);
+  assert.match(medicalStatus(c.getSnapshot()), /Half Skull and Brain could not load/);
   c.selectModel(1, 'brain');
   c.finishLoad(token, 'half-skull', false);
   assert.equal(c.getSnapshot().loadStatus, 'loading');
@@ -187,11 +226,12 @@ test('Both shares one pose, repositions together, and retains mode across restar
   c.attach(3);
   assert.equal(c.getSnapshot().modelId, 'both');
   assert.deepEqual(c.getSnapshot().assetLoads, {});
-  assert.equal(new MedicalController().getSnapshot().modelId, 'skull');
+  assert.equal(new MedicalController().getSnapshot().modelId, 'both');
 });
 test('requires normal tracking, selected plane and finished loading', () => {
   const c = new MedicalController();
   c.attach(1);
+  c.selectModel(1, 'skull');
   const revision = scope(c).placementRevision;
   c.selectPlane(1, revision, 'table');
   assert.equal(c.getSnapshot().anchorId, null);
@@ -318,6 +358,7 @@ test('removing an unrelated plane is harmless; selected-plane loss allows resele
 test('retry keeps placement and ignores success from a failed or older load', () => {
   const c = new MedicalController();
   c.attach(1);
+  c.selectModel(1, 'skull');
   c.setTracking(1, true);
   c.selectPlane(1, scope(c).placementRevision, 'table');
   const failed = scope(c);
@@ -395,7 +436,7 @@ test('Restart AR resets pose and placement while retaining labels; returning lat
   assert.equal(c.getSnapshot().anchorId, null);
   assert.equal(c.getSnapshot().labelsVisible, true);
   const fresh = new MedicalController().getSnapshot();
-  assert.equal(fresh.modelId, 'skull');
+  assert.equal(fresh.modelId, 'both');
   assert.equal(fresh.scale, 1);
   assert.equal(fresh.yaw, 0);
   assert.equal(fresh.height, DEFAULT_MODEL_HEIGHT);

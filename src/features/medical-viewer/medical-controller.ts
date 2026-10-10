@@ -1,4 +1,5 @@
 import {
+  DEFAULT_MEDICAL_MODEL_ID,
   hasMedicalLabels,
   isMedicalModelAvailable,
   MEDICAL_ASSETS,
@@ -79,7 +80,7 @@ export function medicalStatus(state: MedicalSnapshot) {
 export class MedicalController {
   private snapshot: MedicalSnapshot = {
     sessionId: null,
-    modelId: 'skull',
+    modelId: DEFAULT_MEDICAL_MODEL_ID,
     tracking: 'initializing',
     anchorId: null,
     placementRevision: 0,
@@ -103,6 +104,14 @@ export class MedicalController {
       MEDICAL_ASSETS[assetId].transform !== null
   ) {
     this.isAssetAvailable = isAssetAvailable;
+    if (!isMedicalModelAvailable(DEFAULT_MEDICAL_MODEL_ID, isAssetAvailable)) {
+      this.snapshot = {
+        ...this.snapshot,
+        modelId:
+          MEDICAL_MODELS.find((model) => isMedicalModelAvailable(model.id, isAssetAvailable))?.id ??
+          DEFAULT_MEDICAL_MODEL_ID,
+      };
+    }
   }
 
   getSnapshot = () => this.snapshot;

@@ -101,20 +101,15 @@ export function MedicalInfoModal({
                   original size and orientation, floating two feet above the surface.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
-                  Choose Skull, Brain, or Both from the dropdown. Changing modes keeps your surface,
-                  size, rotation, and height. Both moves both models together. Its controls become
-                  ready only after both models finish loading.
-                </Text>
-                <Text className="text-base leading-6 text-amber-200">
-                  Brain currently uses the full skull as a stand-in. Both shows two overlapping
-                  copies of that skull as stand-ins for the half-skull and brain. The actual models
-                  and their anatomical alignment are pending. Labels are available only in Skull
-                  mode.
+                  Choose Skull, Brain, Half Skull, or Both from the dropdown. Both is the default.
+                  Changing modes keeps your surface, size, rotation, and height. Both moves both
+                  models together. Its controls become ready only after both models finish loading.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
-                  The packaged skull was segmented from CT images in 3D Slicer and simplified for
-                  the viewer. The attribution below applies to this skull, including its use as a
-                  stand-in.
+                  The skull and half-skull come from CT segmentation, and the brain from an MRI mask
+                  exported in 3D Slicer. The models were simplified for mobile viewing while
+                  preserving their shared coordinates. Both displays the half-skull and brain
+                  together. Labels are available only in Skull mode.
                 </Text>
                 <Text selectable className="text-base leading-6 text-slate-200">
                   {provenance.attribution}
