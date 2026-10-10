@@ -112,6 +112,77 @@ test('multiplayer retains AR for a permission dialog, releases it for background
   assert.equal(shouldActivateAR(true, true, 'active'), true);
 });
 
+test('sharing shows native and invite stages, elapsed time, and handles a delayed native result', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const anchor = deferred(), invite = deferred();
+  const events = [];
+  const h = harness('host', { createColocationRoom: () => invite.promise, observeHosting: event => events.push(event) });
+  h.nav.finishScan = () => anchor.promise;
+  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
+  t.mock.timers.tick(1050); await flush();
+  const finish = h.room.finishScan();
+  assert.equal(h.room.getSnapshot().hostStep, 'anchor');
+  t.mock.timers.tick(65000); await flush();
+  assert.equal(h.room.getSnapshot().status, 'hosting');
+  assert.equal(h.room.getSnapshot().hostSeconds, 65);
+  anchor.resolve({ success: true, cloudAnchorId: 'anchor', locationTransform: 'frame' });
+  await flush();
+  assert.equal(h.room.getSnapshot().hostStep, 'invite');
+  assert.match(h.room.getSnapshot().message, /Creating your invite code/);
+  invite.resolve(roomResult); await finish;
+  assert.equal(h.room.getSnapshot().status, 'ready');
+  assert.deepEqual(events.map(event => [event.step, event.result]), [['anchor', 'started'], ['anchor', 'completed'], ['invite', 'started'], ['invite', 'completed']]);
+  h.room.dispose();
+});
+
+test('sharing timeout retains placement and rejects a late native result', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const anchor = deferred();
+  const h = harness(); h.nav.finishScan = () => anchor.promise;
+  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
+  t.mock.timers.tick(1050); await flush();
+  const finish = h.room.finishScan();
+  t.mock.timers.tick(120000); await finish;
+  assert.equal(h.room.getSnapshot().status, 'error');
+  assert.match(h.room.getSnapshot().message, /took too long/);
+  assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
+  anchor.resolve({ success: true, cloudAnchorId: 'anchor', locationTransform: 'frame' }); await flush();
+  assert.equal(h.calls.connect, 0);
+  h.room.dispose();
+});
+
+test('cancelling sharing ignores its late result and leaves the preview available to retry', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const anchor = deferred(); const h = harness(); h.nav.finishScan = () => anchor.promise;
+  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
+  t.mock.timers.tick(1050); await flush();
+  const finish = h.room.finishScan(); h.room.cancelHosting();
+  assert.match(h.room.getSnapshot().message, /cancelled/);
+  anchor.resolve({ success: true, cloudAnchorId: 'old', locationTransform: 'frame' }); await finish;
+  assert.equal(h.calls.connect, 0);
+  h.room.retry();
+  assert.equal(h.room.getSnapshot().status, 'scanning');
+  assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
+  h.room.dispose();
+});
+
+test('retrying a relay connection retains the localized shared frame without rescanning', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
+  const h = harness();
+  h.room.attach(h.nav); h.room.tracking(true); h.room.place([1, 0, 2]); h.room.start();
+  t.mock.timers.tick(1050); await flush(); await h.room.finishScan();
+  const frame = h.room.getSnapshot().frame;
+  const source = h.room.getSnapshot().source;
+  const cancelled = h.calls.cancel;
+  h.room.retry();
+  assert.equal(h.room.getSnapshot().status, 'ready');
+  assert.equal(h.room.getSnapshot().frame, frame);
+  assert.equal(h.room.getSnapshot().source, source);
+  assert.equal(h.calls.cancel, cancelled);
+  assert.equal(h.calls.start, 1);
+  h.room.dispose();
+});
+
 test('early detach cancels once while the view exists; late scene cleanup and dispose are safe', () => {
   const h = harness();
   const cleanup = h.room.attach(h.nav);
@@ -297,6 +368,7 @@ test('native host rejection still shows Retry even when cancellation throws', as
   await h.room.finishScan();
   assert.equal(h.room.getSnapshot().status, 'error');
   assert.match(h.room.getSnapshot().message, /retry/);
+  assert.doesNotMatch(h.room.getSnapshot().message, /took too long/);
   h.room.dispose();
 });
 

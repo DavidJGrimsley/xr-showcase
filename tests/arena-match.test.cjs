@@ -593,3 +593,17 @@ test('temporary OS inactivity freezes combat and requires stable tracking plus b
   assert.equal(p.host.snapshot().stage, 'fighting');
   assert.equal(p.host.snapshot().blue.health, 100);
 });
+
+test('a relay failure is not misreported as an expired room after thirty seconds', () => {
+  let time = 0;
+  const guest = new ArenaMatch('guest', 3, () => time);
+  const relay = fakeRelay(); const client = relay.port();
+  const net = new ArenaNetwork(guest, client, { roomId: 'test', apiKey: 'test', projectId: 'test' }, 'ABC234', () => time);
+  client.state = 'failed'; client.error = 'replication socket gave up reconnecting'; client.emit();
+  time = 31000; net.pump();
+  assert.match(guest.getSnapshot().networkMessage, /Can’t reach the multiplayer server/);
+  assert.doesNotMatch(guest.getSnapshot().networkMessage, /expired|socket/);
+  client.state = 'connecting'; client.emit();
+  assert.equal(guest.getSnapshot().networkMessage, 'Connecting to the multiplayer server…');
+  net.close(); guest.dispose();
+});

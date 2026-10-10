@@ -1,6 +1,6 @@
 import { Button, Host } from '@expo/ui';
 import { useSyncExternalStore } from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { useAppTheme } from '@/theme/provider';
 import type { ArenaRoom } from './arena-room.native';
@@ -44,6 +44,12 @@ export default function ArenaRoomPanel({
         <Text accessibilityLiveRegion="polite" style={{ color: colors.text }}>
           {match.networkMessage || state.message}
         </Text>
+        {state.status === 'hosting' && (
+          <View className="flex-row items-center gap-2">
+            <ActivityIndicator color={colors.primary} accessibilityLabel="Sharing arena" />
+            <Text style={{ color: colors.text }}>{state.hostSeconds} seconds elapsed</Text>
+          </View>
+        )}
         {scanning && (
           <View
             accessibilityRole="progressbar"
@@ -60,24 +66,28 @@ export default function ArenaRoomPanel({
             <View style={{ width: `${progress}%`, height: 4, backgroundColor: colors.primary }} />
           </View>
         )}
-        {controller.mode === 'host' && match.displayCode && match.stage === 'lobby' && (
-          <View className="items-center gap-2 py-2">
-            {!match.peerConnected && (
-              <View className="bg-white p-3">
-                <QRCode value={joinLink(match.displayCode.replace(/\s/g, ''))} size={140} />
-              </View>
-            )}
-            <Text
-              selectable
-              accessibilityLabel={'Room code ' + match.displayCode.split('').join(' ')}
-              style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>
-              {match.displayCode}
-            </Text>
-            <Text style={{ color: colors.text }}>
-              {match.rounds === 1 ? '1 round' : 'Best of ' + match.rounds} · Share with one opponent
-            </Text>
-          </View>
-        )}
+        {controller.mode === 'host' &&
+          match.connected &&
+          match.displayCode &&
+          match.stage === 'lobby' && (
+            <View className="items-center gap-2 py-2">
+              {!match.peerConnected && (
+                <View className="bg-white p-3">
+                  <QRCode value={joinLink(match.displayCode.replace(/\s/g, ''))} size={140} />
+                </View>
+              )}
+              <Text
+                selectable
+                accessibilityLabel={'Room code ' + match.displayCode.split('').join(' ')}
+                style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>
+                {match.displayCode}
+              </Text>
+              <Text style={{ color: colors.text }}>
+                {match.rounds === 1 ? '1 round' : 'Best of ' + match.rounds} · Share with one
+                opponent
+              </Text>
+            </View>
+          )}
       </ScrollView>
       {scanning && (
         <Host
@@ -88,6 +98,19 @@ export default function ArenaRoomPanel({
             label="Create room"
             disabled={!state.canFinish}
             onPress={() => void room.finishScan()}
+            style={{ height: buttonHeight, width: '100%' }}
+          />
+        </Host>
+      )}
+      {state.status === 'hosting' && (
+        <Host
+          colorScheme="dark"
+          seedColor={colors.primary}
+          style={{ height: buttonHeight, flexShrink: 0 }}>
+          <Button
+            label="Cancel sharing"
+            variant="outlined"
+            onPress={room.cancelHosting}
             style={{ height: buttonHeight, width: '100%' }}
           />
         </Host>

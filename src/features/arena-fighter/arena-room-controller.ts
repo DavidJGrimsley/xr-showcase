@@ -10,6 +10,8 @@ import { ArenaNetwork } from './arena-network.ts';
 import { arenaInFrame, framePose } from './arena-placement.ts';
 import { scanGuidance } from './arena-scan.ts';
 import type { ArenaPlacement } from './arena-protocol.ts';
+import type { ArenaConfiguration } from './arena-configuration';
+import { roomRequestMessage, sharingFailureMessage } from './arena-connection.ts';
 
 type ViroSDK = typeof import('@reactvision/react-viro');
 export interface ArenaRoomServices {
@@ -21,16 +23,26 @@ export interface ArenaRoomServices {
   cloudAnchorFrameSource: ViroSDK['cloudAnchorFrameSource'];
   parseLocationTransform: ViroSDK['parseLocationTransform'];
   observeScanStatus?: (scan: ViroScanStatus) => void;
+  observeConnectionState?: (state: import('@reactvision/react-viro').ViroReplicationState) => void;
+  observeHosting?: (event: {
+    step: 'anchor' | 'invite';
+    result: 'started' | 'completed' | 'failed';
+    seconds: number;
+  }) => void;
 }
 
 type Navigator = ViroARSceneNavigator['arSceneNavigator'];
+class ArenaOperationTimeout extends Error {}
 async function bounded<T>(operation: Promise<T>, milliseconds: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       operation,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Operation timed out')), milliseconds);
+        timer = setTimeout(
+          () => reject(new ArenaOperationTimeout('Operation timed out')),
+          milliseconds
+        );
       }),
     ]);
   } finally {
@@ -42,13 +54,15 @@ export interface RoomView {
   message: string;
   canFinish: boolean;
   scanProgress: number;
+  hostStep: 'anchor' | 'invite' | null;
+  hostSeconds: number;
   preview: ArenaPlacement | null;
   source: ViroFrameSource | null;
   frame: number[] | null;
 }
 export class ArenaRoom {
   private match: ArenaMatch;
-  private config: { apiKey: string; projectId: string };
+  private config: ArenaConfiguration;
   private code: string;
   private navigator: Navigator | null = null;
   private generation = 0;
@@ -63,6 +77,8 @@ export class ArenaRoom {
     message: 'Preparing shared arena…',
     canFinish: false,
     scanProgress: 0,
+    hostStep: null,
+    hostSeconds: 0,
     preview: null,
     source: null,
     frame: null,
@@ -73,9 +89,10 @@ export class ArenaRoom {
   private trackingNormal = false;
   private awaitingTracking = false;
   private scanStartedAt = 0;
+  private hostingStartedAt = 0;
   constructor(
     match: ArenaMatch,
-    config: { apiKey: string; projectId: string },
+    config: ArenaConfiguration,
     code: string,
     services: ArenaRoomServices
   ) {
@@ -105,6 +122,10 @@ export class ArenaRoom {
       this.pollTimer = setInterval(() => {
         this.network?.pump();
         this.match.poll();
+        if (this.view.status === 'hosting') {
+          const seconds = Math.floor((Date.now() - this.hostingStartedAt) / 1000);
+          if (seconds !== this.view.hostSeconds) this.update({ hostSeconds: seconds });
+        }
         if (this.awaitingTracking && this.trackingNormal && this.match.isAppActive())
           void this.prepare(this.generation);
         void this.pollScan();
@@ -126,7 +147,14 @@ export class ArenaRoom {
     this.busy = false;
     this.scanPoll = false;
     this.lastPoll = 0;
-    this.update({ frame: null, source: null, canFinish: false, scanProgress: 0 });
+    this.update({
+      frame: null,
+      source: null,
+      canFinish: false,
+      scanProgress: 0,
+      hostStep: null,
+      hostSeconds: 0,
+    });
     if (this.room?.cloudAnchorId)
       this.update({
         status: 'aligning',
@@ -168,8 +196,15 @@ export class ArenaRoom {
     this.network = new ArenaNetwork(
       this.match,
       this.services.createReplicationClient(),
-      { ...this.config, roomId: this.room.roomId },
-      this.services.formatJoinCode(this.room.joinCode ?? this.code)
+      {
+        apiKey: this.config.apiKey,
+        projectId: this.config.projectId,
+        endpoint: this.config.replicationEndpoint,
+        roomId: this.room.roomId,
+      },
+      this.services.formatJoinCode(this.room.joinCode ?? this.code),
+      () => Date.now(),
+      this.services.observeConnectionState
     );
   }
   private async prepare(generation: number) {
@@ -221,7 +256,7 @@ export class ArenaRoom {
       const result = await bounded(this.services.lookupColocationRoom(this.config, code), 20000);
       if (generation !== this.generation) return;
       if (!result.success) {
-        this.fail(result.error);
+        this.fail(roomRequestMessage('join', result.status, result.code));
         return;
       }
       if (result.room.frameKind !== 'cloud_anchor' || !result.room.cloudAnchorId) {
@@ -236,8 +271,7 @@ export class ArenaRoom {
         source: this.services.cloudAnchorFrameSource(result.room.cloudAnchorId),
       });
     } catch {
-      if (generation === this.generation)
-        this.fail('Could not reach ReactVision. Check your connection and retry.');
+      if (generation === this.generation) this.fail(roomRequestMessage('join'));
     }
   }
   private lastPoll = 0;
@@ -257,7 +291,7 @@ export class ArenaRoom {
     const generation = this.generation;
     try {
       const scan = await bounded(this.navigator.getScanStatus(), 10000);
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || this.view.status !== 'scanning') return;
       this.services.observeScanStatus?.(scan);
       if (!scan.available) {
         this.fail(
@@ -272,7 +306,7 @@ export class ArenaRoom {
         message: guidance.message,
       });
     } catch {
-      if (generation === this.generation)
+      if (generation === this.generation && this.view.status === 'scanning')
         this.fail('Could not scan this space. Retry in good lighting.');
     } finally {
       if (generation === this.generation) this.scanPoll = false;
@@ -289,21 +323,45 @@ export class ArenaRoom {
     )
       return;
     this.busy = true;
+    this.hostingStartedAt = Date.now();
     const generation = this.generation;
     const point = this.view.preview.position;
     this.update({
       status: 'hosting',
+      hostStep: 'anchor',
+      hostSeconds: 0,
       canFinish: false,
-      message: 'Creating your room. Keep the arena in view…',
+      message:
+        'Preparing and uploading the shared arena. Keep the app open; this can take a minute or longer.',
     });
+    let step: 'anchor' | 'invite' = 'anchor';
+    this.services.observeHosting?.({ step, result: 'started', seconds: 0 });
     try {
-      const hosted = await bounded(this.navigator.finishScan(1), 60000);
+      const hosted = await bounded(this.navigator.finishScan(1), 120000);
       if (generation !== this.generation) return;
       const frame = this.services.parseLocationTransform(hosted.locationTransform);
       if (!hosted.success || !hosted.cloudAnchorId || !frame) {
-        this.fail(hosted.error ?? 'The scan needs more detail. Try another angle.');
+        this.services.observeHosting?.({
+          step,
+          result: 'failed',
+          seconds: Math.floor((Date.now() - this.hostingStartedAt) / 1000),
+        });
+        this.fail(sharingFailureMessage(hosted.error));
         return;
       }
+      this.services.observeHosting?.({
+        step,
+        result: 'completed',
+        seconds: Math.floor((Date.now() - this.hostingStartedAt) / 1000),
+      });
+      step = 'invite';
+      this.hostingStartedAt = Date.now();
+      this.update({
+        hostStep: step,
+        hostSeconds: 0,
+        message: 'Shared arena uploaded. Creating your invite code…',
+      });
+      this.services.observeHosting?.({ step, result: 'started', seconds: 0 });
       const created = await bounded(
         this.services.createColocationRoom(this.config, {
           frameKind: 'cloud_anchor',
@@ -314,7 +372,12 @@ export class ArenaRoom {
       );
       if (generation !== this.generation) return;
       if (!created.success) {
-        this.fail(created.error);
+        this.services.observeHosting?.({
+          step,
+          result: 'failed',
+          seconds: Math.floor((Date.now() - this.hostingStartedAt) / 1000),
+        });
+        this.fail(roomRequestMessage('host', created.status, created.code));
         return;
       }
       this.room = created.room;
@@ -334,12 +397,31 @@ export class ArenaRoom {
         source,
         frame,
         status: 'ready',
+        hostStep: null,
         message: 'Room created. Invite your opponent with the QR or invite code.',
       });
-    } catch {
+      this.services.observeHosting?.({
+        step,
+        result: 'completed',
+        seconds: Math.floor((Date.now() - this.hostingStartedAt) / 1000),
+      });
+    } catch (error) {
       if (generation === this.generation) {
+        this.services.observeHosting?.({
+          step,
+          result: 'failed',
+          seconds: Math.floor((Date.now() - this.hostingStartedAt) / 1000),
+        });
         this.cancel(this.navigator);
-        this.fail('Could not host this space. Check the connection and retry.');
+        this.fail(
+          error instanceof ArenaOperationTimeout
+            ? step === 'anchor'
+              ? 'Sharing the arena took too long. Check your internet connection, then retry. Your arena position is saved.'
+              : 'The invite service did not respond. Check your internet connection, then retry.'
+            : step === 'anchor'
+              ? sharingFailureMessage(error instanceof Error ? error.message : '')
+              : roomRequestMessage('host')
+        );
       }
     } finally {
       if (generation === this.generation) this.busy = false;
@@ -388,10 +470,22 @@ export class ArenaRoom {
     this.update({ preview: null });
     this.prepareAttachment();
   };
-  fail = (message: string) => this.update({ status: 'error', message, canFinish: false });
+  fail = (message: string) =>
+    this.update({ status: 'error', message, canFinish: false, hostStep: null });
+  cancelHosting = () => {
+    if (this.disposed || this.view.status !== 'hosting' || this.room) return;
+    this.generation++;
+    this.busy = false;
+    this.cancel(this.navigator);
+    this.fail(
+      'Sharing cancelled. Your arena position is saved. Tap Retry connection to capture it again.'
+    );
+  };
   retry = () => {
     if (this.disposed) return;
     this.network?.retry();
+    // A relay retry does not need to throw away a successfully localized frame.
+    if (this.room && this.view.frame && this.view.status === 'ready') return;
     this.cancel(this.navigator);
     if (!this.navigator) return;
     this.prepareAttachment();

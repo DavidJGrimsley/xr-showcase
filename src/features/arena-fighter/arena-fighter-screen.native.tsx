@@ -1,5 +1,5 @@
 import { Button, Host, Picker } from '@expo/ui';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
@@ -12,7 +12,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/provider';
 import { ArenaMatch } from './arena-match';
-import { arenaConfiguration } from './arena-configuration';
+import { arenaConfiguration, type ArenaConfiguration } from './arena-configuration';
+import { checkArenaConnection, RELAY_UNREACHABLE } from './arena-connection';
 import type { ArenaMode, MatchLength } from './arena-protocol';
 
 const ArenaExperience = lazy(() => import('./arena-experience.native'));
@@ -20,6 +21,41 @@ const ArenaQRScanner = lazy(() => import('./arena-qr-scanner.native'));
 async function normalizeRoomCode(code: string) {
   const { normaliseJoinCode } = await import('@reactvision/react-viro');
   return normaliseJoinCode(code);
+}
+async function verifyArenaConnection(configuration: ArenaConfiguration, signal: AbortSignal) {
+  const { ViroReplicationClient } = await import('@reactvision/react-viro');
+  return checkArenaConnection(
+    new ViroReplicationClient(),
+    {
+      apiKey: configuration.apiKey,
+      projectId: configuration.projectId,
+      endpoint: configuration.replicationEndpoint,
+      // Shared, empty and never written: repeated checks do not mint new saved room IDs.
+      roomId: 'arena-fighter-connection-check-v1',
+    },
+    signal,
+    __DEV__ ? (state) => console.log('[Arena preflight]', { state }) : undefined
+  );
+}
+function ArenaMenuButton({
+  label,
+  onPress,
+  disabled = false,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Host matchContents>
+      <Button
+        label={label}
+        onPress={onPress}
+        disabled={disabled}
+        style={{ height: 56, paddingHorizontal: 24 }}
+      />
+    </Host>
+  );
 }
 export default function ArenaFighterScreen() {
   const params = useLocalSearchParams<{ join?: string; v?: string }>();
@@ -42,19 +78,24 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
   );
   const [controller, setController] = useState<ArenaMatch | null>(null);
   const [starting, setStarting] = useState(false);
+  const connectionCheck = useRef<AbortController | null>(null);
+  useEffect(() => () => connectionCheck.current?.abort(), []);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { activeColors: colors, activeScheme } = useAppTheme();
   const start = async (mode: ArenaMode) => {
     if (starting || controller) return;
     setError('');
-    if (mode !== 'solo' && !arenaConfiguration()) {
+    const configuration = arenaConfiguration();
+    if (mode !== 'solo' && !configuration) {
       setError(
         'Two-player setup is missing from this build. Configure the ReactVision app key and install the new development build.'
       );
       return;
     }
     setStarting(true);
+    const abort = new AbortController();
+    connectionCheck.current = abort;
     try {
       if (mode === 'guest') {
         const normalized = await normalizeRoomCode(code);
@@ -65,9 +106,14 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
         }
         setCode(normalized);
       }
+      if (mode !== 'solo' && configuration) {
+        await verifyArenaConnection(configuration, abort.signal);
+      }
+      if (abort.signal.aborted) return;
       setController(new ArenaMatch(mode, rounds));
-    } catch {
-      setError('Shared AR requires the new development build.');
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      setError(error instanceof Error ? error.message : RELAY_UNREACHABLE);
     }
     setStarting(false);
   };
@@ -90,16 +136,6 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
         />
       </Suspense>
     );
-  const button = (label: string, onPress: () => void, disabled = false) => (
-    <Host matchContents>
-      <Button
-        label={label}
-        onPress={onPress}
-        disabled={disabled}
-        style={{ height: 56, paddingHorizontal: 24 }}
-      />
-    </Host>
-  );
   return (
     <View
       className="flex-1"
@@ -136,14 +172,14 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
         )}
         {page === 'title' && (
           <View className="flex-row flex-wrap gap-4">
-            {button('1 Player', () => setPage('solo'))}
-            {button('2 Players', () => setPage('two'))}
+            <ArenaMenuButton label="1 Player" onPress={() => setPage('solo')} />
+            <ArenaMenuButton label="2 Players" onPress={() => setPage('two')} />
           </View>
         )}
         {page === 'two' && (
           <View className="flex-row gap-4">
-            {button('Host', () => setPage('host'))}
-            {button('Join', () => setPage('join'))}
+            <ArenaMenuButton label="Host" onPress={() => setPage('host')} />
+            <ArenaMenuButton label="Join" onPress={() => setPage('join')} />
           </View>
         )}
         {(page === 'solo' || page === 'host') && (
@@ -155,11 +191,11 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
                 <Picker.Item label="Best of 5" value={5} />
               </Picker>
             </Host>
-            {button(
-              page === 'solo' ? 'Start' : 'Host match',
-              () => void start(page === 'solo' ? 'solo' : 'host'),
-              width <= height || starting
-            )}
+            <ArenaMenuButton
+              label={page === 'solo' ? 'Start' : 'Host match'}
+              onPress={() => void start(page === 'solo' ? 'solo' : 'host')}
+              disabled={width <= height || starting}
+            />
           </>
         )}
         {page === 'join' && (
@@ -185,22 +221,44 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
               }}
             />
             <View className="flex-row gap-4">
-              {button('Scan QR', () => setPage('scan'))}
-              {button('Join match', () => void start('guest'), width <= height || starting)}
+              <ArenaMenuButton
+                label="Scan QR"
+                onPress={() => setPage('scan')}
+                disabled={starting}
+              />
+              <ArenaMenuButton
+                label="Join match"
+                onPress={() => void start('guest')}
+                disabled={width <= height || starting}
+              />
             </View>
           </>
+        )}
+        {starting && (
+          <View className="flex-row items-center gap-2">
+            <ActivityIndicator color={colors.primary} />
+            <Text accessibilityLiveRegion="polite" style={{ color: colors.text }}>
+              Checking multiplayer connection…
+            </Text>
+          </View>
         )}
         {!!error && (
           <Text accessibilityLiveRegion="polite" style={{ color: colors.text, maxWidth: 600 }}>
             {error}
           </Text>
         )}
-        {page !== 'title' &&
-          button('Back', () => {
-            setPage(page === 'host' || page === 'join' ? 'two' : 'title');
-            setError('');
-          })}
-        {button('Home', () => router.dismissTo('/'))}
+        {page !== 'title' && (
+          <ArenaMenuButton
+            label="Back"
+            onPress={() => {
+              connectionCheck.current?.abort();
+              setStarting(false);
+              setPage(page === 'host' || page === 'join' ? 'two' : 'title');
+              setError('');
+            }}
+          />
+        )}
+        <ArenaMenuButton label="Home" onPress={() => router.dismissTo('/')} />
       </ScrollView>
     </View>
   );

@@ -1,6 +1,7 @@
 import type { ViroReplicationClient, ViroReplicationConfig } from '@reactvision/react-viro';
 import { ArenaMatch } from './arena-match.ts';
 import { validInput, validPacket, ARENA_PROTOCOL } from './arena-protocol.ts';
+import { connectionMessage } from './arena-connection.ts';
 
 export type ReplicationPort = Pick<
   ViroReplicationClient,
@@ -35,13 +36,16 @@ export class ArenaNetwork {
   private seat: 'host' | 'guest';
   private rejected = false;
   private config: ViroReplicationConfig;
+  private connectionState = '';
+  private observe?: (state: ViroReplicationClient['state']) => void;
 
   constructor(
     match: ArenaMatch,
     client: ReplicationPort,
     config: ViroReplicationConfig,
     code: string,
-    now = () => Date.now()
+    now = () => Date.now(),
+    observe?: (state: ViroReplicationClient['state']) => void
   ) {
     this.match = match;
     this.client = client;
@@ -49,6 +53,7 @@ export class ArenaNetwork {
     this.now = now;
     this.opened = now();
     this.config = config;
+    this.observe = observe;
     this.seat = match.mode === 'host' ? 'host' : 'guest';
     this.stop = client.subscribe(() => this.read());
     this.stopMatch = match.subscribe(() => {
@@ -78,10 +83,14 @@ export class ArenaNetwork {
   private read() {
     if (this.closed || this.rejected) return;
     const client = this.client;
+    if (client.state !== this.connectionState) {
+      this.connectionState = client.state;
+      this.observe?.(client.state);
+    }
     if (client.state !== 'synced') {
       this.claimed = false;
       this.claiming = false;
-      this.match.setNetwork(false, client.error ?? 'Reconnecting…', this.code);
+      this.match.setNetwork(false, connectionMessage(client.state, client.error), this.code);
       return;
     }
     const own = client.get(this.seat);
@@ -136,10 +145,12 @@ export class ArenaNetwork {
     this.match.poll();
     if (
       this.seat === 'guest' &&
+      this.client.state === 'synced' &&
+      this.claimed &&
       this.now() - this.opened > 30000 &&
       this.match.getSnapshot().stage === 'lobby'
     ) {
-      this.fail('Room inactive or expired. Ask the host for a new code.');
+      this.fail('The host isn’t connected. Ask them to tap Retry connection, then retry joining.');
       return;
     }
     if (!this.claimed || this.client.state !== 'synced') return;
