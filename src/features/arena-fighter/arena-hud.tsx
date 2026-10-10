@@ -406,10 +406,6 @@ export default function ArenaHUD({
               controller={controller}
               state={snapshot}
               scope={transformScope}
-              onReposition={() => {
-                if (room) room.reposition();
-                else controller.repositionSolo(transformScope);
-              }}
               onDone={() => setTransformScope(null)}
             />
           </ScrollView>

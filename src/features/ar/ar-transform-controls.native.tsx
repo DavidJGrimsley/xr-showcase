@@ -106,7 +106,7 @@ export function ARTransformControls({
   onYawChange: (value: number) => void;
   onHeightChange: (value: number) => void;
   onPosition?: () => void;
-  onReposition: () => void;
+  onReposition?: () => void;
   stacked: boolean;
   onDone: () => void;
 }) {
@@ -158,15 +158,17 @@ export function ARTransformControls({
       <View
         className="items-center justify-center gap-2"
         style={{ flexDirection: stacked ? 'column' : 'row', flexWrap: 'wrap' }}>
-        <ARControl
-          label="Reposition"
-          disabled={repositionDisabled}
-          testID={`${testIDPrefix}-reposition`}
-          onPress={() => {
-            onReposition();
-            onDone();
-          }}
-        />
+        {onReposition && (
+          <ARControl
+            label="Reposition"
+            disabled={repositionDisabled}
+            testID={`${testIDPrefix}-reposition`}
+            onPress={() => {
+              onReposition();
+              onDone();
+            }}
+          />
+        )}
         <ARControl label="Done" testID={`${testIDPrefix}-transform-done`} onPress={onDone} />
       </View>
     </View>

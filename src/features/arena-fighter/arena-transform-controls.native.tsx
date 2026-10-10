@@ -10,13 +10,11 @@ export default function ArenaTransformControls({
   controller,
   state,
   scope,
-  onReposition,
   onDone,
 }: {
   controller: ArenaMatch;
   state: MatchSnapshot;
   scope: ArenaTransformScope;
-  onReposition: () => void;
   onDone: () => void;
 }) {
   const [positioning, setPositioning] = useState(false);
@@ -53,7 +51,6 @@ export default function ArenaTransformControls({
           onYawChange={(value) => controller.setYaw(scope, value)}
           onHeightChange={(value) => controller.setHeight(scope, value)}
           onPosition={() => setPositioning(true)}
-          onReposition={onReposition}
           onDone={onDone}
         />
       )}

@@ -1,66 +1,20 @@
 import { Button, Host } from '@expo/ui';
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
-import { useIsFocused } from 'expo-router/react-navigation';
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react';
-import { Alert, AppState, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { createContext, useContext, type ReactNode } from 'react';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { arSessionCoordinator } from '@/features/ar/ar-session-controller';
 
 const LandscapeContext = createContext(false);
 export const useArenaLandscape = () => useContext(LandscapeContext);
-function subscribeAppState(listener: () => void) {
-  const subscription = AppState.addEventListener('change', listener);
-  return () => subscription.remove();
-}
 
 /** Covers the current tree; rotation never replaces it or releases its camera. */
 export default function ArenaOrientationGate({ children }: { children: ReactNode }) {
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
-  const focused = useIsFocused();
-  const appState = useSyncExternalStore(subscribeAppState, () => AppState.currentState);
-  const [alertVisible, setAlertVisible] = useState(false);
-  const notified = useRef(false);
-  const alive = useRef(true);
   const insets = useSafeAreaInsets();
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-  useEffect(() => {
-    if (landscape) {
-      notified.current = false;
-      return;
-    }
-    if (!focused || appState !== 'active' || notified.current || alertVisible) return;
-    notified.current = true;
-    setAlertVisible(true);
-    Alert.alert(
-      'Landscape required',
-      'Rotate your phone sideways to continue. Your progress is saved.',
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (alive.current) setAlertVisible(false);
-          },
-        },
-      ],
-      { cancelable: false }
-    );
-  }, [landscape, focused, appState, alertVisible]);
-  const blocked = !landscape || alertVisible;
+  const blocked = !landscape;
   return (
     <LandscapeContext.Provider value={!blocked}>
       <View style={{ flex: 1 }}>
@@ -77,6 +31,27 @@ export default function ArenaOrientationGate({ children }: { children: ReactNode
             style={StyleSheet.absoluteFill}
             accessibilityViewIsModal>
             <BlurView intensity={85} tint="dark" style={StyleSheet.absoluteFill} />
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingTop: Math.max(32, insets.top),
+                  paddingBottom: Math.max(32, insets.bottom),
+                  paddingLeft: Math.max(32, insets.left),
+                  paddingRight: Math.max(32, insets.right),
+                },
+              ]}>
+              <Text
+                testID="arena-portrait-message"
+                accessibilityRole="header"
+                accessibilityLiveRegion="polite"
+                style={{ color: '#fff', textAlign: 'center', fontSize: 26, fontWeight: '600' }}>
+                Rotate to landscape to play
+              </Text>
+            </View>
             <View
               style={{
                 position: 'absolute',
