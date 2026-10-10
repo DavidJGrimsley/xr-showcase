@@ -263,6 +263,19 @@ test('protocol rejects malformed data and QR contains only the version and code'
   const p = pair();
   assert.ok(validPacket(p.host.match.packet()));
   assert.ok(validInput(p.guest.match.input()));
+  const packet = p.host.match.packet();
+  assert.equal(validPacket({ ...packet, protocol: 2 }), false);
+  assert.equal(
+    validPacket({ ...packet, arenaTransform: { ...packet.arenaTransform, x: NaN } }),
+    false
+  );
+  assert.equal(
+    validPacket({
+      ...packet,
+      round: { ...packet.round, red: { ...packet.round.red, uppercutWindowRemaining: -1 } },
+    }),
+    false
+  );
   assert.equal(
     validPacket({ ...p.host.match.packet(), transforms: { blue: { x: NaN }, red: {} } }),
     false
@@ -729,10 +742,19 @@ test('transforms clamp values, preserve fighter-local distances, reject stale sc
   h.match.setScale(scope, 7);
   h.match.setYaw(scope, 450);
   h.match.setHeight(scope, 10);
-  assert.deepEqual(h.snapshot().arenaTransform, { scale: 3, yaw: 90, height: 1.524 });
+  assert.deepEqual(h.snapshot().arenaTransform, { scale: 3, yaw: 90, height: 1.524, x: 0, z: 0 });
+  h.match.setPosition(scope, 'x', -10);
+  h.match.setPosition(scope, 'z', 10);
+  assert.equal(h.snapshot().arenaTransform.x, -1.524);
+  assert.equal(h.snapshot().arenaTransform.z, 1.524);
   assert.deepEqual(h.match.getTransform('blue'), local);
   h.match.setScale(scope, NaN);
   h.match.setHeight({ ...scope, sessionToken: scope.sessionToken + 1 }, 0);
+  h.match.setPosition({ ...scope, placementVersion: scope.placementVersion + 1 }, 'x', 0);
+  h.match.setPosition(scope, 'z', Infinity);
+  h.match.setPosition(scope, 'yaw', 0);
+  assert.equal(h.snapshot().arenaTransform.x, -1.524);
+  assert.equal(h.snapshot().arenaTransform.z, 1.524);
   assert.equal(h.snapshot().arenaTransform.height, 1.524);
   h.match.pinch(scope, 1, 1);
   h.match.pinch(scope, 2, 0.2);
@@ -746,6 +768,7 @@ test('transforms clamp values, preserve fighter-local distances, reject stale sc
   assert.equal(h.snapshot().canTransform, false);
   const fixed = h.snapshot().arenaTransform;
   h.match.setScale(scope, 1);
+  h.match.setPosition(scope, 'x', 0);
   assert.deepEqual(h.snapshot().arenaTransform, fixed);
 });
 
@@ -760,12 +783,28 @@ test('guest cannot edit shared transforms and host changes invalidate both Ready
   guest.match.ready();
   host.match.receiveInput(guest.match.input());
   const scope = { sessionToken: host.token(), placementVersion: host.snapshot().placementVersion };
+  host.match.setPosition(scope, 'x', 0.2);
+  host.match.setPosition(scope, 'y', 0.3);
+  host.match.setPosition(scope, 'z', -0.1);
   host.match.setScale(scope, 1.5);
   guest.match.receivePacket(host.match.packet());
   assert.equal(host.snapshot().localReady, false);
   assert.equal(host.snapshot().peerReady, false);
   assert.equal(guest.snapshot().localReady, false);
   assert.equal(guest.snapshot().arenaTransform.scale, 1.5);
+  assert.deepEqual(guest.snapshot().arenaTransform, {
+    scale: 1.5,
+    yaw: 0,
+    height: 0.3,
+    x: 0.2,
+    z: -0.1,
+  });
+  guest.match.setPosition(
+    { sessionToken: guest.token(), placementVersion: guest.snapshot().placementVersion },
+    'x',
+    -0.5
+  );
+  assert.equal(guest.snapshot().arenaTransform.x, 0.2);
   guest.match.setScale(
     { sessionToken: guest.token(), placementVersion: guest.snapshot().placementVersion },
     2
@@ -775,4 +814,31 @@ test('guest cannot edit shared transforms and host changes invalidate both Ready
   host.match.setScale(scope, 2);
   assert.equal(host.snapshot().canTransform, false);
   assert.equal(host.snapshot().arenaTransform.scale, 1.5);
+});
+
+test('a guest finisher and its uppercut cue come from the host and freeze during portrait', () => {
+  const p = pair();
+  for (let punch = 0; punch < 3; punch++) {
+    p.guest.match.attack('punch');
+    p.step(0.65);
+  }
+  p.guest.match.attack('punch');
+  p.step(0.35);
+  assert.equal(p.host.snapshot().blue.health, 60);
+  assert.equal(p.guest.snapshot().blue.mode, 'hit');
+  assert.ok(p.guest.snapshot().red.uppercutWindowRemaining > 0);
+  p.guest.match.setLandscape(false);
+  p.step(40);
+  assert.equal(p.host.snapshot().stage, 'fighting');
+  const frozen = p.host.snapshot().red.uppercutWindowRemaining;
+  assert.ok(frozen > 0);
+  assert.equal(p.guest.snapshot().red.uppercutWindowRemaining, frozen);
+  p.guest.match.setLandscape(true);
+  p.step(0.6);
+  assert.equal(p.guest.match.attack('uppercut'), true);
+  // The portrait hold preserves the unfinished punch; its buffered uppercut must finish winding up.
+  p.step(0.85);
+  assert.equal(p.host.snapshot().blue.health, 45);
+  assert.equal(p.guest.snapshot().blue.health, 45);
+  assert.equal(p.guest.snapshot().red.uppercutWindowRemaining, 0);
 });

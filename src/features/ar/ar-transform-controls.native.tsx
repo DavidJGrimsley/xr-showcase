@@ -11,7 +11,7 @@ import {
 } from './ar-transform';
 import { ARControl } from './ar-control.native';
 
-function TransformSlider({
+export function ARTransformSlider({
   label,
   value,
   spokenValue,
@@ -89,6 +89,7 @@ export function ARTransformControls({
   onScaleChange,
   onYawChange,
   onHeightChange,
+  onPosition,
   onReposition,
   stacked,
   onDone,
@@ -104,6 +105,7 @@ export function ARTransformControls({
   onScaleChange: (value: number) => void;
   onYawChange: (value: number) => void;
   onHeightChange: (value: number) => void;
+  onPosition?: () => void;
   onReposition: () => void;
   stacked: boolean;
   onDone: () => void;
@@ -111,7 +113,7 @@ export function ARTransformControls({
   const sliderYaw = ((yaw % 360) + 360) % 360;
   return (
     <View testID={`${testIDPrefix}-transform-controls`} className="gap-3">
-      <TransformSlider
+      <ARTransformSlider
         label="Scale"
         testID={`${testIDPrefix}-transform-scale`}
         value={scale}
@@ -122,7 +124,7 @@ export function ARTransformControls({
         stacked={stacked}
         onValueChange={onScaleChange}
       />
-      <TransformSlider
+      <ARTransformSlider
         label="Rotate"
         testID={`${testIDPrefix}-transform-rotate`}
         value={sliderYaw}
@@ -133,17 +135,26 @@ export function ARTransformControls({
         stacked={stacked}
         onValueChange={onYawChange}
       />
-      <TransformSlider
-        label="Height"
-        testID={`${testIDPrefix}-transform-height`}
-        value={height}
-        spokenValue={`${(height / METRES_PER_FOOT).toFixed(1)} feet above the surface`}
-        min={MIN_AR_HEIGHT}
-        max={MAX_AR_HEIGHT}
-        disabled={disabled}
-        stacked={stacked}
-        onValueChange={onHeightChange}
-      />
+      {onPosition ? (
+        <ARControl
+          label="Position"
+          disabled={disabled}
+          testID={`${testIDPrefix}-transform-position`}
+          onPress={onPosition}
+        />
+      ) : (
+        <ARTransformSlider
+          label="Height"
+          testID={`${testIDPrefix}-transform-height`}
+          value={height}
+          spokenValue={`${(height / METRES_PER_FOOT).toFixed(1)} feet above the surface`}
+          min={MIN_AR_HEIGHT}
+          max={MAX_AR_HEIGHT}
+          disabled={disabled}
+          stacked={stacked}
+          onValueChange={onHeightChange}
+        />
+      )}
       <View
         className="items-center justify-center gap-2"
         style={{ flexDirection: stacked ? 'column' : 'row', flexWrap: 'wrap' }}>

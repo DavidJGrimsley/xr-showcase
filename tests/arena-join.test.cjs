@@ -25,10 +25,11 @@ test('a failed invitation can be rescanned, while Back cancels a pending portrai
   assert.ok(intent.offer('ABC234'));
   assert.equal(intent.take(true, false), 'ABC234');
 });
-test('version two invites contain only a code and protocol; older invites are rejected', () => {
-  assert.equal(ARENA_PROTOCOL, 2);
+test('version three invites contain only a code and protocol; older invites are rejected', () => {
+  assert.equal(ARENA_PROTOCOL, 3);
   assert.equal(parseJoinLink(joinLink('ABC234')), 'ABC234');
   const url = new URL(joinLink('ABC234'));
   assert.deepEqual([...url.searchParams.keys()], ['join', 'v']);
   assert.equal(parseJoinLink('xr-showcase://arena-fighter?join=ABC234&v=1'), null);
+  assert.equal(parseJoinLink('xr-showcase://arena-fighter?join=ABC234&v=2'), null);
 });

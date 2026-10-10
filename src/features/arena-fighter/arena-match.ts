@@ -292,6 +292,11 @@ export class ArenaMatch {
     if (!this.currentTransformScope(scope) || !Number.isFinite(value)) return;
     this.changeTransform({ ...this.arenaTransform, height: value });
   };
+  setPosition = (scope: ArenaTransformScope, axis: 'x' | 'y' | 'z', value: number) => {
+    if (!this.currentTransformScope(scope) || !Number.isFinite(value)) return;
+    if (!['x', 'y', 'z'].includes(axis)) return;
+    this.changeTransform({ ...this.arenaTransform, [axis === 'y' ? 'height' : axis]: value });
+  };
   pinch = (scope: ArenaTransformScope, gesture: number, factor: number) => {
     if (!this.currentTransformScope(scope) || ![1, 2, 3].includes(gesture)) return;
     if (gesture === 1) {
@@ -365,7 +370,8 @@ export class ArenaMatch {
   rematch = this.ready;
   setMovement = (movement: Movement, held: boolean, roundId = this.snapshot.roundId) => {
     if (roundId !== this.snapshot.roundId) return;
-    this.held[movement] = held && this.snapshot.canAttack;
+    this.held[movement] =
+      held && this.snapshot.phase === 'fighting' && this.snapshot.animationsRunning;
   };
   attack = (kind: AttackKind, roundId = this.snapshot.roundId) => {
     if (roundId !== this.snapshot.roundId) return false;
@@ -759,7 +765,7 @@ export class ArenaMatch {
         !orientationPaused &&
         this.stage !== 'paused' &&
         this.stage !== 'abandoned',
-      canAttack: canAct,
+      canAttack: canAct && combat[this.localFighter].mode !== 'hit',
       canReady:
         capable &&
         this.peerCapable() &&

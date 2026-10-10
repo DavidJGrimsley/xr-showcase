@@ -8,7 +8,7 @@ import {
 import type { Knockout } from './arena-presentation.ts';
 import { validArenaTransform, type ArenaTransform } from './arena-transform.ts';
 
-export const ARENA_PROTOCOL = 2;
+export const ARENA_PROTOCOL = 3;
 export type ArenaMode = 'solo' | 'host' | 'guest';
 export type MatchLength = 1 | 3 | 5;
 export type MatchPhase =
@@ -175,6 +175,9 @@ export function validPacket(value: unknown): value is ArenaPacket {
       integer(fighter.animationId) &&
       typeof fighter.uppercutRemaining === 'number' &&
       Number.isFinite(fighter.uppercutRemaining) &&
+      typeof fighter.uppercutWindowRemaining === 'number' &&
+      Number.isFinite(fighter.uppercutWindowRemaining) &&
+      fighter.uppercutWindowRemaining >= 0 &&
       ['idle', 'walk', 'attack', 'hit', 'launch', 'defeat', 'defeated', 'victory'].includes(
         fighter.mode as string
       ) &&

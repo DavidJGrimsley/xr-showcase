@@ -524,6 +524,8 @@ test('reposition before Create room preserves captured surroundings and all adju
   h.match.setScale(scope, 1.5);
   h.match.setHeight(scope, 0.15);
   h.match.setYaw(scope, 90);
+  h.match.setPosition(scope, 'x', 0.2);
+  h.match.setPosition(scope, 'z', -0.1);
   h.room.start();
   t.mock.timers.tick(1050);
   await flush();
@@ -538,7 +540,13 @@ test('reposition before Create room preserves captured surroundings and all adju
   assert.equal(h.room.getSnapshot().scanProgress, progress);
   await h.room.finishScan();
   assert.deepEqual(h.match.placement.position, [3, 0, 4]);
-  assert.deepEqual(h.match.getSnapshot().arenaTransform, { scale: 1.5, height: 0.15, yaw: 90 });
+  assert.deepEqual(h.match.getSnapshot().arenaTransform, {
+    scale: 1.5,
+    height: 0.15,
+    yaw: 90,
+    x: 0.2,
+    z: -0.1,
+  });
   h.room.reposition();
   assert.equal(h.room.place([4, 0, 5]), true);
   assert.deepEqual(h.match.placement.position, [4, 0, 5]);

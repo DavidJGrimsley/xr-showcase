@@ -6,8 +6,8 @@ const {
 } = require('../src/features/arena-fighter/arena-controller.ts');
 const { updateHeldTouches } = require('../src/features/arena-fighter/arena-touch-input.ts');
 
-function harness(rules = {}, ready = true) {
-  const controller = new ArenaController({ cpuEnabled: false, ...rules });
+function harness(rules = {}, ready = true, random = () => 0) {
+  const controller = new ArenaController({ cpuEnabled: false, ...rules }, random);
   let token = controller.attachSession(1);
   const tick = (seconds) => {
     for (let i = 0; i < Math.round(seconds * 60); i++) controller.tick(token, 1 / 60);
@@ -150,8 +150,10 @@ test('movement stops during attacks, resumes a still-held touch afterward and id
   assert.equal(h.snapshot().blue.clip, 'IdleAggro');
 });
 
-test('jab hands repeat left left right left right right and held movement never repeats an attack', () => {
-  const h = harness();
+test('punch hands are sampled independently when an attack starts and held movement never repeats an attack', () => {
+  const samples = [0.9, 0.8, 0.1, 0.7, 0.2, 0.3, 0.6, 0.4];
+  let calls = 0;
+  const h = harness({}, true, () => samples[calls++]);
   const hands = [];
   for (let i = 0; i < 8; i++) {
     assert.equal(h.controller.attack('punch'), true);
@@ -160,11 +162,110 @@ test('jab hands repeat left left right left right right and held movement never 
   }
   assert.deepEqual(
     hands,
-    ['L', 'L', 'R', 'L', 'R', 'R', 'L', 'L'].map((hand) => `Combo_Punch${hand}`)
+    ['R', 'R', 'L', 'R', 'L', 'L', 'R', 'L'].map((hand) => `Combo_Punch${hand}`)
   );
+  assert.equal(calls, 8);
   h.tick(2);
   assert.equal(h.snapshot().blue.mode, 'idle');
   assert.equal(h.snapshot().red.health, 100);
+});
+
+test('a landed fourth punch adds stun and leaves enough time for a buffered uppercut to connect', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+    assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  }
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.equal(h.snapshot().red.health, 60);
+  assert.ok(h.snapshot().blue.uppercutWindowRemaining > 0.8);
+  assert.equal(h.controller.attack('uppercut'), true);
+  h.tick(0.35);
+  assert.equal(h.snapshot().blue.clip, 'Combo_UppercutL');
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(0.3);
+  assert.equal(h.snapshot().red.mode, 'hit');
+  assert.equal(h.controller.attack('punch', 'red'), false);
+  h.tick(0.2);
+  assert.equal(h.snapshot().red.health, 45);
+});
+
+test('missing the fourth punch grants no stun or cue and the next punch starts a new string', () => {
+  const h = harness();
+  for (let punch = 0; punch < 4; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  assert.equal(h.snapshot().red.health, 100);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.near();
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(0.6);
+  assert.equal(h.snapshot().red.mode, 'idle');
+});
+
+test('a finisher never offers a cooling-down uppercut and the opening expires without input', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  h.controller.attack('uppercut');
+  h.tick(0.9);
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.ok(h.snapshot().blue.uppercutRemaining > 0);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(1.35);
+  assert.equal(h.snapshot().red.mode, 'idle');
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  h.tick(2);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+});
+
+test('simultaneous fourth punches stun both fighters without granting an ordering-dependent opening', () => {
+  for (const order of [
+    ['blue', 'red'],
+    ['red', 'blue'],
+  ]) {
+    const h = harness({ spawn: 0.04 });
+    for (let punch = 0; punch < 4; punch++) {
+      for (const id of order) h.controller.attack('punch', id);
+      h.tick(punch < 3 ? 0.9 : 0.3);
+    }
+    for (const id of order) {
+      assert.equal(h.snapshot()[id].health, 60);
+      assert.equal(h.snapshot()[id].uppercutWindowRemaining, 0);
+    }
+    h.tick(0.6);
+    assert.equal(h.snapshot().blue.mode, 'hit');
+    assert.equal(h.snapshot().red.mode, 'hit');
+  }
+});
+
+test('portrait preserves a finisher opening while a real tracking interruption clears it', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  h.controller.attack('punch');
+  h.tick(0.3);
+  const window = h.snapshot().blue.uppercutWindowRemaining;
+  h.controller.setLandscape(false);
+  h.tick(40);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, window);
+  assert.equal(h.snapshot().red.mode, 'hit');
+  h.controller.setLandscape(true);
+  h.tick(0.5);
+  assert.ok(h.snapshot().blue.uppercutWindowRemaining > 0);
+  h.controller.setTracking(h.token, false);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  assert.equal(h.snapshot().red.mode, 'idle');
 });
 
 test('uppercut hands alternate independently and its three-second cooldown starts on misses', () => {
@@ -183,6 +284,38 @@ test('uppercut hands alternate independently and its three-second cooldown start
   assert.equal(h.controller.attack('uppercut'), true);
   assert.equal(h.snapshot().blue.clip, 'Combo_UppercutR');
   assert.equal(h.snapshot().red.health, 100);
+});
+
+test('buffered punches choose their random hand and advance the string only when they start', () => {
+  let samples = 0;
+  const h = harness({}, true, () => (samples++ % 2 ? 0.9 : 0.1));
+  h.controller.attack('punch');
+  assert.equal(samples, 1);
+  assert.equal(h.controller.attack('punch'), true);
+  assert.equal(samples, 1);
+  assert.equal(h.controller.attack('punch'), false);
+  h.tick(0.65);
+  assert.equal(samples, 2);
+  assert.equal(h.snapshot().blue.clip, 'Combo_PunchR');
+});
+
+test('a rematch resets the four-punch finisher count and clears any remaining cue', () => {
+  const h = harness({ spawn: 0.04 });
+  for (let punch = 0; punch < 10; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+  }
+  h.tick(2.4);
+  assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  assert.equal(h.controller.rematch(), true);
+  for (let punch = 0; punch < 3; punch++) {
+    h.controller.attack('punch');
+    h.tick(0.65);
+    assert.equal(h.snapshot().blue.uppercutWindowRemaining, 0);
+  }
+  h.controller.attack('punch');
+  h.tick(0.3);
+  assert.ok(h.snapshot().blue.uppercutWindowRemaining > 0);
 });
 
 test('one buffered move is first-wins, starts after the current clip and rejects unavailable uppercuts', () => {
@@ -607,7 +740,8 @@ test('a cornered CPU counters rather than waiting forever for room to evade', ()
 test('medium CPU allows ordinary punches to land and loses to sustained close-range pressure', () => {
   const h = harness({ cpuEnabled: true, spawn: 0.04 });
   for (let frame = 0; frame < 60 * 20 && h.snapshot().phase === 'fighting'; frame++) {
-    h.controller.attack('punch'); h.tick(1 / 60);
+    h.controller.attack('punch');
+    h.tick(1 / 60);
   }
   assert.equal(h.snapshot().outcome, 'blue');
   assert.equal(h.snapshot().red.health, 0);

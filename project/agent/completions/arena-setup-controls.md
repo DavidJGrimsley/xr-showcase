@@ -2,6 +2,8 @@
 
 October 9, 2026. Follow-up on `arena-multiplayer`, draft PR #5. This supersedes the orientation, QR and placement-editing behavior in the initial multiplayer delivery record. Physical acceptance and the historical Phase 2 remain incomplete.
 
+October 10 follow-up: [Four-punch finisher and Position controls](arena-combat-position.md) supersedes Arena's Height-only slider and protocol version below. The remaining paragraphs preserve the original setup-control delivery record.
+
 ## Behavior
 
 Arena Fighter permits portrait and both landscape directions. Portrait shows one native Landscape required alert and a dark blur cover with Home available. The mounted menu, scanner or AR tree stays intact. The alert must be dismissed and the phone returned to landscape before the cover clears. Combat, cooldowns, countdowns and knockout presentation resume automatically after 0.5 seconds of normal tracking; both phones must recover in multiplayer. Orientation alone never creates an interruption generation or starts the 30-second recovery deadline. Genuine backgrounding, socket loss, tracking loss and session replacement retain the explicit Resume/recovery path. Accepted attacks retain their remaining hit time through an orientation hold; held movement clears.

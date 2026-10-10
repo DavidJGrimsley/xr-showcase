@@ -13,6 +13,7 @@ import {
 } from '@reactvision/react-viro';
 
 import { ARENA_LAYOUT, type FighterId, type FighterTransform } from './arena-controller';
+import { arenaOffsetPosition } from './arena-transform';
 import type { ArenaSceneBinding } from './arena-navigator.native';
 import type { RoomView } from './arena-room.native';
 import { framePose } from './arena-placement';
@@ -314,12 +315,12 @@ function ArenaModels({
 }) {
   const { controller, token, context } = binding;
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const { scale, height, yaw } = state.arenaTransform;
+  const { scale, yaw } = state.arenaTransform;
   const scope = { sessionToken: token, placementVersion: version };
   return (
     <ViroNode
       key={version}
-      position={[0, height, 0]}
+      position={arenaOffsetPosition(state.arenaTransform)}
       rotation={[0, yaw, 0]}
       scale={[scale, scale, scale]}
       onPinch={

@@ -20,6 +20,8 @@ export const ARENA_RULES = {
   punchDamage: 10,
   uppercutDamage: 15,
   uppercutCooldown: 3,
+  punchStringLength: 4,
+  finisherStunBonus: 0.75,
   spawn: 0.095,
   boundary: 0.14,
   separation: 0.055,
@@ -51,9 +53,18 @@ const clipDuration = (name: string) => {
   if (!clip) throw new Error(`Missing fighter clip: ${name}`);
   return clip.durationSeconds;
 };
-const punchHands = ['L', 'L', 'R', 'L', 'R', 'R'] as const;
 const ids: FighterId[] = ['blue', 'red'];
 const epsilon = 1e-7;
+const attackTimings = new Map(manifest.combo.map((entry) => [entry.clip, entry]));
+function attackTiming(clip: string) {
+  const timing = attackTimings.get(clip);
+  if (!timing) throw new Error(`Missing fighter attack timing: ${clip}`);
+  return timing;
+}
+const uppercutHitAt = Math.max(
+  attackTiming('Combo_UppercutL').hitCheckSeconds,
+  attackTiming('Combo_UppercutR').hitCheckSeconds
+);
 
 interface Attack {
   kind: AttackKind;
@@ -61,6 +72,7 @@ interface Attack {
   duration: number;
   hitAt: number;
   hitChecked: boolean;
+  finisher: boolean;
 }
 interface Fighter {
   health: number;
@@ -75,6 +87,8 @@ interface Fighter {
   uppercutIndex: number;
   attack: Attack | null;
   buffered: AttackKind | null;
+  staggerUntil: number;
+  uppercutWindowUntil: number;
 }
 
 export interface FighterView {
@@ -83,6 +97,7 @@ export interface FighterView {
   clip: string;
   animationId: number;
   uppercutRemaining: number;
+  uppercutWindowRemaining: number;
 }
 export interface ArenaSnapshot {
   sessionToken: number | null;
@@ -116,6 +131,7 @@ export interface FighterTransform {
 /** Owns every gameplay event. Native callbacks only supply readiness, never damage. */
 export class ArenaController {
   private rules: typeof ARENA_RULES;
+  private random: () => number;
   private fighters: Record<FighterId, Fighter>;
   private listeners = new Set<() => void>();
   private snapshot!: ArenaSnapshot;
@@ -152,8 +168,9 @@ export class ArenaController {
   private frameSamples = 0;
   private fps: number | null = null;
 
-  constructor(rules: Partial<typeof ARENA_RULES> = {}) {
+  constructor(rules: Partial<typeof ARENA_RULES> = {}, random: () => number = Math.random) {
     this.rules = { ...ARENA_RULES, ...rules };
+    this.random = random;
     this.fighters = {
       blue: this.newFighter(-this.rules.spawn),
       red: this.newFighter(this.rules.spawn),
@@ -398,7 +415,12 @@ export class ArenaController {
     this.decideCPU();
 
     // Capture all eligible hits before applying any stagger/KO: simultaneous attacks are fair.
-    const hits: { defender: FighterId; kind: AttackKind }[] = [];
+    const hits: {
+      attacker: FighterId;
+      defender: FighterId;
+      kind: AttackKind;
+      finisher: boolean;
+    }[] = [];
     for (const id of ids) {
       const fighter = this.fighters[id];
       fighter.elapsed += dt;
@@ -408,7 +430,12 @@ export class ArenaController {
       if (!attack.hitChecked && attack.elapsed + epsilon >= attack.hitAt) {
         attack.hitChecked = true;
         if (Math.abs(this.fighters.blue.x - this.fighters.red.x) <= this.rules.reach + epsilon) {
-          hits.push({ defender: id === 'blue' ? 'red' : 'blue', kind: attack.kind });
+          hits.push({
+            attacker: id,
+            defender: id === 'blue' ? 'red' : 'blue',
+            kind: attack.kind,
+            finisher: attack.finisher,
+          });
         }
       }
     }
@@ -420,8 +447,25 @@ export class ArenaController {
       );
       fighter.attack = null;
       fighter.buffered = null;
+      fighter.uppercutWindowUntil = 0;
+      const staggerDuration =
+        clipDuration('HitFront') + (hit.finisher ? this.rules.finisherStunBonus : 0);
+      fighter.staggerUntil = Math.max(fighter.staggerUntil, this.clock + staggerDuration);
       this.setAnimation(fighter, 'hit', 'HitFront', true);
       if (hit.defender === 'red') this.cpuAttackAt = null;
+    }
+    // Grant openings after all hits resolve, so a simultaneous counter cannot create a stale cue.
+    for (const hit of hits) {
+      const attacker = this.fighters[hit.attacker];
+      const defender = this.fighters[hit.defender];
+      if (
+        !hit.finisher ||
+        attacker.mode === 'hit' ||
+        attacker.health === 0 ||
+        defender.health === 0
+      )
+        continue;
+      attacker.uppercutWindowUntil = defender.staggerUntil - uppercutHitAt - 1 / 60;
     }
     if (ids.some((id) => this.fighters[id].health === 0)) {
       this.endRound(hits);
@@ -435,10 +479,7 @@ export class ArenaController {
           this.setAnimation(fighter, 'idle', 'IdleAggro');
           if (id === 'red') this.recoverCPU();
           if (next) this.requestAttack(id, next);
-        } else if (
-          fighter.mode === 'hit' &&
-          fighter.elapsed + epsilon >= clipDuration('HitFront')
-        ) {
+        } else if (fighter.mode === 'hit' && this.clock + epsilon >= fighter.staggerUntil) {
           this.setAnimation(fighter, 'idle', 'IdleAggro');
           if (id === 'red') this.recoverCPU();
         }
@@ -461,6 +502,8 @@ export class ArenaController {
       uppercutIndex: 0,
       attack: null,
       buffered: null,
+      staggerUntil: 0,
+      uppercutWindowUntil: 0,
     };
   }
 
@@ -508,6 +551,8 @@ export class ArenaController {
     for (const id of ids) {
       const fighter = this.fighters[id];
       fighter.attack = null;
+      fighter.staggerUntil = 0;
+      fighter.uppercutWindowUntil = 0;
       if (['attack', 'hit', 'walk'].includes(fighter.mode))
         this.setAnimation(fighter, 'idle', 'IdleAggro');
     }
@@ -525,22 +570,29 @@ export class ArenaController {
       fighter.buffered = kind;
       return true;
     }
+    const finisher = kind === 'punch' && ++fighter.punchIndex % this.rules.punchStringLength === 0;
     const hand =
       kind === 'punch'
-        ? punchHands[fighter.punchIndex++ % punchHands.length]
+        ? this.random() < 0.5
+          ? 'L'
+          : 'R'
         : fighter.uppercutIndex++ % 2 === 0
           ? 'L'
           : 'R';
     const clip = `Combo_${kind === 'punch' ? 'Punch' : 'Uppercut'}${hand}`;
-    const timing = manifest.combo.find((entry) => entry.clip === clip)!;
+    const timing = attackTiming(clip);
     fighter.attack = {
       kind,
       elapsed: 0,
       duration: timing.durationSeconds,
       hitAt: timing.hitCheckSeconds,
       hitChecked: false,
+      finisher,
     };
-    if (kind === 'uppercut') fighter.uppercutAt = this.clock + this.rules.uppercutCooldown;
+    if (kind === 'uppercut') {
+      fighter.uppercutAt = this.clock + this.rules.uppercutCooldown;
+      fighter.uppercutWindowUntil = 0;
+    }
     this.setAnimation(fighter, 'attack', clip, true);
     this.publish();
     return true;
@@ -718,6 +770,13 @@ export class ArenaController {
       animationId: fighter.animationId,
       uppercutRemaining:
         Math.ceil(Math.max(0, fighter.uppercutAt - this.clock - epsilon) * 10) / 10,
+      uppercutWindowRemaining:
+        this.phase === 'fighting' &&
+        fighter.mode !== 'hit' &&
+        this.clock + epsilon >= fighter.uppercutAt &&
+        (!fighter.buffered || fighter.buffered === 'uppercut')
+          ? Math.ceil(Math.max(0, fighter.uppercutWindowUntil - this.clock - epsilon) * 10) / 10
+          : 0,
     });
     const snapshot: ArenaSnapshot = {
       sessionToken: this.attached ? this.token : null,

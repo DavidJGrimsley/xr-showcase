@@ -1,4 +1,4 @@
-import { Button, Column, Host, Picker, Row } from '@expo/ui';
+import { Button, Host, Picker, Row } from '@expo/ui';
 import { useEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
@@ -222,7 +222,7 @@ function SetupPanel({
           <>
             <Host matchContents={{ vertical: true }} colorScheme="dark" seedColor={colors.primary}>
               <Button
-                label={tester ? 'Close clip tester' : 'Test fighter clips'}
+                label={tester ? 'Close animation preview' : 'Preview animations (dev)'}
                 variant="text"
                 onPress={() => {
                   controller.stopPreview();
@@ -234,7 +234,8 @@ function SetupPanel({
             {tester ? (
               <>
                 <Text className="text-sm" style={{ color: colors.text }}>
-                  Development clip test. Place the arena and wait for both fighters to load.
+                  Developer tool: play a fighter animation without combat. Place the arena and wait
+                  for both fighters to load.
                 </Text>
                 <Host
                   matchContents={{ vertical: true }}
@@ -315,7 +316,11 @@ export default function ArenaHUD({
   const movementDisabled = snapshot.phase !== 'fighting' || !snapshot.animationsRunning;
   const preparingSharedArena =
     !!room && (!snapshot.placed || !snapshot.sharedPlacement) && snapshot.stage === 'lobby';
-  const AttackLayout = fontScale > 1.3 ? Column : Row;
+  const localFighter = snapshot[snapshot.localFighter];
+  const uppercutOpening =
+    snapshot.canAttack &&
+    localFighter.uppercutWindowRemaining > 0 &&
+    localFighter.uppercutRemaining === 0;
   const outcomeText =
     snapshot.outcome === 'draw'
       ? 'Draw · double knockout'
@@ -397,9 +402,6 @@ export default function ArenaHUD({
             className="my-2 w-full max-w-[380px] rounded-xl"
             style={{ backgroundColor: colors.surface, flexGrow: 0 }}
             contentContainerClassName="gap-3 p-3">
-            <Text className="font-semibold text-lg" style={{ color: colors.text }}>
-              Transform arena
-            </Text>
             <ArenaTransformControls
               controller={controller}
               state={snapshot}
@@ -459,19 +461,51 @@ export default function ArenaHUD({
               disabled={movementDisabled}
             />
           </View>
-          <Host matchContents colorScheme="dark" seedColor={colors.primary}>
-            <AttackLayout spacing={8}>
-              <Button
-                label="Punch"
-                disabled={!snapshot.canAttack}
-                onPress={() => controller.attack('punch', snapshot.roundId)}
-                style={buttonStyle}
-              />
-              <Button
+          <View
+            style={{
+              flexDirection: fontScale > 1.3 ? 'column' : 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}>
+            <HUDButton
+              label="Punch"
+              disabled={!snapshot.canAttack}
+              onPress={() => controller.attack('punch', snapshot.roundId)}
+              style={buttonStyle}
+            />
+            <View
+              testID="arena-uppercut-cue"
+              style={{
+                padding: 4,
+                borderRadius: 20,
+                borderWidth: 3,
+                borderColor: uppercutOpening ? colors.secondary : 'transparent',
+                boxShadow: uppercutOpening
+                  ? [
+                      {
+                        offsetX: 0,
+                        offsetY: 0,
+                        blurRadius: 28,
+                        spreadDistance: 9,
+                        color: colors.secondary,
+                      },
+                      {
+                        offsetX: 0,
+                        offsetY: 0,
+                        blurRadius: 10,
+                        spreadDistance: 3,
+                        color: colors.secondary,
+                      },
+                    ]
+                  : [],
+              }}>
+              <HUDButton
                 label={
-                  snapshot[snapshot.localFighter].uppercutRemaining > 0
-                    ? `Uppercut ${snapshot[snapshot.localFighter].uppercutRemaining.toFixed(1)}s`
-                    : 'Uppercut'
+                  localFighter.uppercutRemaining > 0
+                    ? `Uppercut ${localFighter.uppercutRemaining.toFixed(1)}s`
+                    : uppercutOpening
+                      ? 'Uppercut!'
+                      : 'Uppercut'
                 }
                 disabled={
                   !snapshot.canAttack || snapshot[snapshot.localFighter].uppercutRemaining > 0
@@ -479,8 +513,8 @@ export default function ArenaHUD({
                 onPress={() => controller.attack('uppercut', snapshot.roundId)}
                 style={buttonStyle}
               />
-            </AttackLayout>
-          </Host>
+            </View>
+          </View>
         </View>
       )}
     </View>
