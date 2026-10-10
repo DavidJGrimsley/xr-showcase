@@ -111,3 +111,8 @@ Implementation complete on the published phase-4-qubit branch; main integration 
 - [ ] Repeat native acceptance on Android after the iOS flow is stable.
 - [ ] Verify no placeholder assets or misleading completed-feature claims remain before the demo. Developer exposition routes have been removed.
 - [ ] Record the demo/screenshots and verify current hackathon submission requirements; submission is a separate user-authorized action.
+
+## Phase 7 - Incubation removal and feature plans
+### Arena Fighter
+- [ ] Add android support
+- [ ] For multiplayer, add ability to connect anywhere online where each player places a local arena, with the fight synchronized over the internet.
