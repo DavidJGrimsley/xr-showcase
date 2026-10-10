@@ -173,11 +173,11 @@ function SetupPanel({
                   style={buttonStyle}
                 />
               )}
-              {snapshot.mode !== 'guest' && (
+              {snapshot.mode === 'solo' && snapshot.placed && (
                 <HUDButton
-                  label="Rotate 90°"
+                  label="Transform"
                   disabled={!snapshot.canTransform}
-                  onPress={controller.rotateArena}
+                  onPress={onTransform}
                   variant="outlined"
                   style={buttonStyle}
                 />
@@ -203,15 +203,6 @@ function SetupPanel({
               label="Restart AR"
               variant="outlined"
               onPress={onRestart}
-              style={buttonStyle}
-            />
-          )}
-          {snapshot.mode === 'solo' && setup && snapshot.placed && (
-            <HUDButton
-              label="Transform"
-              variant="outlined"
-              disabled={!snapshot.canTransform}
-              onPress={onTransform}
               style={buttonStyle}
             />
           )}
