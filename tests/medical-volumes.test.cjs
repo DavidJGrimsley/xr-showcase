@@ -19,6 +19,11 @@ const {
   volumeExtent,
 } = require('../src/features/medical-viewer/medical-volume-uniforms.ts');
 const metadata = require('../assets/medical/volumes/metadata.json');
+const stack = require('../assets/medical/stack/metadata.json');
+const { stackPlaneGeometry } = require('../src/features/medical-viewer/medical-volume-stack.ts');
+const {
+  volumeDiagnosticShader,
+} = require('../src/features/medical-viewer/medical-volume-diagnostics.ts');
 const data = parseMedicalVolumeDataset(metadata);
 const scope = (c) => ({
   sessionId: c.getSnapshot().sessionId,
@@ -35,12 +40,24 @@ function viewer(dataset = data) {
 function volume() {
   const c = viewer();
   c.selectViewerMode(1, 'volume');
+  c.setVolumeRenderer(1, 'shader');
   ready(c);
   return c;
 }
 function ready(c) {
+  if (c.getSnapshot().volume.renderer === 'stack') {
+    for (let index = 0; index < 48; index++) c.finishVolumeStackImage(scope(c), index, true);
+    c.finishVolumeBinding(scope(c), 'ready');
+    return;
+  }
+  if (c.getSnapshot().volume.debugMode === 'magenta') {
+    c.finishVolumeBinding(scope(c), 'ready');
+    c.confirmVolumeMagenta(scope(c));
+    c.setVolumeDebugMode(scope(c), 'raymarch');
+  }
   VOLUME_ATLASES.forEach((key) => c.finishVolumeAtlas(scope(c), key, true));
   c.finishVolumeBinding(scope(c), 'ready');
+  c.openVolumeControls(1, false);
 }
 
 test('real volume assets retain source identity, scalar precision, geometry, and bounded atlas sizes', () => {
@@ -85,13 +102,16 @@ test('malformed volume metadata fails recoverably before native binding', () => 
     assert.ok(parseMedicalVolumeDataset(copy).error);
   }
 });
-test('anatomy Both stays the opening default; 3D Scan starts MRI with a physical left-half cutaway', () => {
+test('anatomy Both stays the opening default; 3D Scan starts with the full MRI at visible opacity', () => {
   const c = viewer();
   assert.equal(c.getSnapshot().mode, 'anatomy');
   assert.equal(c.getSnapshot().modelId, 'both');
   c.selectViewerMode(1, 'volume');
   assert.equal(c.getSnapshot().volume.modality, 'mri');
   assert.deepEqual(c.getSnapshot().volume.crop, initialVolumeCrop(data.boundsRasMm));
+  assert.deepEqual(c.getSnapshot().volume.crop, data.boundsRasMm);
+  assert.equal(c.getSnapshot().volume.appearance.mri.opacity, 1.6);
+  assert.equal(c.getSnapshot().volume.appearance.ct.opacity, 1.6);
   assert.equal(c.getSnapshot().anchorId, 'table');
   assert.equal(c.getSnapshot().volume.appearance.mri.level, 2671.5);
   assert.equal(c.getSnapshot().volume.yaw, 135);
@@ -99,6 +119,10 @@ test('anatomy Both stays the opening default; 3D Scan starts MRI with a physical
 test('all three atlas successes precede binding; failures, deadlines, retry, and stale events stay scoped', () => {
   const c = viewer();
   c.selectViewerMode(1, 'volume');
+  c.setVolumeRenderer(1, 'shader');
+  c.finishVolumeBinding(scope(c), 'ready');
+  c.confirmVolumeMagenta(scope(c));
+  c.setVolumeDebugMode(scope(c), 'raymarch');
   const old = scope(c);
   c.finishVolumeBinding(old, 'ready');
   assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
@@ -107,6 +131,9 @@ test('all three atlas successes precede binding; failures, deadlines, retry, and
   c.finishVolumeAtlas(old, 'low', false);
   assert.equal(c.getSnapshot().volume.loadStatus, 'error');
   c.retryVolumeLoad(1);
+  c.finishVolumeBinding(scope(c), 'ready');
+  c.confirmVolumeMagenta(scope(c));
+  c.setVolumeDebugMode(scope(c), 'raymarch');
   const retry = scope(c);
   assert.ok(retry.requestId > old.requestId);
   c.finishVolumeAtlas(old, 'validity', true);
@@ -231,7 +258,7 @@ test('missing and unsupported renderers preserve other modes', () => {
   const supported = viewer();
   supported.selectViewerMode(1, 'volume');
   supported.finishVolumeBinding(scope(supported), 'unsupported');
-  assert.match(medicalStatus(supported.getSnapshot()), /Rebuild/);
+  assert.match(medicalStatus(supported.getSnapshot()), /Stacked slices/);
 });
 
 test('malformed gesture endings retain the other gesture; renderer failure releases both', () => {
@@ -282,7 +309,142 @@ test('proxy box preserves anatomical proportions and the correct 55cm extent', (
   assert.equal(Math.max(...extent), 0.55);
   const c = volume(),
     u = volumeUniforms(data, c.getVolumeSeries(), c.getSnapshot().volume);
-  assert.deepEqual(u.u_crop_min, [0.5, 0, 0]);
+  assert.deepEqual(u.u_crop_min, [0, 0, 0]);
   assert.deepEqual(u.u_crop_max, [1, 1, 1]);
   assert.equal(u.u_flip_y, 0);
+});
+
+test('stacked fallback has true transparent air, bounded opacity, real scan hashes and ordered planes', () => {
+  const zlib = require('node:zlib');
+  assert.equal(
+    stack.sourceMetadataSha256,
+    crypto
+      .createHash('sha256')
+      .update(fs.readFileSync(path.join(__dirname, '../assets/medical/volumes/metadata.json')))
+      .digest('hex')
+  );
+  for (const preset of Object.values(stack.presets)) {
+    assert.equal(preset.planes.length, 48);
+    let transparent = 0,
+      anatomy = 0,
+      last = -Infinity,
+      maxAlpha = 0;
+    for (const plane of preset.planes) {
+      const bytes = fs.readFileSync(
+        path.join(__dirname, '../assets/medical/stack', plane.filename)
+      );
+      assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), plane.sha256);
+      assert.equal(bytes.length, plane.bytes);
+      assert.equal(bytes.readUInt32BE(16), 160);
+      assert.equal(bytes.readUInt32BE(20), 160);
+      const parts = [];
+      for (let offset = 8; offset < bytes.length;) {
+        const size = bytes.readUInt32BE(offset);
+        if (bytes.toString('ascii', offset + 4, offset + 8) === 'IDAT')
+          parts.push(bytes.subarray(offset + 8, offset + 8 + size));
+        offset += 12 + size;
+      }
+      const pixels = zlib.inflateSync(Buffer.concat(parts));
+      for (let row = 0; row < 160; row++) {
+        assert.equal(pixels[row * 641], 0);
+        for (let col = 0; col < 160; col++) {
+          const alpha = pixels[row * 641 + 1 + col * 4 + 3];
+          assert.ok(alpha <= 102);
+          maxAlpha = Math.max(maxAlpha, alpha);
+          if (alpha === 0) transparent++;
+          else anatomy++;
+        }
+      }
+      assert.ok(plane.positionRasMm > last);
+      last = plane.positionRasMm;
+    }
+    assert.ok(transparent > 0 && anatomy > 0);
+    assert.ok(maxAlpha > 56, 'Scan opacity must exceed the old faint export');
+    assert.equal(preset.planes[0].ijkZ, 0);
+    assert.equal(preset.planes.at(-1).ijkZ, data.dimensions[2] - 1);
+  }
+});
+
+test('stack cropping preserves RAS UV orientation, physical proportions and camera-dependent depth order', () => {
+  const c = viewer();
+  c.selectViewerMode(1, 'volume');
+  const state = c.getSnapshot().volume,
+    planes = stack.presets['mri-grayscale'].planes;
+  const geometry = stackPlaneGeometry(data, state, planes);
+  assert.equal(geometry[0].width, 0.55);
+  assert.deepEqual(geometry[0].uv, [0, 1, 1, 0]);
+  assert.equal(geometry[0].position[0], 0);
+  assert.equal(geometry[0].opacity, 0.8);
+  assert.ok(geometry[0].position[1] < geometry.at(-1).position[1]);
+  const ids = geometry.map((p) => p.renderingOrder);
+  c.updateVolumeCamera(1, [0, 1, 0]);
+  const reverse = stackPlaneGeometry(data, c.getSnapshot().volume, planes);
+  assert.ok(reverse[0].renderingOrder > reverse.at(-1).renderingOrder);
+  assert.ok(ids[0] < ids.at(-1));
+  c.setVolumeCrop(scope(c), 0, (data.boundsRasMm[0] + data.boundsRasMm[1]) / 2);
+  const half = stackPlaneGeometry(data, c.getSnapshot().volume, planes);
+  assert.equal(half[0].width, 0.55 / 2);
+  assert.deepEqual(half[0].uv, [0.5, 1, 1, 0]);
+  assert.ok(half[0].position[0] > 0);
+  c.setVolumeCrop(scope(c), 4, data.boundsRasMm[4] + 100);
+  const cropped = stackPlaneGeometry(data, c.getSnapshot().volume, planes);
+  assert.ok(!cropped[0].visible && cropped.some((p) => p.visible));
+  c.resetVolumeCrop(1);
+  assert.deepEqual(c.getSnapshot().volume.crop, data.boundsRasMm);
+});
+
+test('stack failures, presets, resets and old callbacks remain scoped and window/level stays baked', () => {
+  const c = viewer();
+  c.selectViewerMode(1, 'volume');
+  const old = scope(c);
+  c.finishVolumeStackImage(old, 0, false);
+  assert.equal(c.getSnapshot().volume.loadStatus, 'error');
+  c.retryVolumeLoad(1);
+  c.finishVolumeStackImage(old, 1, true);
+  assert.deepEqual(c.getSnapshot().volume.stackLoads, {});
+  ready(c);
+  const token = scope(c);
+  c.setVolumeAppearance(token, 'window', 1);
+  assert.equal(c.getSnapshot().volume.appearance.mri.window, 5589);
+  c.setVolumeAppearance(token, 'opacity', 0);
+  assert.equal(c.getSnapshot().volume.appearance.mri.opacity, 0);
+  c.selectVolumeModality(1, 'ct');
+  ready(c);
+  c.setVolumePreset(scope(c), 'ct-soft-tissue');
+  assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
+  ready(c);
+  c.resetVolumeScan(1);
+  assert.equal(c.getSnapshot().volume.appearance.ct.preset, 'ct-bone');
+  assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
+});
+
+test('shader diagnostics cannot test atlases before human magenta confirmation and invalidate confirmations on placement', () => {
+  const c = viewer();
+  c.selectViewerMode(1, 'volume');
+  c.setVolumeRenderer(1, 'shader');
+  const old = scope(c);
+  c.setVolumeDebugMode(old, 'high');
+  assert.equal(c.getSnapshot().volume.debugMode, 'magenta');
+  c.finishVolumeBinding(old, 'ready');
+  c.confirmVolumeMagenta(old);
+  c.setVolumeDebugMode(old, 'high');
+  assert.equal(c.getSnapshot().volume.debugMode, 'high');
+  assert.notEqual(scope(c).requestId, old.requestId);
+  c.recordVolumeDiagnostic(old, 'stale');
+  assert.deepEqual(c.getSnapshot().volume.diagnostics, []);
+  for (let i = 0; i < 30; i++) c.recordVolumeDiagnostic(scope(c), `error ${i}`);
+  assert.equal(c.getSnapshot().volume.diagnostics.length, 8);
+  c.reposition(1);
+  assert.equal(c.getSnapshot().volume.magentaConfirmed, false);
+  assert.equal(c.getSnapshot().volume.debugMode, 'magenta');
+  c.setVolumeRenderer(1, 'stack');
+  assert.equal(c.getSnapshot().volume.renderer, 'stack');
+  const magenta = volumeDiagnosticShader('magenta', stack.probes.mri);
+  assert.equal(magenta.textures.length, 0);
+  assert.equal(magenta.uniforms, '');
+  for (const key of ['high', 'low', 'validity']) {
+    const shader = volumeDiagnosticShader(key, stack.probes.mri);
+    assert.deepEqual(shader.textures, [key]);
+    assert.ok(shader.body.includes('expectedAlpha'));
+  }
 });

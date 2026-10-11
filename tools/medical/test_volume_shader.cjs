@@ -302,6 +302,27 @@ async function main() {
         2
       )
     );
+    console.log(
+      JSON.stringify(
+        { diagnostics: await require('./test_volume_diagnostics.cjs')(browser, directory) },
+        null,
+        2
+      )
+    );
+    console.log(
+      JSON.stringify(
+        { stackColor: await require('./test_stack_color.cjs')(browser, directory) },
+        null,
+        2
+      )
+    );
+    console.log(
+      JSON.stringify(
+        { stackedSlices: await require('./render_stack_preview.cjs')(browser, directory) },
+        null,
+        2
+      )
+    );
   } finally {
     await browser.close();
   }

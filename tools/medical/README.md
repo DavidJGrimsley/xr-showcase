@@ -2,7 +2,7 @@
 
 This pipeline exports real scalar CT and registered MRI voxel data inside **3D Slicer**. It does not capture the Slicer UI or render the skull/brain meshes. The current assets come from the owner-supplied NLM Visible Human Project Additional Head Images scene.
 
-The slice commands below regenerate the existing upright panels. The **3D Scan volume pipeline** at the end preserves scalar values for interactive window/level and cropping.
+The slice commands below regenerate the existing upright panels. The **3D Scan volume pipeline** preserves scalar values for interactive window/level and cropping. Following failed physical iPhone shader trials, **3D Scan now defaults to a stacked-slice visualization**. The experimental ray marcher is available only through gated shader diagnostics. Current reproduction, device checks and fallback regeneration are documented below under **White-cube investigation and fallback**.
 
 ## Export the currently loaded scene on Windows
 
@@ -177,3 +177,48 @@ Native Viro's material-definition dictionary and UIImage cache are retained unti
 Run `npm start`, open the existing iOS development client, and reload this worktree. Open Medical Viewer, place Anatomy/Both, then select **3D Scan**. Confirm the MRI cut face, walk around the scan (including the back and inside its proxy bounds), and compare with the reference images. Test CT → MRI → CT, both CT presets, independent window/level sliders, transparency endpoints, Fast/Balanced, crop enable/box visibility and all six boundaries. Reset Crop shows the whole volume; Reset Scan restores the selected modality's defaults/cutaway; Reset Transform restores its pose.
 
 Test pinch/rotate, all Transform sliders, Reposition, Restart AR, tracking loss, background/resume, Home, and reopening Medical/Arena/Qubit. Check that queued controls do not affect another modality or a reopened viewer. Check VoiceOver, large text, sheet scrolling and dismissal. Record **device model, iOS/client versions, sustained Fast FPS** (target ≥30 over a representative 60-second walk-around) and process/GPU memory after 1/10/30 CT–MRI switches and Home/reopen. Assets loading and bundle export alone do not satisfy these checks. If native shader compilation or alpha decoding fails, capture the specific limitation before changing native rendering architecture.
+
+## White-cube investigation and fallback
+
+The third owner trial still showed a white cube. No native ray-march rendering fix is claimed. `project/agent/completions/medical-white-cube.md` records the native findings, actual runtime evidence, local results and staged device tests. Later owner screenshots show dark/faint fallback imagery; `project/agent/completions/medical-scan-visibility.md` records the controls and visibility correction. The default **3D Scan** route uses **48 scan-derived transparent axial planes**, explicitly labelled **Stacked-slice visualization · temporary fallback**. It uses ordinary diffuse textures, with a small iOS fragment color correction for premultiplied RGB; no custom samplers/uniforms or proxy box are used. MRI/CT, three presets, transparency, physical cropping and volume transforms are retained. Presets have baked W/L; the corresponding sliders and ray quality are disabled. Near edge-on views show bands; narrow Bottom/Top crops may contain no selected plane.
+
+### Regenerate fallback planes from the validated atlases
+
+No Slicer session or original bundle is loaded by this command. It validates the current six atlases, decodes scalar alpha bytes and writes 48 × 160 × 160 RGBA PNGs for each preset, metadata, static requires and known valid/invalid texel probes. Opacity is `min(0.40, density * 0.70)` multiplied by validity; air/invalid areas have zero alpha. Native global plane opacity multiplies this by `appearance.opacity / 2`, initially 0.8 (Transparency 20%).
+
+```powershell
+Set-Location 'F:/ReactNativeApps/xr-showcase-i2Workspace/xr-showcase-medical-scan-slices'
+# Format source metadata first, because the fallback records its exact file hash.
+npx prettier --write assets/medical/volumes/metadata.json assets/medical/volumes/sources.native.ts
+& 'C:/Users/DJLeg/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' tools/medical/generate_volume_fallback.py --source assets/medical/volumes --output assets/medical/stack --count 48
+npx prettier --write assets/medical/stack/metadata.json assets/medical/stack/sources.native.ts
+npm run test:medical
+npm run test:medical:shader
+```
+
+The checked installation's Python includes NumPy. Another Python installation can run the same script with NumPy installed. Keep **48** planes to match the app's readiness/registration limit. Regenerate these assets after replacing/re-exporting the volume atlases. The script does not clean unrelated destination files; use the dedicated `assets/medical/stack` directory. Current added PNG bytes: **1,235,361 (1.178 MiB)**. About **4.6875 MiB** decoded RGBA per preset is required before GPU/native/probe caches. Deleting bounded materials does not guarantee image eviction.
+
+`test:medical:shader` also compiles all nine diagnostics in the installed Constant template and reads their output against real atlas probes. It checks valid/reference alpha bands, invalid black bands, magenta and positive/negative numeric uniforms. A 48-probe regression models iOS premultiplied sRGB uploads and validates the fallback color correction and node opacity. It produces desktop stacked-plane previews with transparent surrounding pixels using that upload/correction path. `.expo/medical-volumes/{diagnostics-proof,stack-proof,stack-color-proof}.json` and `*-stack.png` are ignored artifacts. These modeled WebGL bindings do not execute the phone's native registration, shader overrides, UIImage conversion or driver.
+
+### Reload and verify the default fallback first
+
+```powershell
+Set-Location 'F:/ReactNativeApps/xr-showcase-i2Workspace/xr-showcase-medical-scan-slices'
+npm start -- --clear
+```
+
+Fully close/reopen the installed development client and connect to this Metro instance. The owner identified build commit **839c8e3**, EAS build **02d480be-4fe7-468c-8be2-539da629e826**; its INSTALL_PODS log explicitly installed **ViroReact 3.0.3**. No native changes were made here; a new EAS build is not required for these JS/assets. The diagnostics show current JS/OS/native app identifiers and API presence, but Viro exposes no live native-version getter.
+
+Open Medical Viewer, place Anatomy/Both, enter 3D Scan. Expected: a full head made of brighter MRI layers, visible axial bands, transparent camera imagery around tissue, **no opaque cube**. CT Bone should show a brighter skull. Scan Controls should open and Done should dismiss without a raw-text error. Initial Transparency is 20%; reduce toward 0% for denser layers. Test CT→MRI→CT, CT presets, transparency, six crop boundaries and all resets/transforms. Changing R/A bounds changes quad size/UVs; S bounds select planes. The UI shows visible-plane count. Full Scan restores all bounds; Reset Scan restores full bounds and selected modality appearance. Background/resume, Home, Restart AR and all experience reopens must retain single AR ownership.
+
+### Isolate custom shader stages
+
+1. Scan Controls → **Shader diagnostics**, close sheet. Expect **uniform bright magenta**. No atlas loads or custom uniforms are used for this proof. A white/blank proxy means the modifier path has not passed; capture logs and return to Stacked slices.
+2. Only after seeing magenta, reopen and select **I see magenta**. Test High byte, Low byte, Validity separately. A magenta edge must surround matching sampled/reference gray bands, with a **black invalid-texel band**. Known valid alpha bytes: MRI **68/190/255**, CT **108/171/255**. Sheet shows the exact IJK, UV and expected bytes. All-white/all-black samples with a differing reference point to binding/decoding/UV failure.
+3. Coordinates should show R/A/S RGB gradients fixed to the box through transforms, with a camera-origin strip that responds as camera coordinates cross its axes. Numeric Uniforms should show green on the left, crop-min RGB on the right, and a grayscale strip that responds to Window. Red indicates a selected uniform check failed. Submitted numeric values are selectable in the sheet.
+4. Ray intersections should show green/cyan hits and magenta misses, responsive to camera/crop. Accumulated Opacity should respond to transparency; at 100% it must be black. Only then test Ray marcher. Expected: actual MRI/CT tissue with transparent surroundings; a white cube remains failed acceptance.
+5. Requests, placement, modality changes, mode changes, Retry, restart/background and exit invalidate old events and magenta confirmations. Two-frame geometry deferral reduces same-update registration/mounting; it does not acknowledge native completion. Visible readiness/probe success is never drawing confirmation.
+
+The bounded diagnostic list captures supported Viro node errors, JS material/uniform exceptions and the 30-second deadline. Core renderer compile/link failures are logged through iOS `NSLog`, not all forwarded to JS. On a connected Mac, Console → iPhone → start streaming → reproduce one mode → filter app process. Search `Shader compile log`, `Failed to compile fragment shader`, `Program link log`, `Failed to link program`, `Material`, `medicalVolume`; save the relevant interval and mode/modality. Xcode's attached device console is another option. No such native log was captured in this Windows session.
+
+Record the physical results separately: iPhone model/iOS/build, observed magenta/byte/uniform/ray/opacity stages, fallback appearance, sustained FPS and memory across 1/10/30 modality switches and Home/reopen. Desktop proofs, Expo export and EAS success do not verify those results.

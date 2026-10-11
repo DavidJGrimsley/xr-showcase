@@ -118,11 +118,13 @@ export function MedicalInfoModal({
                   meshes.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
-                  3D Scan shows the CT or MRI volume, starting with an MRI cutaway. Walk around it
-                  to see the scan from different angles. Scan Controls opens presets, window, level,
-                  transparency, and six crop boundaries. Reset Crop reveals the whole scan; Reset
-                  Scan restores the selected scan’s appearance and cutaway. Fast quality uses fewer
-                  samples. All three views keep their own size, rotation, and height.
+                  3D Scan starts with a preview of the full MRI, made from 48 transparent scan
+                  images stacked into a head shape. Fine layers can be visible, especially from the
+                  side. This is a temporary way to show the scan while full volume rendering is
+                  being tested. Scan Controls offers appearance presets, transparency, and crop
+                  boundaries. Lower transparency makes tissue more visible. Full Scan restores all
+                  crop boundaries; Reset Scan restores the selected scan’s appearance and full
+                  extent. All three views keep their own size, rotation, and height.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
                   The skull and half-skull come from CT segmentation, and the brain from an MRI mask

@@ -142,7 +142,9 @@ test('skull is centred, grounded, opaque and exported without additional resourc
   assert.ok(gltf.buffers.every((buffer) => !buffer.uri));
   const files = fs.readdirSync(path.join(__dirname, '../assets/medical'));
   assert.ok(
-    files.every((file) => ['slices', 'volumes'].includes(file) || /\.(glb|json)$/.test(file))
+    files.every(
+      (file) => ['slices', 'volumes', 'stack'].includes(file) || /\.(glb|json)$/.test(file)
+    )
   );
 });
 test('four named labels are calibrated on the actual exported surface', () => {
@@ -338,7 +340,10 @@ test('the pair preserves one Slicer conversion frame, retains physical bounds an
 
 // Execute the actual scene JSX with native components represented as nodes.
 // This checks scene/controller wiring; it does not emulate native AR rendering.
-function renderScene(controller, { shaderAPI = true, failUniformUpdates = false } = {}) {
+function renderScene(
+  controller,
+  { shaderAPI = true, failUniformUpdates = false, platform = 'ios' } = {}
+) {
   const effects = [],
     timers = new Map();
   const materials = [],
@@ -386,6 +391,7 @@ function renderScene(controller, { shaderAPI = true, failUniformUpdates = false 
             );
           if (name === 'react-native')
             return {
+              Platform: { OS: platform },
               Image: { resolveAssetSource: (uri) => ({ uri }) },
               NativeModules: shaderAPI ? { VRTMaterialManager: { updateShaderUniform() {} } } : {},
               TurboModuleRegistry: {
@@ -446,6 +452,13 @@ function renderScene(controller, { shaderAPI = true, failUniformUpdates = false 
     deletions,
     uniforms,
     frames,
+    flushFrames() {
+      for (let pass = 0; pass < 2; pass++) {
+        const callbacks = [...frames.values()];
+        frames.clear();
+        callbacks.forEach((callback) => callback());
+      }
+    },
     cleanup: () => cleanups.forEach((cleanup) => cleanup()),
   };
 }
@@ -613,7 +626,19 @@ test('slice scene handles failed load events, deadline, retry and teardown', () 
   }
 });
 
-function volumeSceneController() {
+function enableRayShader(c) {
+  const token = () => ({
+    sessionId: 1,
+    placementRevision: c.getSnapshot().placementRevision,
+    requestId: c.getSnapshot().volume.requestId,
+  });
+  c.setVolumeRenderer(1, 'shader');
+  c.finishVolumeBinding(token(), 'ready');
+  c.confirmVolumeMagenta(token());
+  c.setVolumeDebugMode(token(), 'raymarch');
+  c.openVolumeControls(1, false);
+}
+function volumeSceneController(renderer = 'shader') {
   const {
     parseMedicalVolumeDataset,
   } = require('../src/features/medical-viewer/medical-volumes.ts');
@@ -626,6 +651,7 @@ function volumeSceneController() {
   c.setTracking(1, true);
   c.selectViewerMode(1, 'volume');
   c.selectPlane(1, c.getSnapshot().placementRevision, 'table');
+  if (renderer === 'shader') enableRayShader(c);
   return c;
 }
 
@@ -644,6 +670,9 @@ test('volume probes gate one proxy box, alpha textures and bounded material clea
   assert.equal(c.getSnapshot().volume.loadStatus, 'binding');
   const binding = renderScene(c);
   const material = binding.materials.find((value) => value.medicalVolume)?.medicalVolume;
+  assert.equal(c.getSnapshot().volume.loadStatus, 'binding');
+  assert.equal(binding.nodes.filter(({ type }) => type === 'ViroBox').length, 0);
+  binding.flushFrames();
   assert.equal(c.getSnapshot().volume.loadStatus, 'ready');
   assert.equal(material.cullMode, 'Front');
   assert.equal(material.writesToDepthBuffer, false);
@@ -694,6 +723,7 @@ test('volume scene deadlines, retry keys, unsupported bridge and old probe event
   deadline.callback();
   assert.equal(c.getSnapshot().volume.loadStatus, 'error');
   c.retryVolumeLoad(1);
+  enableRayShader(c);
   const retry = renderScene(c);
   const probes = retry.nodes.filter(({ type }) => type === 'ViroImage');
   assert.ok(probes.every((node, i) => node.key !== old[i].key));
@@ -715,10 +745,74 @@ test('a rejected shader update becomes a recoverable volume error', () => {
     .filter(({ type }) => type === 'ViroImage')
     .forEach(({ props }) => props.onLoadEnd({ nativeEvent: { success: true } }));
   const binding = renderScene(c);
+  binding.flushFrames();
   const ready = renderScene(c, { failUniformUpdates: true });
   for (const update of ready.frames.values()) assert.doesNotThrow(update);
   assert.equal(c.getSnapshot().volume.loadStatus, 'error');
   c.retryVolumeLoad(1);
   assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
   for (const rendered of [loading, binding, ready]) rendered.cleanup();
+});
+
+test('default stacked volume needs no custom uniform API, corrects iOS alpha and never mounts a cube', () => {
+  const c = volumeSceneController('stack');
+  const token = () => ({
+    sessionId: 1,
+    placementRevision: c.getSnapshot().placementRevision,
+    requestId: c.getSnapshot().volume.requestId,
+  });
+  assert.equal(c.getSnapshot().volume.renderer, 'stack');
+  const loading = renderScene(c, { shaderAPI: false });
+  const images = loading.nodes.filter((node) => node.type === 'ViroImage');
+  assert.equal(images.length, 48);
+  assert.equal(loading.nodes.filter((node) => node.type === 'ViroBox').length, 0);
+  images.forEach((node) => node.props.onLoadEnd({ nativeEvent: { success: true } }));
+  const binding = renderScene(c, { shaderAPI: false });
+  assert.equal(c.getSnapshot().volume.loadStatus, 'binding');
+  const material = binding.materials.find((item) => item.medicalStack0).medicalStack0;
+  assert.match(material.shaderModifiers.fragment, /stackEncoded \/ max\(stackAlpha/);
+  assert.equal(material.materialUniforms, undefined);
+  assert.equal(material.cullMode, 'None');
+  assert.equal(material.writesToDepthBuffer, false);
+  const android = renderScene(c, { shaderAPI: false, platform: 'android' });
+  assert.equal(
+    android.materials.find((item) => item.medicalStack0).medicalStack0.shaderModifiers,
+    undefined
+  );
+  binding.flushFrames();
+  const ready = renderScene(c, { shaderAPI: false });
+  assert.equal(ready.nodes.filter((node) => node.type === 'ViroBox').length, 0);
+  const planes = ready.nodes.filter((node) => node.type === 'ViroQuad');
+  assert.ok(planes.length > 0);
+  assert.ok(
+    planes.every((node) => node.props.opacity <= 1 && node.props.uvCoordinates.length === 4)
+  );
+  const old = token();
+  c.selectVolumeModality(1, 'ct');
+  images[0].props.onError({ nativeEvent: { error: 'old failed plane' } });
+  c.finishVolumeBinding(old, 'error');
+  assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
+  c.detach(1);
+  for (const result of [loading, binding, ready, android]) {
+    result.cleanup();
+    assert.equal(result.frames.size, 0);
+    assert.equal(result.timers.size, 0);
+  }
+  assert.ok(binding.deletions.some((names) => names.length === 48));
+});
+
+test('magenta debug registers a texture-free fragment shader and cancels a queued mount on teardown', () => {
+  const c = volumeSceneController('stack');
+  c.setVolumeRenderer(1, 'shader');
+  const result = renderScene(c);
+  assert.equal(result.nodes.filter((node) => node.type === 'ViroImage').length, 0);
+  const material = result.materials.find((item) => item.medicalVolume).medicalVolume;
+  assert.equal(material.materialUniforms.length, 0);
+  assert.equal(material.shaderModifiers.surface, undefined);
+  assert.match(material.shaderModifiers.fragment.body, /vec4\(1.0, 0.0, 1.0, 1.0\)/);
+  assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
+  c.detach(1);
+  result.flushFrames();
+  assert.equal(c.getSnapshot().volume.loadStatus, 'idle');
+  result.cleanup();
 });

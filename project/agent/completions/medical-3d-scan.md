@@ -2,11 +2,13 @@
 
 Date: 2026-10-11 (America/New_York).
 
+**Current status:** The subsequent owner trial (`IMG_3682.png`) also failed with a white cube. The implementation/validation below is historical, not a successful device-rendering claim. The current branch defaults to a transparent stacked-slice fallback and contains isolated, gated shader diagnostics. See [the white-cube investigation and delivery report](F:/ReactNativeApps/xr-showcase-i2Workspace/xr-showcase-medical-scan-slices/project/agent/completions/medical-white-cube.md) for current behavior, evidence and device instructions.
+
 ## Delivered behavior
 
 Medical Viewer now has **3D Anatomy**, **Scan Slices**, and **3D Scan**. It still opens in **3D Anatomy → Both**. The implemented slice panel and four anatomy selections are preserved. All three representations share the existing AR navigator, scene, plane selector and selected surface, with independent scale/yaw/height.
 
-3D Scan initially shows registered MRI with the left half removed at the RAS midpoint, a diagonal 135° orientation, and a 55 cm longest extent centred 0.6096 m above the selected surface. One proxy box ray casts the scan data through a custom Viro surface shader. No mesh registration, fusion or native renderer replacement was added.
+The initial implementation described below used a left-half cutaway and a proxy ray marcher. The current default shows the **full registered MRI** using stacked slices, with corrected iOS color handling and stronger opacity. See [the visibility follow-up](medical-scan-visibility.md) for current behavior and validation. The diagonal 135° orientation and 55 cm longest extent centred 0.6096 m above the selected surface are retained. No mesh registration, fusion or native renderer replacement was added.
 
 MRI/CT switching retains the physical crop and volume placement, restoring each modality's appearance. Scan Controls opens a native scrollable Expo UI sheet with MRI Grayscale, CT Bone/Soft Tissue, window, level, transparency, Balanced/Fast quality, cropping enable/box visibility, and all six physical boundaries. Crop pairs retain at least one exported voxel. Reset Crop reveals the whole extent; Reset Scan restores selected appearance/cutaway; Reset Transform restores only the volume pose. Transform, Reposition, Restart AR and Home use the existing session lifecycle.
 

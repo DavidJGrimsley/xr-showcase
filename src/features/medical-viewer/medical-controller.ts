@@ -32,6 +32,7 @@ import {
   initialVolumeCrop,
   VOLUME_ATLASES,
   VOLUME_PRESETS,
+  STACK_PLANE_COUNT,
   volumeControlRanges,
   type MedicalVolumeDataset,
   type VolumeAppearance,
@@ -39,6 +40,8 @@ import {
   type VolumeBounds,
   type VolumePreset,
   type VolumeQuality,
+  type VolumeRenderer,
+  type VolumeDebugMode,
 } from './medical-volumes.ts';
 export {
   DEFAULT_AR_HEIGHT as DEFAULT_MODEL_HEIGHT,
@@ -77,6 +80,12 @@ export interface MedicalSliceSnapshot {
 
 export type MedicalVolumeScope = MedicalSliceScope;
 export interface MedicalVolumeSnapshot {
+  renderer: VolumeRenderer;
+  debugMode: VolumeDebugMode;
+  magentaConfirmed: boolean;
+  diagnostics: readonly string[];
+  stackLoads: Record<number, boolean>;
+  stackDescending: boolean;
   modality: SliceModality;
   appearance: Record<SliceModality, VolumeAppearance>;
   crop: VolumeBounds;
@@ -149,7 +158,7 @@ export function medicalStatus(state: MedicalSnapshot) {
     if (state.volume.loadStatus === 'missing')
       return '3D scan data unavailable. Anatomy and Scan Slices are still available.';
     if (state.volume.loadStatus === 'unsupported')
-      return 'This development client lacks the volume shader API. Rebuild the development client.';
+      return 'The shader API is unavailable. Open Scan Controls and choose Stacked slices.';
     if (state.volume.loadStatus === 'error')
       return '3D scan could not load. Try Retry or another modality.';
     if (state.tracking === 'initializing') return 'Finding a surface…';
@@ -193,6 +202,12 @@ export class MedicalController {
   private snapshot: MedicalSnapshot = {
     mode: 'anatomy',
     volume: {
+      renderer: 'stack',
+      debugMode: 'magenta',
+      magentaConfirmed: false,
+      diagnostics: [],
+      stackLoads: {},
+      stackDescending: false,
       modality: 'mri',
       appearance: { mri: defaultVolumeAppearance('mri'), ct: defaultVolumeAppearance('ct') },
       crop: initialVolumeCrop(EMPTY_VOLUME_DATASET.boundsRasMm),
@@ -524,6 +539,11 @@ export class MedicalController {
             ? 'loading'
             : 'idle',
       atlasLoads: {},
+      stackLoads: {},
+      magentaConfirmed: false,
+      debugMode:
+        this.snapshot.volume.renderer === 'shader' ? 'magenta' : this.snapshot.volume.debugMode,
+      diagnostics: [],
       controlsOpen: false,
       pinching: false,
       rotating: false,
@@ -536,6 +556,108 @@ export class MedicalController {
       scope.placementRevision === this.snapshot.placementRevision &&
       scope.requestId === this.snapshot.volume.requestId
     );
+  }
+  setVolumeRenderer(sessionId: number, renderer: VolumeRenderer) {
+    if (
+      !this.live(sessionId) ||
+      this.snapshot.mode !== 'volume' ||
+      !['stack', 'shader'].includes(renderer)
+    )
+      return;
+    this.clearGestures();
+    this.publish({
+      volume: {
+        ...this.volumeLoad(),
+        renderer,
+        debugMode: 'magenta',
+        magentaConfirmed: false,
+        controlsOpen: true,
+      },
+    });
+  }
+  confirmVolumeMagenta(scope: MedicalVolumeScope) {
+    if (
+      !this.currentVolume(scope) ||
+      this.snapshot.volume.renderer !== 'shader' ||
+      this.snapshot.volume.debugMode !== 'magenta' ||
+      this.snapshot.volume.loadStatus !== 'ready'
+    )
+      return;
+    this.publish({ volume: this.volumeUpdate({ magentaConfirmed: true }) });
+  }
+  setVolumeDebugMode(scope: MedicalVolumeScope, debugMode: VolumeDebugMode) {
+    if (
+      !this.currentVolume(scope) ||
+      this.snapshot.volume.renderer !== 'shader' ||
+      ![
+        'magenta',
+        'high',
+        'low',
+        'validity',
+        'coordinates',
+        'uniforms',
+        'ray',
+        'opacity',
+        'raymarch',
+      ].includes(debugMode) ||
+      (debugMode !== 'magenta' && !this.snapshot.volume.magentaConfirmed)
+    )
+      return;
+    this.publish({
+      volume: {
+        ...this.volumeLoad(),
+        debugMode,
+        magentaConfirmed: this.snapshot.volume.magentaConfirmed,
+        controlsOpen: true,
+      },
+    });
+  }
+  recordVolumeDiagnostic(scope: MedicalVolumeScope, message: string) {
+    if (!this.currentVolume(scope)) return;
+    const text = message.slice(0, 400);
+    if (this.snapshot.volume.diagnostics.at(-1) === text) return;
+    this.publish({
+      volume: this.volumeUpdate({
+        diagnostics: [...this.snapshot.volume.diagnostics.slice(-7), text],
+      }),
+    });
+  }
+  updateVolumeCamera(sessionId: number, forward: number[]) {
+    if (
+      !this.live(sessionId) ||
+      this.snapshot.mode !== 'volume' ||
+      this.snapshot.volume.renderer !== 'stack' ||
+      forward.length !== 3 ||
+      !forward.every(Number.isFinite) ||
+      Math.abs(forward[1]) < 0.05
+    )
+      return;
+    const stackDescending = forward[1] > 0;
+    if (stackDescending !== this.snapshot.volume.stackDescending)
+      this.publish({ volume: this.volumeUpdate({ stackDescending }) });
+  }
+  finishVolumeStackImage(scope: MedicalVolumeScope, index: number, success: boolean) {
+    if (
+      !this.currentVolume(scope) ||
+      !this.snapshot.anchorId ||
+      this.snapshot.volume.renderer !== 'stack' ||
+      this.snapshot.volume.loadStatus !== 'loading' ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= STACK_PLANE_COUNT
+    )
+      return;
+    const stackLoads = { ...this.snapshot.volume.stackLoads, [index]: success };
+    this.publish({
+      volume: this.volumeUpdate({
+        stackLoads,
+        loadStatus: !success
+          ? 'error'
+          : Object.keys(stackLoads).length === STACK_PLANE_COUNT
+            ? 'binding'
+            : 'loading',
+      }),
+    });
   }
   selectVolumeModality(sessionId: number, modality: SliceModality) {
     if (
@@ -558,6 +680,7 @@ export class MedicalController {
   finishVolumeAtlas(scope: MedicalVolumeScope, atlas: VolumeAtlas, success: boolean) {
     if (
       !this.currentVolume(scope) ||
+      this.snapshot.volume.renderer !== 'shader' ||
       !this.snapshot.anchorId ||
       !VOLUME_ATLASES.includes(atlas) ||
       this.snapshot.volume.loadStatus !== 'loading'
@@ -584,7 +707,16 @@ export class MedicalController {
       )
     )
       return;
-    if (result === 'ready' && this.snapshot.volume.loadStatus !== 'binding') return;
+    if (
+      result === 'ready' &&
+      this.snapshot.volume.loadStatus !== 'binding' &&
+      !(
+        this.snapshot.volume.renderer === 'shader' &&
+        this.snapshot.volume.debugMode === 'magenta' &&
+        this.snapshot.volume.loadStatus === 'loading'
+      )
+    )
+      return;
     if (result !== 'ready') this.clearGestures();
     this.publish({
       volume: this.volumeUpdate({
@@ -617,6 +749,13 @@ export class MedicalController {
     const { window, level } = VOLUME_PRESETS[preset];
     this.publish({
       volume: this.volumeUpdate({
+        ...(this.snapshot.volume.renderer === 'stack'
+          ? {
+              requestId: this.snapshot.volume.requestId + 1,
+              stackLoads: {},
+              loadStatus: this.snapshot.anchorId ? ('loading' as const) : ('idle' as const),
+            }
+          : {}),
         appearance: {
           ...this.snapshot.volume.appearance,
           [this.snapshot.volume.modality]: { preset, window, level, opacity: 1 },
@@ -631,6 +770,7 @@ export class MedicalController {
   ) {
     if (
       !this.currentVolume(scope) ||
+      (this.snapshot.volume.renderer === 'stack' && key !== 'opacity') ||
       !['window', 'level', 'opacity'].includes(key) ||
       !Number.isFinite(value)
     )
@@ -685,6 +825,13 @@ export class MedicalController {
     if (!this.live(sessionId) || this.snapshot.mode !== 'volume') return;
     this.publish({
       volume: this.volumeUpdate({
+        ...(this.snapshot.volume.renderer === 'stack'
+          ? {
+              requestId: this.snapshot.volume.requestId + 1,
+              stackLoads: {},
+              loadStatus: this.snapshot.anchorId ? ('loading' as const) : ('idle' as const),
+            }
+          : {}),
         crop: initialVolumeCrop(this.volumeDataset.boundsRasMm),
         cropping: true,
         appearance: {

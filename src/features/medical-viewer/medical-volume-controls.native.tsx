@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   BottomSheet,
   Button,
@@ -9,9 +9,27 @@ import {
   Slider,
   Switch,
 } from '@expo/ui';
-import { accessibilityLabel, accessibilityValue, frame } from '@expo/ui/swift-ui/modifiers';
-import { fillMaxWidth, height, semantics } from '@expo/ui/jetpack-compose/modifiers';
-import { Platform, Text, useWindowDimensions, View } from 'react-native';
+import {
+  accessibilityLabel,
+  accessibilityValue,
+  frame,
+  onGeometryChange,
+  preferredColorScheme,
+} from '@expo/ui/swift-ui/modifiers';
+import { fillMaxWidth, height, onSizeChanged, semantics } from '@expo/ui/jetpack-compose/modifiers';
+import {
+  Platform,
+  Text,
+  useWindowDimensions,
+  View,
+  NativeModules,
+  TurboModuleRegistry,
+} from 'react-native';
+import Constants from 'expo-constants';
+import { version as viroJSVersion } from '@reactvision/react-viro/package.json';
+import stackMetadata from '../../../assets/medical/stack/metadata.json';
+import { volumeUniforms } from './medical-volume-uniforms';
+import { stackPlaneGeometry } from './medical-volume-stack';
 import { ARControl } from '@/features/ar/ar-control.native';
 import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
 import {
@@ -21,9 +39,11 @@ import {
 } from './medical-controller';
 import {
   VOLUME_PRESETS,
+  VOLUME_DEBUG_LABELS,
   VolumeControlScheduler,
   volumeControlRanges,
   type VolumePreset,
+  type VolumeDebugMode,
 } from './medical-volumes';
 
 interface ControlsProps {
@@ -57,6 +77,7 @@ function ScanSlider({
       <Host
         matchContents={{ vertical: true }}
         colorScheme="dark"
+        seedColor="#93f5c5"
         style={{ width: '100%', minHeight: 48 }}>
         <Slider
           value={value}
@@ -97,6 +118,7 @@ function ScanToggle({
     <Host
       matchContents={{ vertical: true }}
       colorScheme="dark"
+      seedColor="#93f5c5"
       style={{ minHeight: 48, width: '100%' }}>
       <Switch
         label={label}
@@ -107,8 +129,30 @@ function ScanToggle({
     </Host>
   );
 }
+function ScanSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View
+      className="gap-3 rounded-2xl border p-4"
+      style={{ backgroundColor: '#18252d', borderColor: '#2b3b46' }}>
+      <Text accessibilityRole="header" className="text-lg font-semibold text-slate-50">
+        {title}
+      </Text>
+      {children}
+    </View>
+  );
+}
 export function MedicalVolumeSheet({ controller, state, sessionId }: ControlsProps) {
-  const { height: windowHeight } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
+  const [sheetWidth, setSheetWidth] = useState(0);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const contentWidth = Math.min(width, sheetWidth || width, 560);
+  const measure = ({ width }: { width: number }) => {
+    if (width > 0) setSheetWidth(width);
+  };
+  const layoutModifiers =
+    Platform.OS === 'ios'
+      ? [frame({ maxWidth: Infinity, alignment: 'top' }), onGeometryChange(measure)]
+      : [fillMaxWidth(), onSizeChanged(measure)];
   const [scheduler] = useState(
     () => new VolumeControlScheduler(requestAnimationFrame, cancelAnimationFrame)
   );
@@ -132,138 +176,242 @@ export function MedicalVolumeSheet({ controller, state, sessionId }: ControlsPro
     controller.openVolumeControls(sessionId, false);
   };
   const labels = [
-    'Left boundary · RAS R mm',
-    'Right boundary · RAS R mm',
-    'Back boundary · RAS A mm',
-    'Front boundary · RAS A mm',
-    'Bottom boundary · RAS S mm',
-    'Top boundary · RAS S mm',
+    'Left boundary (mm)',
+    'Right boundary (mm)',
+    'Back boundary (mm)',
+    'Front boundary (mm)',
+    'Bottom boundary (mm)',
+    'Top boundary (mm)',
   ];
+  const visiblePlanes = stackPlaneGeometry(
+    controller.volumeDataset,
+    volume,
+    stackMetadata.presets[appearance.preset].planes
+  ).filter((plane) => plane.visible).length;
   return (
-    <Host colorScheme="dark">
+    <Host colorScheme="dark" seedColor="#93f5c5" style={{ position: 'absolute' }}>
       <BottomSheet
         isPresented
         onDismiss={close}
         snapPoints={['full']}
+        contentPadding={0}
+        containerColor="#10191f"
+        modifiers={Platform.OS === 'ios' ? [preferredColorScheme('dark')] : undefined}
         testID="medical-volume-sheet">
-        <Column style={{ padding: 16 }}>
-          <Button onPress={close}>Done</Button>
-          <ScrollView style={{ height: Math.min(windowHeight * 0.72, 720) }}>
-            <RNHostView matchContents>
-              <View className="gap-4 p-3">
-                <Text className="text-xl font-semibold text-white">
-                  {volume.modality.toUpperCase()} · Scan Controls
+        <Column alignment="center" spacing={0} modifiers={layoutModifiers}>
+          <RNHostView matchContents>
+            <View
+              className="flex-row items-center gap-3 px-6 py-2"
+              style={{ width: contentWidth }}
+              onAccessibilityEscape={close}>
+              <View className="flex-1 gap-1">
+                <Text accessibilityRole="header" className="text-xl font-semibold text-slate-50">
+                  Scan controls
                 </Text>
-                <View className="flex-row flex-wrap gap-2">
-                  {(Object.keys(VOLUME_PRESETS) as VolumePreset[])
-                    .filter((key) => VOLUME_PRESETS[key].modality === volume.modality)
-                    .map((preset) => (
+                <Text className="text-sm text-slate-300">
+                  {volume.modality.toUpperCase()} · 3D preview
+                </Text>
+              </View>
+              <Host matchContents colorScheme="dark" seedColor="#93f5c5">
+                <Button
+                  label="Done"
+                  variant="text"
+                  onPress={close}
+                  style={{ height: Math.max(48, 17 * fontScale + 20) }}
+                />
+              </Host>
+            </View>
+          </RNHostView>
+          <ScrollView direction="vertical" style={{ width: contentWidth }}>
+            <RNHostView matchContents>
+              <View
+                className="gap-4 px-5 pb-8 pt-3"
+                style={{ width: contentWidth }}
+                onAccessibilityEscape={close}>
+                <ScanSection title="Appearance">
+                  <View className="flex-row flex-wrap gap-2">
+                    {(Object.keys(VOLUME_PRESETS) as VolumePreset[])
+                      .filter((key) => VOLUME_PRESETS[key].modality === volume.modality)
+                      .map((preset) => (
+                        <ARControl
+                          key={preset}
+                          testID={`medical-volume-preset-${preset}`}
+                          label={VOLUME_PRESETS[preset].label}
+                          selected={appearance.preset === preset}
+                          onPress={() => {
+                            scheduler.clear();
+                            controller.setVolumePreset(scope, preset);
+                          }}
+                        />
+                      ))}
+                  </View>
+                  {volume.renderer === 'shader' ? (
+                    <>
+                      <ScanSlider
+                        label="Window"
+                        value={appearance.window}
+                        min={ranges.window[0]}
+                        max={ranges.window[1]}
+                        onChange={(value) =>
+                          queue('window', () =>
+                            controller.setVolumeAppearance(scope, 'window', value)
+                          )
+                        }
+                      />
+                      <ScanSlider
+                        label="Level"
+                        value={appearance.level}
+                        min={ranges.level[0]}
+                        max={ranges.level[1]}
+                        onChange={(value) =>
+                          queue('level', () =>
+                            controller.setVolumeAppearance(scope, 'level', value)
+                          )
+                        }
+                      />
+                    </>
+                  ) : null}
+                  <ScanSlider
+                    label="Transparency %"
+                    value={(2 - appearance.opacity) * 50}
+                    min={0}
+                    max={100}
+                    onChange={(value) =>
+                      queue('opacity', () =>
+                        controller.setVolumeAppearance(scope, 'opacity', 2 - value / 50)
+                      )
+                    }
+                  />
+                  <Text className="text-sm leading-5 text-slate-300">
+                    Lower transparency makes the tissue easier to see.
+                  </Text>
+                  {volume.renderer === 'shader' ? (
+                    <>
+                      <Text className="text-base font-semibold text-slate-50">
+                        Rendering quality
+                      </Text>
+                      <View className="flex-row flex-wrap gap-2">
+                        {(['balanced', 'fast'] as const).map((quality) => (
+                          <ARControl
+                            key={quality}
+                            testID={`medical-volume-quality-${quality}`}
+                            label={quality === 'balanced' ? 'Balanced' : 'Fast'}
+                            selected={volume.quality === quality}
+                            onPress={() => controller.configureVolume(scope, { quality })}
+                          />
+                        ))}
+                      </View>
+                    </>
+                  ) : null}
+                </ScanSection>
+                <ScanSection title="Crop the scan">
+                  <ScanToggle
+                    label="Enable cropping"
+                    value={volume.cropping}
+                    onChange={(cropping) => controller.configureVolume(scope, { cropping })}
+                  />
+                  <ScanToggle
+                    label="Show crop box"
+                    value={volume.cropBoxVisible}
+                    onChange={(cropBoxVisible) =>
+                      controller.configureVolume(scope, { cropBoxVisible })
+                    }
+                  />
+                  {volume.cropping
+                    ? labels.map((label, index) => (
+                        <ScanSlider
+                          key={label}
+                          label={label}
+                          value={volume.crop[index]}
+                          min={
+                            index % 2 === 0
+                              ? controller.volumeDataset.boundsRasMm[index]
+                              : volume.crop[index - 1] + controller.volumeDataset.spacingMm
+                          }
+                          max={
+                            index % 2 === 0
+                              ? volume.crop[index + 1] - controller.volumeDataset.spacingMm
+                              : controller.volumeDataset.boundsRasMm[index]
+                          }
+                          step={controller.volumeDataset.spacingMm}
+                          onChange={(value) =>
+                            queue(`crop${index}`, () =>
+                              controller.setVolumeCrop(scope, index, value)
+                            )
+                          }
+                        />
+                      ))
+                    : null}
+                  {volume.renderer === 'stack' && visiblePlanes === 0 ? (
+                    <Text accessibilityLiveRegion="polite" className="text-base text-amber-200">
+                      No scan layers in this crop. Widen the bottom/top boundaries or choose Full
+                      Scan.
+                    </Text>
+                  ) : null}
+                  <View className="flex-row flex-wrap gap-2">
+                    <ARControl
+                      label="Full Scan"
+                      testID="medical-volume-reset-crop"
+                      onPress={() => {
+                        scheduler.clear();
+                        controller.resetVolumeCrop(sessionId);
+                      }}
+                    />
+                    <ARControl
+                      label="Reset Scan"
+                      testID="medical-volume-reset-scan"
+                      onPress={() => {
+                        scheduler.clear();
+                        controller.resetVolumeScan(sessionId);
+                      }}
+                    />
+                  </View>
+                </ScanSection>
+                <ARControl
+                  label="Diagnostics"
+                  hint={advancedOpen ? 'Hide renderer tests' : 'Show renderer tests'}
+                  testID="medical-volume-advanced"
+                  selected={advancedOpen}
+                  onPress={() => setAdvancedOpen(!advancedOpen)}
+                />
+                {advancedOpen ? (
+                  <ScanSection title="Renderer diagnostics">
+                    <Text className="text-base leading-6 text-slate-300">
+                      The preview uses 48 scan layers. Full volume rendering is still being tested.
+                    </Text>
+                    <View className="flex-row flex-wrap gap-2">
                       <ARControl
-                        key={preset}
-                        testID={`medical-volume-preset-${preset}`}
-                        label={VOLUME_PRESETS[preset].label}
-                        selected={appearance.preset === preset}
+                        testID="medical-renderer-stack"
+                        label="Scan layers"
+                        selected={volume.renderer === 'stack'}
                         onPress={() => {
                           scheduler.clear();
-                          controller.setVolumePreset(scope, preset);
+                          controller.setVolumeRenderer(sessionId, 'stack');
                         }}
                       />
-                    ))}
-                </View>
-                <ScanSlider
-                  label="Window"
-                  value={appearance.window}
-                  min={ranges.window[0]}
-                  max={ranges.window[1]}
-                  onChange={(value) =>
-                    queue('window', () => controller.setVolumeAppearance(scope, 'window', value))
-                  }
-                />
-                <ScanSlider
-                  label="Level"
-                  value={appearance.level}
-                  min={ranges.level[0]}
-                  max={ranges.level[1]}
-                  onChange={(value) =>
-                    queue('level', () => controller.setVolumeAppearance(scope, 'level', value))
-                  }
-                />
-                <ScanSlider
-                  label="Transparency %"
-                  value={(2 - appearance.opacity) * 50}
-                  min={0}
-                  max={100}
-                  onChange={(value) =>
-                    queue('opacity', () =>
-                      controller.setVolumeAppearance(scope, 'opacity', 2 - value / 50)
-                    )
-                  }
-                />
-                <Text className="text-lg font-semibold text-white">Rendering quality</Text>
-                <View className="flex-row flex-wrap gap-2">
-                  {(['balanced', 'fast'] as const).map((quality) => (
-                    <ARControl
-                      key={quality}
-                      testID={`medical-volume-quality-${quality}`}
-                      label={quality === 'balanced' ? 'Balanced' : 'Fast'}
-                      selected={volume.quality === quality}
-                      onPress={() => controller.configureVolume(scope, { quality })}
-                    />
-                  ))}
-                </View>
-                <Text className="text-lg font-semibold text-white">Cropping</Text>
-                <ScanToggle
-                  label="Enable cropping"
-                  value={volume.cropping}
-                  onChange={(cropping) => controller.configureVolume(scope, { cropping })}
-                />
-                <ScanToggle
-                  label="Show crop box"
-                  value={volume.cropBoxVisible}
-                  onChange={(cropBoxVisible) =>
-                    controller.configureVolume(scope, { cropBoxVisible })
-                  }
-                />
-                {labels.map((label, index) => (
-                  <ScanSlider
-                    key={label}
-                    label={label}
-                    value={volume.crop[index]}
-                    min={
-                      index % 2 === 0
-                        ? controller.volumeDataset.boundsRasMm[index]
-                        : volume.crop[index - 1] + controller.volumeDataset.spacingMm
-                    }
-                    max={
-                      index % 2 === 0
-                        ? volume.crop[index + 1] - controller.volumeDataset.spacingMm
-                        : controller.volumeDataset.boundsRasMm[index]
-                    }
-                    step={controller.volumeDataset.spacingMm}
-                    disabled={!volume.cropping}
-                    onChange={(value) =>
-                      queue(`crop${index}`, () => controller.setVolumeCrop(scope, index, value))
-                    }
-                  />
-                ))}
-                <View className="flex-row flex-wrap gap-2">
-                  <ARControl
-                    label="Reset Crop"
-                    testID="medical-volume-reset-crop"
-                    onPress={() => {
-                      scheduler.clear();
-                      controller.resetVolumeCrop(sessionId);
-                    }}
-                  />
-                  <ARControl
-                    label="Reset Scan"
-                    testID="medical-volume-reset-scan"
-                    onPress={() => {
-                      scheduler.clear();
-                      controller.resetVolumeScan(sessionId);
-                    }}
-                  />
-                </View>
+                      <ARControl
+                        testID="medical-renderer-shader"
+                        label="Shader tests"
+                        selected={volume.renderer === 'shader'}
+                        onPress={() => {
+                          scheduler.clear();
+                          controller.setVolumeRenderer(sessionId, 'shader');
+                        }}
+                      />
+                    </View>
+                    {volume.renderer === 'shader' ? (
+                      <MedicalShaderDiagnostics
+                        controller={controller}
+                        state={state}
+                        sessionId={sessionId}
+                      />
+                    ) : (
+                      <Text className="text-sm text-slate-300">
+                        {visiblePlanes} / 48 layers in this crop.
+                      </Text>
+                    )}
+                  </ScanSection>
+                ) : null}
               </View>
             </RNHostView>
           </ScrollView>
@@ -281,6 +429,16 @@ export function MedicalVolumeControls({
 }: ControlsProps & { onTransform: () => void; onRestart: () => void }) {
   return (
     <View className="gap-3" testID="medical-volume-controls">
+      <Text className="text-center text-base text-slate-200" accessibilityLiveRegion="polite">
+        {state.volume.renderer === 'stack'
+          ? '3D preview · scan layers'
+          : `Shader diagnostic · ${VOLUME_DEBUG_LABELS[state.volume.debugMode]} · drawing ${state.volume.magentaConfirmed ? 'magenta confirmed only' : 'unconfirmed'}`}
+      </Text>
+      {state.volume.loadStatus === 'error' && state.volume.diagnostics.length ? (
+        <Text selectable className="text-center text-sm text-amber-200">
+          {state.volume.diagnostics.at(-1)}
+        </Text>
+      ) : null}
       <View className="flex-row flex-wrap justify-center gap-2">
         {(['mri', 'ct'] as const).map((modality) => (
           <ARControl
@@ -314,6 +472,59 @@ export function MedicalVolumeControls({
         />
         <ARControl label="Restart AR" testID="medical-volume-restart-ar" onPress={onRestart} />
       </View>
+    </View>
+  );
+}
+function MedicalShaderDiagnostics({ controller, state, sessionId }: ControlsProps) {
+  const { volume } = state;
+  const scope = {
+    sessionId,
+    placementRevision: state.placementRevision,
+    requestId: volume.requestId,
+  };
+  const probe = stackMetadata.probes[volume.modality];
+  const manager = NativeModules.VRTMaterialManager ?? TurboModuleRegistry.get('VRTMaterialManager');
+  const series = controller.getVolumeSeries()!;
+  return (
+    <View className="gap-3">
+      <Text
+        selectable
+        className="text-base text-slate-200">{`JS Viro ${viroJSVersion} · iOS/OS ${Platform.Version}\nNative app ${Constants.nativeAppVersion ?? '?'} / build ${Constants.nativeBuildVersion ?? '?'}\nNative Viro version is not exposed. Reference EAS 839c8e3 logs show ViroReact 3.0.3; this panel cannot identify the installed binary.\nMaterial/update API: ${typeof manager?.updateShaderUniform === 'function' ? 'present' : 'missing'}\nSession ${scope.sessionId} · placement ${scope.placementRevision} · request ${scope.requestId}\nAtlas loads: ${JSON.stringify(volume.atlasLoads)}`}</Text>
+      <Text className="text-base text-amber-200">
+        First close this sheet and inspect the proxy: it must be bright magenta. Asset loading or
+        queued materials do not confirm drawing. A white/blank box means stop and return to Stacked
+        slices.
+      </Text>
+      <ARControl
+        testID="medical-confirm-magenta"
+        label="I see magenta"
+        disabled={volume.debugMode !== 'magenta' || volume.loadStatus !== 'ready'}
+        selected={volume.magentaConfirmed}
+        onPress={() => controller.confirmVolumeMagenta(scope)}
+      />
+      <View className="flex-row flex-wrap gap-2">
+        {(Object.keys(VOLUME_DEBUG_LABELS) as VolumeDebugMode[]).map((mode) => (
+          <ARControl
+            key={mode}
+            testID={`medical-diagnostic-${mode}`}
+            label={VOLUME_DEBUG_LABELS[mode]}
+            selected={mode === volume.debugMode}
+            disabled={mode !== 'magenta' && !volume.magentaConfirmed}
+            onPress={() => controller.setVolumeDebugMode(scope, mode)}
+          />
+        ))}
+      </View>
+      <Text
+        selectable
+        className="text-base text-slate-200">{`Known atlas IJK ${probe.ijk.join(', ')} · UV ${probe.uv.map((v) => v.toFixed(6)).join(', ')}\nExpected alpha bytes: high ${probe.alphaBytes.high}, low ${probe.alphaBytes.low}, validity ${probe.alphaBytes.validity}\nByte tests: magenta edge; sampled half should match reference half. The invalid-texel band should be black in all byte tests. Validity has two matching white bands.\nCoordinates: R/A/S RGB gradient, camera-origin strip changes while walking.\nUniforms: green left, normalized crop minima RGB right; bottom strip responds to window. Ray: green/cyan intersections; magenta misses. Opacity: grayscale accumulated alpha.\nSubmitted uniforms: ${JSON.stringify(volumeUniforms(controller.volumeDataset, series, volume))}`}</Text>
+      <Text selectable className="text-base text-amber-200">
+        {volume.diagnostics.join('\n') || 'No diagnostic events yet.'}
+      </Text>
+      <Text className="text-sm text-slate-300">
+        Viro 3.0.3 does not forward all core GLSL compilation errors to JavaScript. Native system
+        logs are still needed if the proxy fails. Node errors and JS material/update exceptions
+        appear above.
+      </Text>
     </View>
   );
 }

@@ -28,3 +28,4 @@ android
 !.env.example
 app.local.config.json
 credentials.json
+tools/medical/__pycache__/

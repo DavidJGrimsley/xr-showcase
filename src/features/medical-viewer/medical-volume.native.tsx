@@ -9,11 +9,17 @@ import {
   type ViroShaderUniform,
 } from '@reactvision/react-viro';
 import type { MedicalSceneProps } from './medical-scene.native';
-import { canManipulateVolume, type MedicalVolumeScope } from './medical-controller';
+import {
+  canManipulateVolume,
+  type MedicalVolumeScope,
+  type MedicalSnapshot,
+} from './medical-controller';
 import { medicalVolumeSource } from './medical-volume-assets.native';
 import { VOLUME_ATLASES } from './medical-volumes';
 import { volumeExtent, volumeUniforms } from './medical-volume-uniforms';
-import { VOLUME_SHADER_BODY, VOLUME_SHADER_UNIFORMS } from './medical-volume-shader';
+import { volumeDiagnosticShader, medicalNativeError } from './medical-volume-diagnostics';
+import stackMetadata from '../../../assets/medical/stack/metadata.json';
+import MedicalVolumeStack from './medical-volume-stack.native';
 
 const MATERIAL = 'medicalVolume';
 function uniforms(values: Record<string, number | number[]>): ViroShaderUniform[] {
@@ -23,8 +29,7 @@ function uniforms(values: Record<string, number | number[]>): ViroShaderUniform[
     type: typeof value === 'number' ? 'float' : value.length === 3 ? 'vec3' : 'vec4',
   }));
 }
-export default function MedicalVolume({ context, controller }: MedicalSceneProps) {
-  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+function useVolumeRendering({ context, controller }: MedicalSceneProps, state: MedicalSnapshot) {
   const { volume } = state;
   const series = controller.getVolumeSeries();
   const dataset = controller.volumeDataset;
@@ -33,11 +38,24 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
     placementRevision: state.placementRevision,
     requestId: volume.requestId,
   };
-  const active = !!state.anchorId && ['binding', 'ready'].includes(volume.loadStatus);
+  const magenta = volume.debugMode === 'magenta';
+  const shader = volumeDiagnosticShader(
+    volume.debugMode,
+    stackMetadata.probes[volume.modality],
+    dataset.dimensions
+  );
+  const active =
+    volume.renderer === 'shader' &&
+    !!state.anchorId &&
+    (['binding', 'ready'].includes(volume.loadStatus) ||
+      (magenta && volume.loadStatus === 'loading'));
   const pending = ['loading', 'binding'].includes(volume.loadStatus);
   useEffect(() => {
     if (!state.anchorId || !pending) return;
-    const timeout = setTimeout(() => controller.finishVolumeBinding(scope, 'error'), 30000);
+    const timeout = setTimeout(() => {
+      controller.recordVolumeDiagnostic(scope, '30-second load/binding deadline exceeded.');
+      controller.finishVolumeBinding(scope, 'error');
+    }, 30000);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -57,7 +75,10 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
       return;
     }
     try {
-      const textures: ViroShaderUniform[] = VOLUME_ATLASES.map((key) => {
+      const textureKeys = new Set(shader.textures);
+      const textures: ViroShaderUniform[] = VOLUME_ATLASES.filter((key) =>
+        textureKeys.has(key)
+      ).map((key) => {
         const resolved = Image.resolveAssetSource(medicalVolumeSource(volume.modality, key));
         if (!resolved?.uri) throw new Error(`Missing ${key} atlas`);
         return {
@@ -74,16 +95,37 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
           writesToDepthBuffer: false,
           readsFromDepthBuffer: true,
           shaderModifiers: {
-            surface: { uniforms: VOLUME_SHADER_UNIFORMS, body: VOLUME_SHADER_BODY },
+            [shader.entry]: { uniforms: shader.uniforms, body: shader.body },
           },
-          materialUniforms: [...textures, ...uniforms(volumeUniforms(dataset, series, volume))],
+          materialUniforms: [
+            ...textures,
+            ...(!magenta ? uniforms(volumeUniforms(dataset, series, volume)) : []),
+          ],
         },
       });
-      controller.finishVolumeBinding(scope, 'ready');
-    } catch {
+      controller.recordVolumeDiagnostic(
+        scope,
+        `Native material submitted · ${volume.debugMode} · ${textures.length} sampler(s). Drawing unconfirmed.`
+      );
+    } catch (error) {
+      controller.recordVolumeDiagnostic(scope, `Material creation: ${medicalNativeError(error)}`);
       controller.finishVolumeBinding(scope, 'error');
+      ViroMaterials.deleteMaterials([MATERIAL]);
+      return;
     }
-    return () => ViroMaterials.deleteMaterials([MATERIAL]);
+    let cancelled = false,
+      second: number | undefined;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        if (!cancelled) controller.finishVolumeBinding(scope, 'ready');
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(first);
+      if (second !== undefined) cancelAnimationFrame(second);
+      ViroMaterials.deleteMaterials([MATERIAL]);
+    };
     // Scalar controls update uniforms below, without recreating texture resources.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -92,11 +134,12 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
     state.placementRevision,
     volume.requestId,
     volume.modality,
+    volume.debugMode,
     active,
     series,
   ]);
   useEffect(() => {
-    if (!active || !series || volume.loadStatus !== 'ready') return;
+    if (!active || magenta || !series || volume.loadStatus !== 'ready') return;
     const frame = requestAnimationFrame(() => {
       const current = controller.getSnapshot();
       if (
@@ -110,7 +153,8 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
       try {
         for (const uniform of uniforms(volumeUniforms(dataset, series, current.volume)))
           ViroMaterials.updateShaderUniform(MATERIAL, uniform.name, uniform.type, uniform.value);
-      } catch {
+      } catch (error) {
+        controller.recordVolumeDiagnostic(scope, `Uniform update: ${medicalNativeError(error)}`);
         controller.finishVolumeBinding(scope, 'error');
       }
     });
@@ -127,6 +171,13 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
     volume.loadStatus,
     volume.requestId,
   ]);
+  return { scope, series, magenta };
+}
+export default function MedicalVolume({ context, controller }: MedicalSceneProps) {
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { volume } = state;
+  const dataset = controller.volumeDataset;
+  const { scope, series, magenta } = useVolumeRendering({ context, controller }, state);
   if (!state.anchorId || !series) return null;
   const extent = volumeExtent(dataset),
     interactive = canManipulateVolume(state);
@@ -158,7 +209,10 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
           ? (gesture, value) => controller.volumeGesture(scope, 'rotate', gesture, value)
           : undefined
       }>
-      {volume.loadStatus === 'loading'
+      {volume.renderer === 'stack' ? (
+        <MedicalVolumeStack context={context} controller={controller} />
+      ) : null}
+      {volume.renderer === 'shader' && !magenta && volume.loadStatus === 'loading'
         ? VOLUME_ATLASES.map((key) => (
             <ViroImage
               key={`${scope.sessionId}:${scope.placementRevision}:${scope.requestId}:${key}`}
@@ -172,18 +226,28 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
               onLoadEnd={(event) =>
                 controller.finishVolumeAtlas(scope, key, event.nativeEvent.success)
               }
-              onError={() => controller.finishVolumeAtlas(scope, key, false)}
+              onError={(event) => {
+                controller.recordVolumeDiagnostic(
+                  scope,
+                  `Atlas ${key}: ${medicalNativeError(event)}`
+                );
+                controller.finishVolumeAtlas(scope, key, false);
+              }}
             />
           ))
         : null}
-      {volume.loadStatus === 'ready' ? (
+      {volume.renderer === 'shader' && volume.loadStatus === 'ready' ? (
         <ViroBox
+          key={`${scope.sessionId}:${scope.placementRevision}:${scope.requestId}:${volume.debugMode}`}
           width={extent[0]}
           height={extent[2]}
           length={extent[1]}
           // iOS's materials clone omits custom sampler textures; shaderOverrides copies them.
           shaderOverrides={[MATERIAL]}
-          onError={() => controller.finishVolumeBinding(scope, 'error')}
+          onError={(event) => {
+            controller.recordVolumeDiagnostic(scope, `Native box: ${medicalNativeError(event)}`);
+            controller.finishVolumeBinding(scope, 'error');
+          }}
         />
       ) : null}
       {volume.cropBoxVisible && volume.cropping

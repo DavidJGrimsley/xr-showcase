@@ -233,6 +233,9 @@ export default function MedicalScene({
     <ViroARScene
       anchorDetectionTypes={['PlanesHorizontal']}
       toneMappingEnabled={false}
+      onCameraTransformUpdate={(camera) =>
+        controller.updateVolumeCamera(context.sessionId, camera.forward)
+      }
       onAnchorFound={(anchor) => selector.current?.handleAnchorFound(anchor)}
       onAnchorUpdated={(anchor) => selector.current?.handleAnchorUpdated(anchor)}
       onAnchorRemoved={(anchor) => {
