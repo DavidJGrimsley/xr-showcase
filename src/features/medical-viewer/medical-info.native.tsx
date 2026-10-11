@@ -86,13 +86,13 @@ export function MedicalInfoModal({
                 style={{ width: contentWidth }}
                 onAccessibilityEscape={onDismiss}>
                 <Text className="text-base leading-6 text-slate-200">
-                  Move your phone slowly, then tap a highlighted table or floor. The skull starts
+                  Move your phone slowly, then tap a highlighted table or floor. The model starts
                   floating two feet above that surface. Pinch to resize it and twist two fingers to
-                  rotate it. Labels reveals the anatomy markers.
+                  rotate it. Labels reveals the anatomy markers in Skull mode.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
                   Transform opens sliders for Scale, Rotate, and Height. Scale ranges from half to
-                  three times the original size; Height moves the skull from surface level to five
+                  three times the original size; Height moves the model from surface level to five
                   feet above it. Done returns to the main controls.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
@@ -101,9 +101,15 @@ export function MedicalInfoModal({
                   original size and orientation, floating two feet above the surface.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
-                  This skull was segmented from CT images in 3D Slicer and simplified for the
-                  viewer. Choose a model from the dropdown; Brain is unavailable until its separate
-                  model is ready.
+                  Choose Skull, Brain, Half Skull, or Both from the dropdown. Both is the default.
+                  Changing modes keeps your surface, size, rotation, and height. Both moves both
+                  models together. Its controls become ready only after both models finish loading.
+                </Text>
+                <Text className="text-base leading-6 text-slate-200">
+                  The skull and half-skull come from CT segmentation, and the brain from an MRI mask
+                  exported in 3D Slicer. The models were simplified for mobile viewing while
+                  preserving their shared coordinates. Both displays the half-skull and brain
+                  together. Labels are available only in Skull mode.
                 </Text>
                 <Text selectable className="text-base leading-6 text-slate-200">
                   {provenance.attribution}

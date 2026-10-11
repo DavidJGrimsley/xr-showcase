@@ -4,43 +4,59 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { test } = require('node:test');
+const vm = require('node:vm');
+const ts = require('typescript');
+const {
+  MEDICAL_ASSETS,
+  MEDICAL_MODELS,
+  MEDICAL_MODEL_ASSETS,
+  isMedicalModelAvailable,
+  hasMedicalLabels,
+} = require('../src/features/medical-viewer/medical-models.ts');
+const { MedicalController } = require('../src/features/medical-viewer/medical-controller.ts');
 const { clean } = require('../scripts/medical-mesh-clean.cjs');
 const provenance = require('../assets/medical/skull-provenance.json');
 const calibration = require('../assets/medical/skull-labels.json');
 
-const bytes = fs.readFileSync(path.join(__dirname, '../assets/medical/skull.glb'));
-assert.equal(bytes.readUInt32LE(0), 0x46546c67);
-assert.equal(bytes.readUInt32LE(4), 2);
-assert.equal(bytes.readUInt32LE(8), bytes.length);
-assert.equal(bytes.readUInt32LE(16), 0x4e4f534a);
-const jsonEnd = 20 + bytes.readUInt32LE(12);
-const gltf = JSON.parse(bytes.toString('utf8', 20, jsonEnd));
-assert.equal(bytes.readUInt32LE(jsonEnd + 4), 0x004e4942);
-const binaryStart = jsonEnd + 8;
-function accessor(index) {
-  const a = gltf.accessors[index],
-    view = gltf.bufferViews[a.bufferView];
-  const size = a.componentType === 5123 ? 2 : 4;
-  const width = a.type === 'VEC3' ? 3 : 1;
-  const start = binaryStart + (view.byteOffset || 0) + (a.byteOffset || 0);
-  const stride = view.byteStride || size * width;
-  const data = [];
-  for (let i = 0; i < a.count; i++) {
-    const row = [];
-    for (let k = 0; k < width; k++) {
-      const offset = start + i * stride + k * size;
-      row.push(
-        a.componentType === 5126
-          ? bytes.readFloatLE(offset)
-          : size === 2
-            ? bytes.readUInt16LE(offset)
-            : bytes.readUInt32LE(offset)
-      );
+function readModel(id) {
+  const bytes = fs.readFileSync(path.join(__dirname, `../assets/medical/${id}.glb`));
+  assert.equal(bytes.readUInt32LE(0), 0x46546c67);
+  assert.equal(bytes.readUInt32LE(4), 2);
+  assert.equal(bytes.readUInt32LE(8), bytes.length);
+  assert.equal(bytes.readUInt32LE(16), 0x4e4f534a);
+  const jsonEnd = 20 + bytes.readUInt32LE(12);
+  const gltf = JSON.parse(bytes.toString('utf8', 20, jsonEnd));
+  assert.equal(bytes.readUInt32LE(jsonEnd + 4), 0x004e4942);
+  const binaryStart = jsonEnd + 8;
+  function accessor(index) {
+    const a = gltf.accessors[index],
+      view = gltf.bufferViews[a.bufferView];
+    assert.ok([5123, 5125, 5126].includes(a.componentType));
+    const size = a.componentType === 5123 ? 2 : 4;
+    const width = a.type === 'VEC3' ? 3 : 1;
+    const start = binaryStart + (view.byteOffset || 0) + (a.byteOffset || 0);
+    const stride = view.byteStride || size * width;
+    const data = [];
+    for (let i = 0; i < a.count; i++) {
+      const row = [];
+      for (let k = 0; k < width; k++) {
+        const offset = start + i * stride + k * size;
+        assert.ok(offset + size <= bytes.length);
+        row.push(
+          a.componentType === 5126
+            ? bytes.readFloatLE(offset)
+            : size === 2
+              ? bytes.readUInt16LE(offset)
+              : bytes.readUInt32LE(offset)
+        );
+      }
+      data.push(width === 1 ? row[0] : row);
     }
-    data.push(width === 1 ? row[0] : row);
+    return data;
   }
-  return data;
+  return { bytes, gltf, accessor };
 }
+const { bytes, gltf, accessor } = readModel('skull');
 const primitive = gltf.meshes[0].primitives[0];
 const positions = accessor(primitive.attributes.POSITION);
 const normals = accessor(primitive.attributes.NORMAL);
@@ -187,5 +203,300 @@ test('cleaning retains separate anatomical components while dropping subresoluti
     assert.deepEqual(stats.boundsLpsMm, [0, 0, 0, 32, 10, 10]);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('four picker modes retain full Skull and separately expose Half Skull', () => {
+  assert.deepEqual(
+    MEDICAL_MODELS.map(({ label }) => label),
+    ['Skull', 'Brain', 'Half Skull', 'Both']
+  );
+  assert.ok(MEDICAL_MODELS.every(({ available }) => available));
+  assert.deepEqual(MEDICAL_MODEL_ASSETS.skull, ['skull']);
+  assert.deepEqual(MEDICAL_MODEL_ASSETS.brain, ['brain']);
+  assert.deepEqual(MEDICAL_MODEL_ASSETS['half-skull'], ['half-skull']);
+  assert.deepEqual(MEDICAL_MODEL_ASSETS.both, ['half-skull', 'brain']);
+  for (const missingId of ['half-skull', 'brain']) {
+    const available = (id) => id !== missingId;
+    assert.equal(isMedicalModelAvailable('both', available), false);
+    assert.equal(isMedicalModelAvailable('skull', available), true);
+  }
+  assert.equal(hasMedicalLabels('skull'), true);
+  for (const id of ['brain', 'half-skull', 'both']) {
+    assert.equal(hasMedicalLabels(id), false);
+  }
+});
+
+const prepared = Object.fromEntries(
+  ['brain', 'half-skull'].map((id) => [
+    id,
+    {
+      ...readModel(id),
+      provenance: require(`../assets/medical/${id}-provenance.json`),
+    },
+  ])
+);
+for (const id of ['brain', 'half-skull']) {
+  test(`packaged ${id} validates geometry, resource budgets, source identity and attribution`, () => {
+    const model = prepared[id];
+    const record = model.provenance;
+    assert.equal(model.bytes.length, record.bytes);
+    assert.ok(model.bytes.length <= 10 * 1024 * 1024);
+    assert.equal(crypto.createHash('sha256').update(model.bytes).digest('hex'), record.sha256);
+    assert.equal(
+      record.sourceSha256,
+      id === 'brain'
+        ? 'db80fa4dcdc3471463ca84a6816e9c948c65bc421eb84eaec872d4dfc5885b4f'
+        : '84209dff1cc01af9e7f7d4f51d09d5c4537541a04b0e148ae630462d9a374aa2'
+    );
+    assert.equal(record.cleaning.sourceSha256, record.sourceSha256);
+    assert.match(record.provenanceConfirmation, /Owner confirmed/);
+    assert.match(record.attribution, /National Library of Medicine/);
+    assert.match(record.license, /public-domain/);
+    assert.match(record.clinicalValidation, /Not clinically validated/);
+    assert.deepEqual(model.gltf.nodes, [
+      { mesh: 0, name: id === 'brain' ? 'Brain' : 'Half Skull' },
+    ]);
+    assert.ok(!model.gltf.extensionsRequired?.includes('KHR_draco_mesh_compression'));
+    assert.ok(model.gltf.buffers.every((buffer) => !buffer.uri));
+    assert.equal(model.gltf.images?.length || 0, 0);
+    const primitive = model.gltf.meshes[0].primitives[0];
+    const positions = model.accessor(primitive.attributes.POSITION);
+    const normals = model.accessor(primitive.attributes.NORMAL);
+    const indices = model.accessor(primitive.indices);
+    assert.equal(indices.length % 3, 0);
+    assert.equal(indices.length / 3, record.triangles);
+    assert.ok(record.triangles <= record.triangleBudget);
+    assert.equal(normals.length, positions.length);
+    positions.forEach((p) => assert.ok(p.every(Number.isFinite)));
+    normals.forEach((n) =>
+      assert.ok(n.every(Number.isFinite) && Math.abs(Math.hypot(...n) - 1) < 0.01)
+    );
+    indices.forEach((i) => assert.ok(i >= 0 && i < positions.length));
+    for (let i = 0; i < indices.length; i += 3) {
+      const a = positions[indices[i]],
+        b = positions[indices[i + 1]],
+        c = positions[indices[i + 2]];
+      const u = sub(b, a),
+        v = sub(c, a);
+      assert.ok(
+        Math.hypot(
+          u[1] * v[2] - u[2] * v[1],
+          u[2] * v[0] - u[0] * v[2],
+          u[0] * v[1] - u[1] * v[0]
+        ) > 0
+      );
+    }
+    const actualBounds = {
+      min: positions.reduce(
+        (min, p) => min.map((value, i) => Math.min(value, p[i])),
+        [Infinity, Infinity, Infinity]
+      ),
+      max: positions.reduce(
+        (max, p) => max.map((value, i) => Math.max(value, p[i])),
+        [-Infinity, -Infinity, -Infinity]
+      ),
+    };
+    for (const bound of ['min', 'max'])
+      actualBounds[bound].forEach((value, i) => {
+        assert.ok(Math.abs(value - record.boundsModelMetres[bound][i]) < 1e-7);
+      });
+    model.gltf.materials.forEach((material) => {
+      assert.equal(material.alphaMode || 'OPAQUE', 'OPAQUE');
+      assert.equal(material.pbrMetallicRoughness.baseColorFactor[3], 1);
+    });
+  });
+}
+
+test('the pair preserves one Slicer conversion frame, retains physical bounds and stays within its combined budget', () => {
+  const skullBounds = gltf.accessors[primitive.attributes.POSITION];
+  for (const id of ['brain', 'half-skull']) {
+    const record = prepared[id].provenance;
+    assert.deepEqual(record.originLpsMm, provenance.originLpsMm);
+    assert.deepEqual(record.lpsToModelMatrix, provenance.lpsToModelMatrix);
+    assert.deepEqual(record.displayTransform, MEDICAL_ASSETS[id].transform);
+    const b = record.cleaning.boundsLpsMm;
+    const o = provenance.originLpsMm;
+    const expectedMin = [(b[0] - o[0]) * 0.001, (b[2] - o[2]) * 0.001, (o[1] - b[4]) * 0.001];
+    const expectedMax = [(b[3] - o[0]) * 0.001, (b[5] - o[2]) * 0.001, (o[1] - b[1]) * 0.001];
+    for (let i = 0; i < 3; i++) {
+      // Bounds check only, not a clinical accuracy tolerance or registration test.
+      assert.ok(Math.abs(record.boundsModelMetres.min[i] - expectedMin[i]) < 0.003);
+      assert.ok(Math.abs(record.boundsModelMetres.max[i] - expectedMax[i]) < 0.003);
+      assert.ok(record.boundsModelMetres.min[i] >= skullBounds.min[i] - 0.003);
+      assert.ok(record.boundsModelMetres.max[i] <= skullBounds.max[i] + 0.003);
+    }
+  }
+  assert.ok(prepared.brain.provenance.boundsModelMetres.min[1] > 0.05);
+  assert.ok(prepared['half-skull'].provenance.boundsModelMetres.min[0] >= -0.001);
+  assert.ok(
+    prepared.brain.provenance.triangles + prepared['half-skull'].provenance.triangles <= 150000
+  );
+});
+
+// Execute the actual scene JSX with native components represented as nodes.
+// This checks scene/controller wiring; it does not emulate native AR rendering.
+function renderScene(controller) {
+  const effects = [],
+    timers = new Map();
+  const element = (type, props, key) =>
+    typeof type === 'function' ? type(props) : { type, props, key };
+  function load(file) {
+    const module = { exports: {} };
+    const source = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+    }).outputText;
+    vm.runInNewContext(
+      source,
+      {
+        module,
+        exports: module.exports,
+        require(name) {
+          if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element };
+          if (name === 'react')
+            return {
+              useEffect: (effect) => effects.push(effect),
+              useRef: () => ({ current: null }),
+              useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+            };
+          if (name === '@reactvision/react-viro')
+            return new Proxy(
+              {
+                ViroMaterials: { createMaterials() {} },
+                ViroTrackingStateConstants: { TRACKING_NORMAL: 3 },
+              },
+              { get: (target, key) => target[key] || key }
+            );
+          const resolved = path.resolve(path.dirname(file), name);
+          if (name.endsWith('.glb')) return resolved;
+          if (name === './medical-asset-sources.native') return load(`${resolved}.ts`);
+          return require(
+            resolved.endsWith('.json') || resolved.endsWith('.ts') ? resolved : `${resolved}.ts`
+          );
+        },
+        setTimeout(callback, delay) {
+          const handle = Symbol('timer');
+          timers.set(handle, { callback, delay });
+          return handle;
+        },
+        clearTimeout: (handle) => timers.delete(handle),
+      },
+      { filename: file }
+    );
+    return module.exports;
+  }
+  const scene = load(
+    path.join(__dirname, '../src/features/medical-viewer/medical-scene.native.tsx')
+  );
+  const tree = scene.default({
+    sceneNavigator: {
+      viroAppProps: {
+        controller,
+        context: { sessionId: controller.getSessionId(), onReady() {}, onError() {} },
+      },
+    },
+  });
+  const nodes = [];
+  function walk(node, parent = null) {
+    if (Array.isArray(node)) return node.forEach((child) => walk(child, parent));
+    if (!node || typeof node !== 'object') return;
+    nodes.push({ ...node, parent });
+    walk(node.props?.children, node);
+  }
+  walk(tree);
+  const cleanups = effects.map((effect) => effect()).filter(Boolean);
+  return { nodes, timers, cleanup: () => cleanups.forEach((cleanup) => cleanup()) };
+}
+
+function sceneController(modelId) {
+  const c = new MedicalController();
+  c.attach(1);
+  c.setTracking(1, true);
+  c.selectModel(1, modelId);
+  c.selectPlane(1, c.getSnapshot().placementRevision, 'table');
+  return c;
+}
+
+test('Both scene loads two separately keyed objects under one placement and gesture transform', () => {
+  const c = sceneController('both');
+  const loading = renderScene(c);
+  const objects = loading.nodes.filter(({ type }) => type === 'Viro3DObject');
+  assert.equal(objects.length, 2);
+  assert.equal(objects[0].parent, objects[1].parent);
+  assert.equal(loading.nodes.filter(({ type }) => type === 'ViroARPlaneSelector').length, 1);
+  assert.notEqual(objects[0].key, objects[1].key);
+  assert.deepEqual(
+    objects.map(({ props }) => props.source),
+    [
+      path.join(__dirname, '../assets/medical/half-skull.glb'),
+      path.join(__dirname, '../assets/medical/brain.glb'),
+    ]
+  );
+  objects[0].props.onLoadEnd();
+  assert.equal(c.getSnapshot().loadStatus, 'loading');
+  objects[1].props.onLoadEnd();
+  assert.equal(c.getSnapshot().loadStatus, 'ready');
+  loading.cleanup();
+  assert.equal(loading.timers.size, 0);
+  const ready = renderScene(c);
+  const pair = ready.nodes.filter(({ type }) => type === 'Viro3DObject');
+  pair[0].parent.props.onPinch(1, 1);
+  pair[0].parent.props.onPinch(3, 2);
+  pair[0].parent.props.onRotate(1, 0);
+  pair[0].parent.props.onRotate(3, 45);
+  const transformed = renderScene(c);
+  const parent = transformed.nodes.find(({ type }) => type === 'Viro3DObject').parent;
+  assert.deepEqual(Array.from(parent.props.scale), [2, 2, 2]);
+  assert.deepEqual(Array.from(parent.props.rotation), [0, -45, 0]);
+  assert.deepEqual(Array.from(parent.props.position), [0, c.getSnapshot().height, 0]);
+  assert.equal(ready.nodes.filter(({ type }) => type === 'ViroText').length, 0);
+  ready.cleanup();
+  transformed.cleanup();
+});
+
+test('scene deadline fails only unfinished slots; Retry remounts both and old events remain stale', () => {
+  const c = sceneController('both');
+  const first = renderScene(c);
+  const oldObjects = first.nodes.filter(({ type }) => type === 'Viro3DObject');
+  oldObjects[0].props.onLoadEnd();
+  const [timer] = first.timers.values();
+  assert.equal(timer.delay, 30000);
+  timer.callback();
+  assert.equal(c.getSnapshot().assetLoads['half-skull'], 'ready');
+  assert.equal(c.getSnapshot().assetLoads.brain, 'error');
+  const failed = renderScene(c);
+  assert.equal(failed.nodes.filter(({ type }) => type === 'Viro3DObject').length, 0);
+  c.retryLoad(1);
+  const retry = renderScene(c);
+  const retried = retry.nodes.filter(({ type }) => type === 'Viro3DObject');
+  assert.ok(retried.every((node, i) => node.key !== oldObjects[i].key));
+  oldObjects[1].props.onLoadEnd();
+  oldObjects[0].props.onError();
+  assert.equal(c.getSnapshot().loadStatus, 'loading');
+  retried.forEach(({ props }) => props.onLoadEnd());
+  assert.equal(c.getSnapshot().loadStatus, 'ready');
+  first.cleanup();
+  retry.cleanup();
+  failed.cleanup();
+});
+
+test('only the full Skull scene exposes its calibrated labels and teardown clears the deadline', () => {
+  for (const modelId of ['skull', 'brain', 'half-skull']) {
+    const c = sceneController(modelId);
+    const loading = renderScene(c);
+    const object = loading.nodes.find(({ type }) => type === 'Viro3DObject');
+    object.props.onLoadEnd();
+    c.toggleLabels(1);
+    const ready = renderScene(c);
+    assert.equal(
+      ready.nodes.filter(({ type }) => type === 'ViroText').length,
+      modelId === 'skull' ? 4 : 0
+    );
+    c.detach(1);
+    object.props.onError();
+    assert.equal(c.getSnapshot().loadStatus, 'idle');
+    loading.cleanup();
+    ready.cleanup();
+    assert.equal(loading.timers.size, 0);
   }
 });
