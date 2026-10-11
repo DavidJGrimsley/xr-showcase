@@ -1,8 +1,7 @@
 import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
 import { ARPositionControls } from '@/features/ar/ar-position-controls.native';
-import { useState } from 'react';
-import { Text, View } from 'react-native';
-import { useAppTheme } from '@/theme/provider';
+import { View } from 'react-native';
+import { ARENA_FONTS, ArenaButton, useArenaColors } from './arena-ui';
 import type { ArenaMatch, MatchSnapshot } from './arena-match';
 import type { ArenaTransformScope } from './arena-transform';
 
@@ -11,21 +10,24 @@ export default function ArenaTransformControls({
   state,
   scope,
   onDone,
+  positioning,
+  onPosition,
 }: {
   controller: ArenaMatch;
   state: MatchSnapshot;
   scope: ArenaTransformScope;
   onDone: () => void;
+  positioning: boolean;
+  onPosition: () => void;
 }) {
-  const [positioning, setPositioning] = useState(false);
-  const { activeColors: colors } = useAppTheme();
+  const colors = useArenaColors();
   return (
     <View className="gap-3">
-      <Text className="font-semibold text-lg" style={{ color: colors.text }}>
-        {positioning ? 'Position arena' : 'Transform arena'}
-      </Text>
       {positioning ? (
         <ARPositionControls
+          compact
+          fontFamily={ARENA_FONTS.body}
+          seedColor={colors.primary}
           position={{
             x: state.arenaTransform.x,
             y: state.arenaTransform.height,
@@ -34,10 +36,13 @@ export default function ArenaTransformControls({
           disabled={!state.canTransform}
           testIDPrefix="arena"
           onChange={(axis, value) => controller.setPosition(scope, axis, value)}
-          onDone={() => setPositioning(false)}
+          onDone={onDone}
         />
       ) : (
         <ARTransformControls
+          compact
+          fontFamily={ARENA_FONTS.body}
+          seedColor={colors.primary}
           testIDPrefix="arena"
           scale={state.arenaTransform.scale}
           yaw={state.arenaTransform.yaw}
@@ -50,7 +55,16 @@ export default function ArenaTransformControls({
           onScaleChange={(value) => controller.setScale(scope, value)}
           onYawChange={(value) => controller.setYaw(scope, value)}
           onHeightChange={(value) => controller.setHeight(scope, value)}
-          onPosition={() => setPositioning(true)}
+          onPosition={onPosition}
+          positionControl={
+            <ArenaButton
+              label="Position"
+              primary
+              disabled={!state.canTransform}
+              testID="arena-transform-position"
+              onPress={onPosition}
+            />
+          }
           onDone={onDone}
         />
       )}

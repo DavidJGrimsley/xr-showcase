@@ -1,14 +1,21 @@
 import {
   ARENA_CLIPS,
+  ARENA_RULES,
   type ArenaSnapshot,
   type FighterId,
   type FighterTransform,
-  type AttackKind,
+  type CombatCommand,
 } from './arena-controller.ts';
 import type { Knockout } from './arena-presentation.ts';
+import {
+  validAnnouncement,
+  type ArenaAnnouncement,
+  type MainAudioSource,
+} from './arena-audio-policy.ts';
 import { validArenaTransform, type ArenaTransform } from './arena-transform.ts';
 
-export const ARENA_PROTOCOL = 3;
+// Audio ownership and cue completion must agree on both phones.
+export const ARENA_PROTOCOL = 11;
 export type ArenaMode = 'solo' | 'host' | 'guest';
 export type MatchLength = 1 | 3 | 5;
 export type MatchPhase =
@@ -29,7 +36,7 @@ export interface ArenaCommand {
   epoch: number;
   matchId: number;
   roundId: number;
-  kind: AttackKind;
+  kind: CombatCommand;
 }
 export interface PeerInput {
   protocol: number;
@@ -40,7 +47,8 @@ export interface PeerInput {
   matchId: number;
   roundId: number;
   advance: boolean;
-  retreat: boolean;
+  strafeLeft: boolean;
+  strafeRight: boolean;
   commands: ArenaCommand[];
   capable: boolean;
   pauseReason: string | null;
@@ -48,9 +56,15 @@ export interface PeerInput {
   orientationPaused: boolean;
   ready: boolean;
   presentation: string | null;
+  audioAvailable: boolean;
+  announcementDone: string | null;
   leaving: boolean;
 }
 export interface ArenaPacket {
+  mainAudioSource: MainAudioSource;
+  announcement: ArenaAnnouncement | null;
+  audioAvailable: boolean;
+  battleMusicStarted: boolean;
   protocol: number;
   session: string;
   serial: number;
@@ -96,20 +110,32 @@ export function validInput(value: unknown): value is PeerInput {
   )
     return false;
   if (
-    !['advance', 'retreat', 'capable', 'paused', 'orientationPaused', 'ready', 'leaving'].every(
-      (key) => typeof value[key] === 'boolean'
-    )
+    ![
+      'advance',
+      'strafeLeft',
+      'strafeRight',
+      'capable',
+      'paused',
+      'orientationPaused',
+      'ready',
+      'leaving',
+      'audioAvailable',
+    ].every((key) => typeof value[key] === 'boolean')
   )
     return false;
   return (
     (value.presentation === null || typeof value.presentation === 'string') &&
+    (value.announcementDone === null ||
+      (typeof value.announcementDone === 'string' && value.announcementDone.length <= 200)) &&
     Array.isArray(value.commands) &&
     value.commands.length <= 32 &&
     value.commands.every(
       (command) =>
         object(command) &&
         ['seq', 'epoch', 'matchId', 'roundId'].every((key) => integer(command[key])) &&
-        (command.kind === 'punch' || command.kind === 'uppercut')
+        ['punch', 'uppercut', 'block-down', 'block-up', 'jump-back'].includes(
+          command.kind as string
+        )
     )
   );
 }
@@ -151,17 +177,52 @@ export function validPacket(value: unknown): value is ArenaPacket {
     !Number.isFinite(value.round.arenaYaw)
   )
     return false;
+  if (
+    typeof value.round.impactPauseRemaining !== 'number' ||
+    !Number.isFinite(value.round.impactPauseRemaining) ||
+    value.round.impactPauseRemaining < 0 ||
+    value.round.impactPauseRemaining > 0.1
+  )
+    return false;
   if (value.placement !== null && !validPlacement(value.placement)) return false;
   if (
     value.knockout !== null &&
     (!object(value.knockout) ||
       typeof value.knockout.id !== 'string' ||
       !['blue', 'red', 'draw'].includes(value.knockout.outcome as string) ||
+      typeof value.knockout.matchVictory !== 'boolean' ||
       !Array.isArray(value.knockout.launched) ||
       !value.knockout.launched.every((id) => id === 'blue' || id === 'red'))
   )
     return false;
+  if (value.knockout !== null) {
+    const motion = (value.knockout as Record<string, unknown>).motion;
+    if (
+      !object(motion) ||
+      !['blue', 'red'].every((id) => {
+        const m = motion[id];
+        return (
+          object(m) &&
+          [null, 'launch', 'settling'].includes(m.mode as null | 'launch' | 'settling') &&
+          ['elapsed', 'initialLift', 'lift'].every(
+            (key) =>
+              typeof m[key] === 'number' && Number.isFinite(m[key]) && (m[key] as number) >= 0
+          ) &&
+          (m.initialLift as number) <= 0.25 &&
+          (m.lift as number) <= 0.25
+        );
+      })
+    )
+      return false;
+  }
   const { round, transforms, wins } = value;
+  if (
+    !['host', 'guest', 'both'].includes(value.mainAudioSource as string) ||
+    typeof value.audioAvailable !== 'boolean' ||
+    typeof value.battleMusicStarted !== 'boolean' ||
+    !validAnnouncement(value.announcement)
+  )
+    return false;
   return (['blue', 'red'] as const).every((id) => {
     const fighter = round[id];
     const transform = transforms[id];
@@ -173,16 +234,77 @@ export function validPacket(value: unknown): value is ArenaPacket {
       fighter.health <= 100 &&
       ARENA_CLIPS.includes(fighter.clip as string) &&
       integer(fighter.animationId) &&
-      typeof fighter.uppercutRemaining === 'number' &&
-      Number.isFinite(fighter.uppercutRemaining) &&
+      integer(fighter.punchProgress) &&
+      (fighter.punchProgress as number) <= ARENA_RULES.punchStringLength &&
+      typeof fighter.uppercutReady === 'boolean' &&
       typeof fighter.uppercutWindowRemaining === 'number' &&
       Number.isFinite(fighter.uppercutWindowRemaining) &&
       fighter.uppercutWindowRemaining >= 0 &&
-      ['idle', 'walk', 'attack', 'hit', 'launch', 'defeat', 'defeated', 'victory'].includes(
-        fighter.mode as string
+      fighter.uppercutWindowRemaining <= 2 &&
+      (!fighter.uppercutReady ||
+        (fighter.punchProgress === ARENA_RULES.punchStringLength &&
+          fighter.uppercutWindowRemaining > 0)) &&
+      ['off', 'raising', 'holding', 'lowering', 'exhausted'].includes(
+        fighter.guardState as string
       ) &&
+      typeof fighter.guardHeld === 'boolean' &&
+      ['pendingBlock', 'counterpunchBuffered', 'canPunch', 'canUppercut'].every(
+        (key) => typeof fighter[key] === 'boolean'
+      ) &&
+      ['defenseLockRemaining', 'punchRecoveryRemaining', 'punchRestRemaining'].every(
+        (key) =>
+          typeof fighter[key] === 'number' &&
+          Number.isFinite(fighter[key]) &&
+          (fighter[key] as number) >= 0 &&
+          (fighter[key] as number) <= 1.5
+      ) &&
+      typeof fighter.canBlock === 'boolean' &&
+      typeof fighter.canJumpBack === 'boolean' &&
+      typeof fighter.guardStamina === 'number' &&
+      Number.isFinite(fighter.guardStamina) &&
+      fighter.guardStamina >= 0 &&
+      fighter.guardStamina <= 100 &&
+      typeof fighter.guardRecoveryRemaining === 'number' &&
+      Number.isFinite(fighter.guardRecoveryRemaining) &&
+      fighter.guardRecoveryRemaining >= 0 &&
+      fighter.guardRecoveryRemaining <= 0.65 &&
+      typeof fighter.motionInitialLift === 'number' &&
+      Number.isFinite(fighter.motionInitialLift) &&
+      fighter.motionInitialLift >= 0 &&
+      fighter.motionInitialLift <= 0.25 &&
+      typeof fighter.motionElapsed === 'number' &&
+      Number.isFinite(fighter.motionElapsed) &&
+      fighter.motionElapsed >= 0 &&
+      (fighter.impact === null ||
+        (object(fighter.impact) &&
+          integer(fighter.impact.id) &&
+          (fighter.impact.kind === 'punch' || fighter.impact.kind === 'uppercut') &&
+          (fighter.impact.hand === 'L' || fighter.impact.hand === 'R') &&
+          typeof fighter.impact.x === 'number' &&
+          Number.isFinite(fighter.impact.x) &&
+          typeof fighter.impact.z === 'number' &&
+          Number.isFinite(fighter.impact.z) &&
+          typeof fighter.impact.y === 'number' &&
+          Number.isFinite(fighter.impact.y) &&
+          ['hit', 'blocked', 'guard-break'].includes(fighter.impact.outcome as string))) &&
+      [
+        'idle',
+        'walk',
+        'guard',
+        'guard-exit',
+        'guard-break',
+        'hop',
+        'settling',
+        'attack',
+        'hit',
+        'launch',
+        'landing',
+        'defeat',
+        'defeated',
+        'victory',
+      ].includes(fighter.mode as string) &&
       object(transform) &&
-      ['x', 'lift', 'yaw'].every(
+      ['x', 'z', 'lift', 'yaw'].every(
         (key) => typeof transform[key] === 'number' && Number.isFinite(transform[key])
       )
     );

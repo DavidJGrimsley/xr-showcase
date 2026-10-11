@@ -12,19 +12,30 @@ export function ARPositionControls({
   testIDPrefix,
   onChange,
   onDone,
+  compact = false,
+  fontFamily,
+  seedColor,
 }: {
   position: Record<ARPositionAxis, number>;
   disabled: boolean;
   testIDPrefix: string;
   onChange: (axis: ARPositionAxis, value: number) => void;
   onDone: () => void;
+  compact?: boolean;
+  fontFamily?: string;
+  seedColor?: string;
 }) {
-  const labels = { x: 'X · Left / right', y: 'Y · Up / down', z: 'Z · Forward / back' };
+  const labels = compact
+    ? { x: 'Left / right', y: 'Up / down', z: 'Forward / back' }
+    : { x: 'X · Left / right', y: 'Y · Up / down', z: 'Z · Forward / back' };
   return (
-    <View testID={`${testIDPrefix}-position-controls`} className="gap-3">
+    <View testID={`${testIDPrefix}-position-controls`} style={{ gap: compact ? 6 : 12 }}>
       {(['x', 'y', 'z'] as const).map((axis) => (
         <View key={axis} className="gap-1">
           <ARTransformSlider
+            compact={compact}
+            fontFamily={fontFamily}
+            seedColor={seedColor}
             label={labels[axis]}
             value={position[axis]}
             spokenValue={`${(position[axis] / METRES_PER_FOOT).toFixed(1)} feet`}
@@ -35,10 +46,14 @@ export function ARPositionControls({
             testID={`${testIDPrefix}-position-${axis}`}
             onValueChange={(value) => onChange(axis, value)}
           />
-          <Text className="text-sm text-slate-300">{(position[axis] * 100).toFixed(0)} cm</Text>
+          {!compact && (
+            <Text className="text-sm text-slate-300">{(position[axis] * 100).toFixed(0)} cm</Text>
+          )}
         </View>
       ))}
-      <ARControl label="Done" testID={`${testIDPrefix}-position-done`} onPress={onDone} />
+      {!compact && (
+        <ARControl label="Done" testID={`${testIDPrefix}-position-done`} onPress={onDone} />
+      )}
     </View>
   );
 }

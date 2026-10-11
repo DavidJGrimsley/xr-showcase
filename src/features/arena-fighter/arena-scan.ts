@@ -52,7 +52,7 @@ export function scanGuidance(status: ViroScanStatus, elapsedSeconds: number) {
     canFinish,
     progress: Math.max(0, Math.min(canFinish ? 1 : 0.95, progress)),
     message: canFinish
-      ? 'Enough detail captured. Tap Create room to invite your opponent.'
+      ? 'Enough detail captured. Preparing your shared arena…'
       : (checks.find((check) => !check.passed)?.hint ??
         'Move slowly around the table, keeping its corners in view.'),
   };

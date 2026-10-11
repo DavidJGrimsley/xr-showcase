@@ -8,6 +8,7 @@ import Svg, { Circle, Line } from 'react-native-svg';
 import { useAppTheme } from '@/theme/provider';
 
 const QUANTUM_API_URL = 'https://davidjgrimsley.com/public-facing/api/quantum';
+const IBM_QUANTUM_LEARNING_URL = 'https://quantum.cloud.ibm.com/learning/en';
 
 export function QubitInfoButton({ onPress }: { onPress: () => void }) {
   const { activeColors } = useAppTheme();
@@ -16,7 +17,7 @@ export function QubitInfoButton({ onPress }: { onPress: () => void }) {
       testID="qubit-info"
       accessibilityRole="button"
       accessibilityLabel="About Guess the Qubit"
-      accessibilityHint="Explains the game, Bloch sphere, and circuit"
+      accessibilityHint="Explains qubits, the Bloch vector, and the circuit"
       onPress={onPress}
       style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}>
       <Svg width={26} height={26} viewBox="0 0 26 26" accessible={false}>
@@ -69,7 +70,7 @@ function CircuitDiagram({ width }: { width: number }) {
   return (
     <View
       accessible
-      accessibilityLabel="Circuit: start in zero, rotate around Y by pi over two, then measure along Z. One qubit, one shot."
+      accessibilityLabel="Circuit: start in zero, rotate the Bloch vector around Y by pi over two, then measure along Z. One qubit, one shot."
       style={[styles.circuit, { flexDirection: stacked ? 'column' : 'row' }]}>
       <View style={styles.gate}>
         <Text style={styles.gateTitle}>|0⟩</Text>
@@ -143,36 +144,46 @@ export function QubitInfoModal({
               <View
                 style={[styles.content, { width: contentWidth }]}
                 onAccessibilityEscape={onDismiss}>
-                <InfoSection title="The game">
+                <InfoSection title="The “game”">
                   <Text style={styles.body}>
                     Pick 0 or 1 before a qubit is measured. You win when your guess matches the
                     result. Your guess doesn’t change the circuit.
                   </Text>
-                </InfoSection>
-                <InfoSection title="AR controls">
                   <Text style={styles.body}>
-                    Tap a highlighted surface to place the sphere. It starts floating two feet above
-                    that surface. Transform opens Scale, Rotate, and Height sliders; Done returns to
-                    the game. Scale ranges from half to three times the original size, and Height
-                    ranges from surface level to five feet. Pinch to resize or twist two fingers to
-                    rotate the display. These changes do not change the quantum circuit.
+                    The word “game” is in quotation marks because this is a parody of how much fun
+                    or excitement comes from thinking about quantum mechanics in terms of classical
+                    computing: not very much. It is, by definition, a game, but it is meant to be
+                    educational rather than fun. This may raise more questions than it answers, but
+                    it should serve as a starting point and reference material for beginners.
+                  </Text>
+                </InfoSection>
+                <InfoSection title="What is a Qubit?">
+                  <Text style={styles.body}>
+                    Quantum mechanics is the framework of quantum physics that describes matter and
+                    energy at scales where everyday intuition can fail. A qubit (quantum bit) is
+                    quantum computing’s basic unit of information, using two states labeled |0⟩ and
+                    |1⟩. A classical bit stores 0 or 1; a qubit can be prepared in a superposition,
+                    a quantum combination of those states.
                   </Text>
                   <Text style={styles.body}>
-                    Reposition, inside Transform, keeps your display settings and lets you choose
-                    another surface. It ends the current round and requests cancellation on
-                    hardware. Reset Qubit keeps the display settings; Restart AR restores the
-                    original size and orientation, floating two feet above the surface.
+                    Superposition involves wave-like quantities called probability amplitudes, which
+                    can reinforce or cancel each other through interference. Quantum computing uses
+                    gates to change these states before measurement. A measurement along Z returns
+                    one classical bit: 0 or 1. Here, you guess that result; the Bloch sphere
+                    visualizes the state that determines its probabilities.
                   </Text>
                 </InfoSection>
                 <InfoSection title="The Bloch sphere">
                   <Text style={styles.body}>
-                    This sphere is a map of one qubit’s state. The direction of the magenta arrow
-                    represents that state.
+                    This sphere maps the ideal state of one qubit. A vector has a direction and a
+                    length and is often drawn as an arrow. The direction of the magenta vector (or
+                    arrow), called the Bloch vector, represents the qubit’s state. In this demo, its
+                    length stays fixed and its tip marks a point on the sphere.
                   </Text>
                   <View style={styles.legend}>
                     <SphereKey color="#00c8ef">Cyan rings and axes: reference guides.</SphereKey>
                     <SphereKey color="#ef4ebc">
-                      Magenta arrow and point: the qubit’s state.
+                      Magenta vector and tip: the qubit’s state.
                     </SphereKey>
                   </View>
                   <Text style={styles.body}>
@@ -180,17 +191,17 @@ export function QubitInfoModal({
                     mark other states; each gives equal odds of 0 and 1 when measured along Z.
                   </Text>
                   <Text style={styles.body}>
-                    In this demo, the arrow rotates from |0⟩ to the + state on the equator, then
-                    moves to the pole matching the measured result. The animation illustrates
+                    In this demo, the Bloch vector rotates from |0⟩ to the + state on the equator,
+                    then moves to the pole matching the measured result. The animation illustrates
                     preparation and measurement; it isn’t a live view inside the processor.
                   </Text>
                 </InfoSection>
                 <InfoSection title="The circuit">
                   <CircuitDiagram width={contentWidth - 48} />
                   <Text style={styles.body}>
-                    One qubit starts in |0⟩. A Ry(π/2) gate rotates it 90° around Y, creating an
-                    equal superposition of 0 and 1. A single Z measurement returns one bit: 0 or 1,
-                    ideally with a 50% chance each.
+                    One qubit starts in |0⟩. A Ry(π/2) gate rotates its Bloch vector 90° around Y,
+                    creating an equal superposition of |0⟩ and |1⟩. A single Z measurement returns
+                    one bit: 0 or 1, ideally with a 50% chance each.
                   </Text>
                   <View style={styles.modes}>
                     <Text style={styles.modeTitle}>Simulator</Text>
@@ -212,6 +223,16 @@ export function QubitInfoModal({
                     style={({ pressed }) => [styles.apiLink, { opacity: pressed ? 0.55 : 1 }]}>
                     <Text style={styles.linkTitle}>Explore the Quantum API ↗</Text>
                     <Text style={styles.linkCaption}>davidjgrimsley.com</Text>
+                  </Pressable>
+                </Link>
+                <Link href={IBM_QUANTUM_LEARNING_URL} asChild>
+                  <Pressable
+                    testID="qubit-info-ibm-link"
+                    accessibilityRole="link"
+                    accessibilityLabel="Learn quantum computing with IBM Quantum and Qiskit"
+                    style={({ pressed }) => [styles.apiLink, { opacity: pressed ? 0.55 : 1 }]}>
+                    <Text style={styles.linkTitle}>Learn with IBM Quantum &amp; Qiskit ↗</Text>
+                    <Text style={styles.linkCaption}>quantum.cloud.ibm.com</Text>
                   </Pressable>
                 </Link>
               </View>

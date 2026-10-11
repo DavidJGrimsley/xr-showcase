@@ -24,6 +24,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: config.name ?? 'XR Showcase',
     slug: config.slug ?? 'xr-showcase',
     plugins: [
+      'expo-asset',
+      [
+        'expo-audio',
+        { microphonePermission: false, recordAudioAndroid: false, enableBackgroundPlayback: false },
+      ],
       ...(config.plugins ?? []).map((plugin) =>
         Array.isArray(plugin) && plugin[0] === '@reactvision/react-viro'
           ? ([

@@ -1,16 +1,22 @@
-import { Button, Host } from '@expo/ui';
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { createContext, useContext, type ReactNode } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { arSessionCoordinator } from '@/features/ar/ar-session-controller';
+import { ARENA_FONTS, ArenaButton } from './arena-ui';
 
 const LandscapeContext = createContext(false);
 export const useArenaLandscape = () => useContext(LandscapeContext);
 
 /** Covers the current tree; rotation never replaces it or releases its camera. */
-export default function ArenaOrientationGate({ children }: { children: ReactNode }) {
+export default function ArenaOrientationGate({
+  children,
+  onBack,
+}: {
+  children: ReactNode;
+  onBack?: () => void;
+}) {
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
   const insets = useSafeAreaInsets();
@@ -48,7 +54,12 @@ export default function ArenaOrientationGate({ children }: { children: ReactNode
                 testID="arena-portrait-message"
                 accessibilityRole="header"
                 accessibilityLiveRegion="polite"
-                style={{ color: '#fff', textAlign: 'center', fontSize: 26, fontWeight: '600' }}>
+                style={{
+                  color: '#fff',
+                  textAlign: 'center',
+                  fontSize: 26,
+                  fontFamily: ARENA_FONTS.button,
+                }}>
                 Rotate to landscape to play
               </Text>
             </View>
@@ -56,18 +67,17 @@ export default function ArenaOrientationGate({ children }: { children: ReactNode
               style={{
                 position: 'absolute',
                 top: Math.max(16, insets.top),
-                right: Math.max(16, insets.right),
+                left: Math.max(16, insets.left),
               }}>
-              <Host matchContents>
-                <Button
-                  label="Home"
-                  style={{ height: 52, paddingHorizontal: 20 }}
-                  onPress={() => {
-                    arSessionCoordinator.endCurrent();
-                    router.dismissTo('/');
-                  }}
-                />
-              </Host>
+              <ArenaButton
+                label="Back"
+                icon="arrow-left"
+                onPress={() => {
+                  arSessionCoordinator.endCurrent();
+                  if (onBack) onBack();
+                  else router.dismissTo('/');
+                }}
+              />
             </View>
           </View>
         )}

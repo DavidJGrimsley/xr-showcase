@@ -93,6 +93,7 @@ export class ArenaRoom {
   private scanStartedAt = 0;
   private captureStarted = false;
   private hostingStartedAt = 0;
+  private hosting: Promise<void> | null = null;
   constructor(
     match: ArenaMatch,
     config: ArenaConfiguration,
@@ -150,6 +151,7 @@ export class ArenaRoom {
     this.busy = false;
     this.scanPoll = false;
     this.lastPoll = 0;
+    this.hosting = null;
     this.captureStarted = false;
     this.match.setTransformLocked(false);
     this.update({
@@ -184,6 +186,7 @@ export class ArenaRoom {
     this.generation++;
     this.attachment++;
     this.busy = false;
+    this.hosting = null;
     this.scanPoll = false;
     this.trackingNormal = false;
     this.awaitingTracking = false;
@@ -315,6 +318,8 @@ export class ArenaRoom {
         scanProgress: guidance.progress,
         message: guidance.message,
       });
+      // Hosting belongs to this controller generation, never to a HUD mount/effect.
+      if (guidance.canFinish) void this.finishScan();
     } catch {
       if (generation === this.generation && this.view.status === 'scanning')
         this.fail('Could not scan this space. Retry in good lighting.');
@@ -322,8 +327,19 @@ export class ArenaRoom {
       if (generation === this.generation) this.scanPoll = false;
     }
   }
-  finishScan = async () => {
+  finishScan = (): Promise<void> => {
+    if (this.hosting) return this.hosting;
+    const pending = this.hostScan();
+    this.hosting = pending;
+    void pending.finally(() => {
+      if (this.hosting === pending) this.hosting = null;
+    });
+    return pending;
+  };
+  private hostScan = async () => {
     if (
+      this.disposed ||
+      this.view.status !== 'scanning' ||
       !this.navigator ||
       !this.match.isAppActive() ||
       !this.trackingNormal ||
@@ -335,7 +351,8 @@ export class ArenaRoom {
     )
       return;
     this.busy = true;
-    this.match.setTransformLocked(true);
+    // Transform offsets do not change the captured anchor or the placement point below.
+    // Keep the editor available while the native capture and invite upload complete.
     this.hostingStartedAt = Date.now();
     const generation = this.generation;
     const point = this.view.preview.position;
@@ -379,7 +396,7 @@ export class ArenaRoom {
         this.services.createColocationRoom(this.config, {
           frameKind: 'cloud_anchor',
           cloudAnchorId: hosted.cloudAnchorId,
-          name: 'Arena Fighter',
+          name: "Neo Rock 'Em Sock 'Em Robots",
         }),
         20000
       );

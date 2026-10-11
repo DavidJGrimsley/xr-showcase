@@ -27,6 +27,8 @@ export class ArenaNetwork {
   private claiming = false;
   private lastStage = '';
   private lastOrientation = false;
+  private lastImpact = '';
+  private lastAudio = '';
   private lastPeer = -1;
   private opened: number;
   private closed = false;
@@ -60,7 +62,9 @@ export class ArenaNetwork {
     this.stopMatch = match.subscribe(() => {
       if (
         (match.getSnapshot().stage === this.lastStage &&
-          match.getSnapshot().orientationPaused === this.lastOrientation) ||
+          match.getSnapshot().orientationPaused === this.lastOrientation &&
+          this.impactKey() === this.lastImpact &&
+          match.audioStateKey() === this.lastAudio) ||
         this.phaseWriteQueued
       )
         return;
@@ -72,6 +76,10 @@ export class ArenaNetwork {
       });
     });
     client.connect(config);
+  }
+  private impactKey() {
+    const snapshot = this.match.getSnapshot();
+    return `${snapshot.blue.impact?.id ?? 0}:${snapshot.red.impact?.id ?? 0}`;
   }
   private fail(message: string) {
     this.rejected = true;
@@ -177,12 +185,16 @@ export class ArenaNetwork {
     if (
       this.now() - this.lastWrite < 50 &&
       stage === this.lastStage &&
-      orientation === this.lastOrientation
+      orientation === this.lastOrientation &&
+      this.impactKey() === this.lastImpact &&
+      this.match.audioStateKey() === this.lastAudio
     )
       return;
     this.lastWrite = this.now();
+    this.lastAudio = this.match.audioStateKey();
     this.lastStage = stage;
     this.lastOrientation = orientation;
+    this.lastImpact = this.impactKey();
     this.client.set(
       this.seat,
       this.seat === 'host'

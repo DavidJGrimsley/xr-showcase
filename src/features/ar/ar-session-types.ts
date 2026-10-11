@@ -8,6 +8,8 @@ export interface ARSceneContext {
 }
 
 export interface ARSessionBoundaryProps {
+  onExit?: () => void;
+  exitLabel?: string;
   enabled?: boolean;
   // Keep the native view through temporary OS dialogs; background still tears it down.
   keepSessionOnInactive?: boolean;

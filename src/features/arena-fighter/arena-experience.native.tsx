@@ -11,9 +11,11 @@ import { useArenaLandscape } from './arena-orientation-gate.native';
 export default function ArenaExperience({
   controller,
   code,
+  onBack,
 }: {
   controller: ArenaMatch;
   code?: string;
+  onBack: () => void;
 }) {
   const [room] = useState(() =>
     controller.mode === 'solo' ? undefined : new ArenaRoom(controller, arenaConfiguration()!, code)
@@ -45,6 +47,12 @@ export default function ArenaExperience({
   }, [controller, room]);
   return (
     <ARSessionBoundary
+      onExit={() => {
+        room?.dispose();
+        controller.dispose();
+        onBack();
+      }}
+      exitLabel="Back"
       enabled={activated}
       keepSessionOnInactive
       activeOverlayLayout="fullscreen"

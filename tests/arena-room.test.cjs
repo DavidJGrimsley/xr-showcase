@@ -272,6 +272,11 @@ test('hosting waits for tracking and a synchronous native startup error remains 
 test('a system permission prompt defers scan startup and polling until the app is active', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
   const h = harness();
+  const scan = deferred();
+  h.nav.getScanStatus = () => {
+    h.calls.scanStatus++;
+    return scan.promise;
+  };
   h.match.setAppActive(false);
   h.room.attach(h.nav);
   h.room.start();
@@ -290,8 +295,14 @@ test('a system permission prompt defers scan startup and polling until the app i
   await flush();
   assert.equal(h.calls.start, 1);
   assert.equal(h.calls.scanStatus, 1);
-  assert.equal(h.room.getSnapshot().canFinish, true);
+  assert.equal(h.room.getSnapshot().canFinish, false);
   h.match.setAppActive(false);
+  scan.resolve({
+    available: true,
+    meetsKeyframes: true,
+    meetsViewpointPairs: true,
+    meetsSpread: true,
+  });
   t.mock.timers.tick(1050);
   await flush();
   await h.room.finishScan();
@@ -346,7 +357,6 @@ test('the host places first, then a valid scan creates a room at that spot witho
   assert.equal(h.room.place([5, 0, 8]), false);
   t.mock.timers.tick(1050);
   await flush();
-  assert.equal(h.room.getSnapshot().canFinish, true);
   await h.room.finishScan();
   assert.equal(h.calls.connect, 1);
   assert.deepEqual(h.match.placement.position, [1, 0, 2]);
@@ -390,7 +400,9 @@ test('retry invalidates old lookup work without losing the attachment cleanup le
 test('native host rejection still shows Retry even when cancellation throws', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
   const h = harness();
+  let attempts = 0;
   h.nav.finishScan = async () => {
+    attempts++;
     throw new Error('Hosting failed');
   };
   h.nav.cancelCloudAnchorOperations = () => {
@@ -403,11 +415,18 @@ test('native host rejection still shows Retry even when cancellation throws', as
   h.room.place([1, 0, 2]);
   t.mock.timers.tick(1050);
   await flush();
-  assert.equal(h.room.getSnapshot().canFinish, true);
+  assert.equal(h.room.getSnapshot().canFinish, false);
   await h.room.finishScan();
   assert.equal(h.room.getSnapshot().status, 'error');
   assert.match(h.room.getSnapshot().message, /retry/);
   assert.doesNotMatch(h.room.getSnapshot().message, /took too long/);
+  t.mock.timers.tick(10000);
+  await flush();
+  assert.equal(attempts, 1, 'failed hosting never retries automatically');
+  h.room.retry();
+  t.mock.timers.tick(1050);
+  await flush();
+  assert.equal(attempts, 2);
   h.room.dispose();
 });
 
@@ -478,7 +497,7 @@ test('retry preserves the chosen spot but a new native session requires fresh pl
   h.room.dispose();
 });
 
-test('placement edits are blocked during upload without cancelling the room creation', async (t) => {
+test('transform offsets stay editable during upload while the captured anchor point stays fixed', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
   const hosted = deferred();
   const h = harness();
@@ -486,10 +505,17 @@ test('placement edits are blocked during upload without cancelling the room crea
   h.room.attach(h.nav);
   h.room.tracking(true);
   h.room.place([1, 0, 2]);
+  const scope = loadMatch(h);
   h.room.start();
   t.mock.timers.tick(1050);
   await flush();
   const oldFinish = h.room.finishScan();
+  assert.equal(h.match.getSnapshot().canTransform, true);
+  h.match.setPosition(scope, 'x', 0.4);
+  h.match.setPosition(scope, 'z', -0.3);
+  h.match.setHeight(scope, 0.2);
+  h.match.setScale(scope, 1.5);
+  h.match.setYaw(scope, 45);
   h.room.reposition();
   assert.equal(h.room.getSnapshot().status, 'hosting');
   assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
@@ -501,6 +527,16 @@ test('placement edits are blocked during upload without cancelling the room crea
   assert.equal(h.room.getSnapshot().status, 'ready');
   assert.deepEqual(h.room.getSnapshot().preview.position, [1, 0, 2]);
   assert.equal(h.room.getSnapshot().canFinish, false);
+  assert.deepEqual(h.match.getSnapshot().arenaTransform, {
+    x: 0.4,
+    z: -0.3,
+    height: 0.2,
+    scale: 1.5,
+    yaw: 45,
+  });
+  assert.equal(h.match.packet().arenaTransform.x, 0.4);
+  h.match.setPosition(scope, 'x', 0.5);
+  assert.equal(h.match.getSnapshot().arenaTransform.x, 0.5);
   h.room.dispose();
 });
 
@@ -514,9 +550,11 @@ function loadMatch(h) {
   return { sessionToken: token, placementVersion: h.match.getSnapshot().placementVersion };
 }
 
-test('reposition before Create room preserves captured surroundings and all adjusted transforms', async (t) => {
+test('reposition before capture completes preserves surroundings and all adjusted transforms', async (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 1000 });
   const h = harness();
+  let enoughDetail = false;
+  h.nav.getScanStatus = async () => ({ available: true, meetsKeyframes: enoughDetail });
   h.room.attach(h.nav);
   h.room.tracking(true);
   h.room.place([1, 0, 2]);
@@ -529,7 +567,7 @@ test('reposition before Create room preserves captured surroundings and all adju
   h.room.start();
   t.mock.timers.tick(1050);
   await flush();
-  assert.equal(h.room.getSnapshot().canFinish, true);
+  assert.equal(h.room.getSnapshot().canFinish, false);
   const progress = h.room.getSnapshot().scanProgress;
   h.room.reposition();
   assert.equal(h.room.getSnapshot().status, 'placing');
@@ -538,6 +576,9 @@ test('reposition before Create room preserves captured surroundings and all adju
   assert.equal(h.room.place([3, 0, 4]), true);
   assert.equal(h.calls.start, 1);
   assert.equal(h.room.getSnapshot().scanProgress, progress);
+  enoughDetail = true;
+  t.mock.timers.tick(1050);
+  await flush();
   await h.room.finishScan();
   assert.deepEqual(h.match.placement.position, [3, 0, 4]);
   assert.deepEqual(h.match.getSnapshot().arenaTransform, {
@@ -564,6 +605,7 @@ test('portrait preserves capture and pending hosting for more than thirty second
   h.room.tracking(true);
   h.room.place([1, 0, 2]);
   h.room.start();
+  h.match.setLandscape(false);
   t.mock.timers.tick(1050);
   await flush();
   const progress = h.room.getSnapshot().scanProgress;

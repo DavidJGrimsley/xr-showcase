@@ -352,7 +352,7 @@ export default function GuessTheQubitScreen() {
           <Stack.Toolbar.Button
             icon="info.circle"
             accessibilityLabel="About Guess the Qubit"
-            accessibilityHint="Explains the game, Bloch sphere, and circuit"
+            accessibilityHint="Explains qubits, the Bloch vector, and the circuit"
             hidesSharedBackground
             onPress={openInfo}
           />

@@ -1,169 +1,112 @@
-import { Button, Host } from '@expo/ui';
-import { useSyncExternalStore } from 'react';
-import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { useAppTheme } from '@/theme/provider';
-import type { ArenaRoom } from './arena-room.native';
-import type { ArenaMatch } from './arena-match';
+import type { MatchSnapshot } from './arena-match';
 import { joinLink } from './arena-protocol';
+import { arenaInviteLayout } from './arena-hud-state';
+import { ARENA_FONTS, ArenaButton, useArenaColors } from './arena-ui';
 
 export default function ArenaRoomPanel({
-  room,
-  controller,
-  onTransform,
-  onRestart,
+  match,
+  width,
+  height,
 }: {
-  room: ArenaRoom;
-  controller: ArenaMatch;
-  onTransform: () => void;
-  onRestart: () => void;
+  match: MatchSnapshot;
+  width: number;
+  height: number;
 }) {
-  const state = useSyncExternalStore(room.subscribe, room.getSnapshot);
-  const match = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const { activeColors: colors } = useAppTheme();
-  const { height, fontScale } = useWindowDimensions();
-  const scanning = state.status === 'scanning';
-  const progress = Math.round(state.scanProgress * 100);
-  const buttonHeight = Math.max(48, 44 * fontScale);
+  const colors = useArenaColors();
+  const layout = arenaInviteLayout(width, height);
+  if (!match.displayCode) return null;
   return (
     <View
-      className="my-2 gap-2 self-end rounded-xl p-3"
+      testID="arena-invite"
       style={{
-        backgroundColor: colors.surface,
-        width: Math.min(280 * fontScale, 340),
+        width: layout.width,
         maxWidth: '100%',
-        maxHeight: height * 0.65,
-        flexShrink: 1,
+        minHeight: layout.height,
+        padding: layout.padding,
+        borderRadius: 20,
+        backgroundColor: colors.surface,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 20,
       }}>
-      {(scanning || state.status === 'placing') && (
-        <View className="flex-row items-center justify-between gap-2">
-          <Text accessibilityRole="header" className="font-semibold" style={{ color: colors.text }}>
-            {scanning ? 'Capture shared space' : 'Place the arena'}
-          </Text>
-          {scanning && <Text style={{ color: colors.text }}>{progress}%</Text>}
+      <View
+        testID="arena-invite-qr"
+        style={{ padding: 12, backgroundColor: 'white', borderRadius: 8, flexShrink: 0 }}>
+        <QRCode value={joinLink(match.displayCode.replace(/\s/g, ''))} size={layout.qrSize} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+          maxFontSizeMultiplier={1.35}
+          style={{ color: colors.text, fontFamily: ARENA_FONTS.button, fontSize: 18 }}>
+          Scan QR or use code
+        </Text>
+        <Text
+          selectable
+          accessibilityLabel={'Room code ' + match.displayCode.split('').join(' ')}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.5}
+          maxFontSizeMultiplier={1.35}
+          style={{ color: colors.primary, fontFamily: ARENA_FONTS.mono, fontSize: 36 }}>
+          {match.displayCode}
+        </Text>
+        <Text
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          accessibilityLiveRegion="polite"
+          maxFontSizeMultiplier={1.35}
+          style={{ color: colors.secondary, fontFamily: ARENA_FONTS.body, fontSize: 14 }}>
+          {match.rounds === 1 ? '1 round' : 'Best of ' + match.rounds} · Waiting for opponent…
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+export function ArenaGuidance({
+  message,
+  loading = false,
+  onRetry,
+  onRestart,
+}: {
+  message: string;
+  loading?: boolean;
+  onRetry?: () => void;
+  onRestart?: () => void;
+}) {
+  const colors = useArenaColors();
+  return (
+    <View testID="arena-guidance" style={{ maxWidth: 420, alignSelf: 'flex-end', gap: 8 }}>
+      <View
+        style={{
+          backgroundColor: colors.surface,
+          borderRadius: 28,
+          paddingHorizontal: 18,
+          paddingVertical: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+        }}>
+        {loading && (
+          <ActivityIndicator color={colors.primary} accessibilityLabel="Preparing arena" />
+        )}
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{ color: colors.text, fontFamily: ARENA_FONTS.body, fontSize: 15, flexShrink: 1 }}>
+          {message}
+        </Text>
+      </View>
+      {(onRetry || onRestart) && (
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+          {onRetry && <ArenaButton label="Retry connection" onPress={onRetry} />}
+          {onRestart && <ArenaButton label="Restart AR" danger onPress={onRestart} />}
         </View>
       )}
-      <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerClassName="gap-2">
-        <Text accessibilityLiveRegion="polite" style={{ color: colors.text }}>
-          {match.networkMessage || state.message}
-        </Text>
-        {scanning && (
-          <Text style={{ color: colors.text }}>
-            This percentage measures captured surroundings, so both phones can see the arena in the
-            same place.
-          </Text>
-        )}
-        {state.status === 'hosting' && (
-          <View className="flex-row items-center gap-2">
-            <ActivityIndicator color={colors.primary} accessibilityLabel="Sharing arena" />
-            <Text style={{ color: colors.text }}>{state.hostSeconds} seconds elapsed</Text>
-          </View>
-        )}
-        {scanning && (
-          <View
-            accessibilityRole="progressbar"
-            accessibilityLabel="Shared arena capture"
-            accessibilityValue={{ min: 0, max: 100, now: progress }}
-            className="overflow-hidden rounded-full"
-            style={{
-              backgroundColor: colors.background,
-              height: 4,
-              minHeight: 4,
-              maxHeight: 4,
-              flexShrink: 0,
-            }}>
-            <View style={{ width: `${progress}%`, height: 4, backgroundColor: colors.primary }} />
-          </View>
-        )}
-        {controller.mode === 'host' &&
-          match.connected &&
-          match.displayCode &&
-          match.stage === 'lobby' && (
-            <View className="items-center gap-2 py-2">
-              {!match.peerConnected && (
-                <View className="bg-white p-3">
-                  <QRCode value={joinLink(match.displayCode.replace(/\s/g, ''))} size={140} />
-                </View>
-              )}
-              <Text
-                selectable
-                accessibilityLabel={'Room code ' + match.displayCode.split('').join(' ')}
-                style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>
-                {match.displayCode}
-              </Text>
-              <Text style={{ color: colors.text }}>
-                {match.rounds === 1 ? '1 round' : 'Best of ' + match.rounds} · Share with one
-                opponent
-              </Text>
-            </View>
-          )}
-      </ScrollView>
-      {scanning && (
-        <Host
-          colorScheme="dark"
-          seedColor={colors.primary}
-          style={{ height: buttonHeight, flexShrink: 0 }}>
-          <Button
-            label="Create room"
-            disabled={!state.canFinish}
-            onPress={() => void room.finishScan()}
-            style={{ height: buttonHeight, width: '100%' }}
-          />
-        </Host>
-      )}
-      {state.status === 'hosting' && (
-        <Host
-          colorScheme="dark"
-          seedColor={colors.primary}
-          style={{ height: buttonHeight, flexShrink: 0 }}>
-          <Button
-            label="Cancel sharing"
-            variant="outlined"
-            onPress={room.cancelHosting}
-            style={{ height: buttonHeight, width: '100%' }}
-          />
-        </Host>
-      )}
-      {(state.status === 'error' || match.networkMessage) && (
-        <Host
-          colorScheme="dark"
-          seedColor={colors.primary}
-          style={{ height: buttonHeight, flexShrink: 0 }}>
-          <Button
-            label="Retry connection"
-            onPress={room.retry}
-            style={{ height: buttonHeight, width: '100%' }}
-          />
-        </Host>
-      )}
-      {controller.mode === 'host' && match.placed && match.stage === 'lobby' && (
-        <Host
-          colorScheme="dark"
-          seedColor={colors.primary}
-          style={{ height: buttonHeight, flexShrink: 0 }}>
-          <Button
-            label="Transform"
-            variant="outlined"
-            disabled={!match.canTransform}
-            onPress={onTransform}
-            style={{ height: buttonHeight, width: '100%' }}
-          />
-        </Host>
-      )}
-      {
-        <Host
-          colorScheme="dark"
-          seedColor={colors.primary}
-          style={{ height: buttonHeight, flexShrink: 0 }}>
-          <Button
-            label="Restart AR"
-            variant="outlined"
-            disabled={state.status === 'hosting'}
-            onPress={onRestart}
-            style={{ height: buttonHeight, width: '100%' }}
-          />
-        </Host>
-      }
     </View>
   );
 }

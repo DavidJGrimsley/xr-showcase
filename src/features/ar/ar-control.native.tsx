@@ -10,6 +10,8 @@ export function ARControl({
   onPress,
   testID,
   width,
+  fontFamily,
+  seedColor = '#93f5c5',
 }: {
   label: string;
   accessibilityLabel?: string;
@@ -19,6 +21,8 @@ export function ARControl({
   onPress: () => void;
   testID: string;
   width?: number;
+  fontFamily?: string;
+  seedColor?: string;
 }) {
   const { fontScale } = useWindowDimensions();
   // Universal Button does not expose accessibility props. The RN parent is its
@@ -39,7 +43,7 @@ export function ARControl({
       <Host
         matchContents
         colorScheme="dark"
-        seedColor="#93f5c5"
+        seedColor={seedColor}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants">
         <Button
@@ -54,6 +58,7 @@ export function ARControl({
           }}>
           <NativeText
             textStyle={{
+              fontFamily,
               fontSize: Platform.OS === 'ios' ? 17 * fontScale : 17,
               color: selected ? '#10231c' : '#e2e8f0',
             }}>

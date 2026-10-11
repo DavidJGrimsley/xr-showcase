@@ -63,6 +63,8 @@ export default function ARSessionBoundary({
   activeOverlayLayout = 'panel',
   enabled: featureEnabled = true,
   keepSessionOnInactive = false,
+  onExit,
+  exitLabel = 'Home',
 }: ARSessionBoundaryProps) {
   const { activeColors: colors } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -90,7 +92,8 @@ export default function ARSessionBoundary({
 
   const home = () => {
     controller.setActive(false);
-    router.dismissTo('/');
+    if (onExit) onExit();
+    else router.dismissTo('/');
   };
   const openSettings = () => {
     setSettingsError(false);
@@ -121,7 +124,7 @@ export default function ARSessionBoundary({
       onPress: controller.retry,
     });
   }
-  actions.push({ label: 'Home', onPress: home });
+  actions.push({ label: exitLabel, onPress: home });
 
   const panel = (
     <ARStatusPanel

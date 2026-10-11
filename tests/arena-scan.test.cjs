@@ -9,7 +9,7 @@ test('a 40/2 scan with omitted optional flags can finish and never exceeds 100 p
   );
   assert.equal(scan.canFinish, true);
   assert.equal(scan.progress, 1);
-  assert.match(scan.message, /Tap Create room/);
+  assert.match(scan.message, /Preparing your shared arena/);
 });
 
 test('all reported gates still apply and each missing coverage measure explains how to improve it', () => {

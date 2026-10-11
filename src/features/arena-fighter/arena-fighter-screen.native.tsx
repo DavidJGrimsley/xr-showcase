@@ -1,15 +1,35 @@
-import { Button, Host, Picker } from '@expo/ui';
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppTheme } from '@/theme/provider';
+import {
+  ARENA_FONTS,
+  ArenaButton,
+  ArenaDisplayText,
+  ArenaMenuBackground,
+  useArenaColors,
+  useArenaFonts,
+} from './arena-ui';
 import { ArenaMatch } from './arena-match';
 import { arenaConfiguration, type ArenaConfiguration } from './arena-configuration';
 import { checkArenaConnection, RELAY_UNREACHABLE } from './arena-connection';
 import { ARENA_PROTOCOL, type ArenaMode, type MatchLength } from './arena-protocol';
 import ArenaOrientationGate, { useArenaLandscape } from './arena-orientation-gate.native';
 import { ArenaJoinIntent } from './arena-join-intent';
+import ArenaMenuPage from './arena-menu-pages';
+import ArenaLoadingScreen from './arena-loading-screen';
+import ArenaAudioPicker from './arena-audio-picker.native';
+import { useArenaAudio } from './use-arena-audio.native';
+import type { MainAudioSource } from './arena-audio-policy';
 
 const ArenaExperience = lazy(() => import('./arena-experience.native'));
 const ArenaQRScanner = lazy(() => import('./arena-qr-scanner.native'));
@@ -37,52 +57,51 @@ async function prepareArenaMatch(
   inviteCode: string,
   rounds: MatchLength,
   configuration: ArenaConfiguration | null,
-  signal: AbortSignal
+  signal: AbortSignal,
+  mainAudioSource: MainAudioSource
 ) {
   const code = mode === 'guest' ? await normalizeRoomCode(inviteCode) : inviteCode;
   if (signal.aborted) return null;
   if (code === null || (mode === 'guest' && !code))
     throw new Error('Enter the six-character room code.');
   if (mode !== 'solo' && configuration) await verifyArenaConnection(configuration, signal);
-  return signal.aborted ? null : { code, controller: new ArenaMatch(mode, rounds) };
-}
-function ArenaMenuButton({
-  label,
-  onPress,
-  disabled = false,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Host matchContents>
-      <Button
-        label={label}
-        onPress={onPress}
-        disabled={disabled}
-        style={{ height: 56, paddingHorizontal: 24 }}
-      />
-    </Host>
-  );
+  return signal.aborted
+    ? null
+    : { code, controller: new ArenaMatch(mode, rounds, undefined, undefined, mainAudioSource) };
 }
 export default function ArenaFighterScreen() {
   const params = useLocalSearchParams<{ join?: string; v?: string }>();
+  const backAction = useRef<() => void>(() => router.dismissTo('/'));
+  const registerBack = useCallback((action: () => void) => {
+    backAction.current = action;
+  }, []);
   return (
-    <ArenaOrientationGate>
+    <ArenaOrientationGate onBack={() => backAction.current()}>
       <ArenaMenu
         key={(params.join ?? '') + ':' + (params.v ?? '')}
         invite={params.join}
         version={params.v}
+        registerBack={registerBack}
       />
     </ArenaOrientationGate>
   );
 }
-function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
-  const [page, setPage] = useState<'title' | 'solo' | 'two' | 'host' | 'join' | 'scan'>(
-    invite ? 'join' : 'title'
-  );
+function ArenaMenu({
+  invite,
+  version,
+  registerBack,
+}: {
+  invite?: string;
+  version?: string;
+  registerBack: (action: () => void) => void;
+}) {
+  const [fontsLoaded, fontError] = useArenaFonts();
+  const { width, height, fontScale } = useWindowDimensions();
+  const [page, setPage] = useState<
+    'title' | 'solo' | 'two' | 'host' | 'join' | 'scan' | 'how' | 'info'
+  >(invite ? 'join' : 'title');
   const [rounds, setRounds] = useState<MatchLength>(3);
+  const [mainAudioSource, setMainAudioSource] = useState<MainAudioSource>('host');
   const [code, setCode] = useState(version === String(ARENA_PROTOCOL) ? (invite ?? '') : '');
   const [error, setError] = useState(
     invite && version !== String(ARENA_PROTOCOL)
@@ -100,9 +119,10 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
   });
   const [inviteRevision, setInviteRevision] = useState(0);
   const landscape = useArenaLandscape();
+  useArenaAudio(controller, landscape, page === 'title' && (fontsLoaded || !!fontError));
   useEffect(() => () => connectionCheck.current?.abort(), []);
   const insets = useSafeAreaInsets();
-  const { activeColors: colors, activeScheme } = useAppTheme();
+  const colors = useArenaColors();
   const start = useCallback(
     (mode: ArenaMode, inviteCode = code) => {
       if (attempt.current || controller || !landscape) return;
@@ -118,7 +138,7 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
       setStarting(true);
       const abort = new AbortController();
       connectionCheck.current = abort;
-      void prepareArenaMatch(mode, inviteCode, rounds, configuration, abort.signal)
+      void prepareArenaMatch(mode, inviteCode, rounds, configuration, abort.signal, mainAudioSource)
         .then((result) => {
           if (!result || abort.signal.aborted) return;
           setCode(result.code);
@@ -135,7 +155,7 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
           }
         });
     },
-    [code, controller, landscape, rounds]
+    [code, controller, landscape, rounds, mainAudioSource]
   );
   const startInvitation = useEffectEvent((pending: string) => start('guest', pending));
   useEffect(() => {
@@ -147,15 +167,58 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
     }, 0);
     return () => clearTimeout(timer);
   }, [landscape, page, starting, controller, inviteRevision, joinIntent]);
+  const resetPending = useCallback(() => {
+    connectionCheck.current?.abort();
+    connectionCheck.current = null;
+    attempt.current = false;
+    joinIntent.cancel();
+    setStarting(false);
+    setError('');
+  }, [joinIntent]);
+  const returnToTitle = useCallback(() => {
+    resetPending();
+    controller?.dispose();
+    setController(null);
+    setPage('title');
+  }, [controller, resetPending]);
+  const back = useCallback(() => {
+    if (controller) returnToTitle();
+    else if (page === 'title') router.dismissTo('/');
+    else {
+      resetPending();
+      setPage(page === 'host' || page === 'join' ? 'two' : 'title');
+    }
+  }, [controller, page, resetPending, returnToTitle]);
+  useLayoutEffect(() => {
+    registerBack(back);
+  }, [back, registerBack]);
+  if (!fontsLoaded && !fontError)
+    return (
+      <ArenaLoadingScreen title="Loading menu" message="Preparing the menu text." onBack={back} />
+    );
   if (controller)
     return (
-      <Suspense fallback={<ActivityIndicator />}>
-        <ArenaExperience controller={controller} code={code} />
+      <Suspense
+        fallback={
+          <ArenaLoadingScreen
+            title="Preparing the arena"
+            message="Loading the game and camera controls. Next, scan a table or floor."
+            onBack={returnToTitle}
+          />
+        }>
+        <ArenaExperience controller={controller} code={code} onBack={returnToTitle} />
       </Suspense>
     );
   if (page === 'scan')
     return (
-      <Suspense fallback={<ActivityIndicator />}>
+      <Suspense
+        fallback={
+          <ArenaLoadingScreen
+            title="Opening QR scanner"
+            message="Getting the camera ready to scan your friend’s invite."
+            onBack={() => setPage('join')}
+          />
+        }>
         <ArenaQRScanner
           onClose={() => setPage('join')}
           onCode={(value) => {
@@ -168,133 +231,216 @@ function ArenaMenu({ invite, version }: { invite?: string; version?: string }) {
         />
       </Suspense>
     );
+  if (starting)
+    return (
+      <ArenaLoadingScreen
+        title={page === 'solo' ? 'Preparing your match' : 'Connecting multiplayer'}
+        message={
+          page === 'solo'
+            ? 'Getting your match ready to begin.'
+            : 'Checking the connection for your match.'
+        }
+        onBack={back}
+      />
+    );
+  const informationPage = page === 'how' || page === 'info' ? page : null;
+  const leftPadding = Math.max(24, insets.left);
+  const titleWidth = Math.min(640, width - leftPadding - Math.max(24, insets.right));
+  const titleHeight = Math.min(height < 360 ? 36 : 56, height * 0.15);
   return (
-    <View
-      className="flex-1"
-      style={{
-        backgroundColor: colors.background,
-        paddingTop: Math.max(16, insets.top),
-        paddingBottom: Math.max(16, insets.bottom),
-        paddingHorizontal: Math.max(24, insets.left, insets.right),
-      }}>
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
+    <ArenaMenuBackground>
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: 'absolute',
+          top: Math.max(10, insets.top),
+          left: Math.max(12, insets.left),
+          right: Math.max(12, insets.right),
+          zIndex: 1,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          gap: 16,
-        }}
-        keyboardShouldPersistTaps="handled">
-        <Text
-          accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 36, fontWeight: '800' }}>
-          ARENA FIGHTER
-        </Text>
-        <Text style={{ color: colors.text }}>
-          {page === 'title'
-            ? 'Bring the fight to your table.'
-            : page === 'two'
-              ? 'Two iPhones. One arena.'
-              : page === 'join'
-                ? 'Join your opponent'
-                : 'Number of Rounds'}
-        </Text>
+        }}>
+        <View
+          pointerEvents="box-none"
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <ArenaButton label="Back" icon="arrow-left" onPress={back} />
+          {page === 'title' && (
+            <ArenaButton
+              label="How to Play"
+              testID="arena-how-to-play"
+              onPress={() => setPage('how')}
+            />
+          )}
+        </View>
         {page === 'title' && (
-          <View className="flex-row flex-wrap gap-4">
-            <ArenaMenuButton label="1 Player" onPress={() => setPage('solo')} />
-            <ArenaMenuButton label="2 Players" onPress={() => setPage('two')} />
-          </View>
-        )}
-        {page === 'two' && (
-          <View className="flex-row gap-4">
-            <ArenaMenuButton label="Host" onPress={() => setPage('host')} />
-            <ArenaMenuButton label="Join" onPress={() => setPage('join')} />
-          </View>
-        )}
-        {(page === 'solo' || page === 'host') && (
-          <>
-            <Host matchContents>
-              <Picker selectedValue={rounds} onValueChange={setRounds}>
-                <Picker.Item label="1 round" value={1} />
-                <Picker.Item label="Best of 3" value={3} />
-                <Picker.Item label="Best of 5" value={5} />
-              </Picker>
-            </Host>
-            <ArenaMenuButton
-              label={page === 'solo' ? 'Start' : 'Host match'}
-              onPress={() => void start(page === 'solo' ? 'solo' : 'host')}
-              disabled={starting}
-            />
-          </>
-        )}
-        {page === 'join' && (
-          <>
-            <TextInput
-              accessibilityLabel="Invite code"
-              value={code}
-              onChangeText={setCode}
-              placeholder="Invite code"
-              placeholderTextColor={activeScheme === 'dark' ? '#9ca3af' : '#6b7280'}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={12}
-              style={{
-                color: colors.text,
-                backgroundColor: colors.surface,
-                minWidth: 240,
-                minHeight: 52,
-                padding: 12,
-                borderRadius: 12,
-                fontSize: 24,
-                textAlign: 'center',
-              }}
-            />
-            <View className="flex-row gap-4">
-              <ArenaMenuButton
-                label="Scan QR"
-                onPress={() => {
-                  joinIntent.beginScan();
-                  setPage('scan');
-                }}
-                disabled={starting}
-              />
-              <ArenaMenuButton
-                label="Join match"
-                onPress={() => void start('guest')}
-                disabled={starting}
-              />
-            </View>
-          </>
-        )}
-        {starting && (
-          <View className="flex-row items-center gap-2">
-            <ActivityIndicator color={colors.primary} />
-            <Text accessibilityLiveRegion="polite" style={{ color: colors.text }}>
-              Checking multiplayer connection…
-            </Text>
-          </View>
-        )}
-        {!!error && (
-          <Text accessibilityLiveRegion="polite" style={{ color: colors.text, maxWidth: 600 }}>
-            {error}
-          </Text>
-        )}
-        {page !== 'title' && (
-          <ArenaMenuButton
-            label="Back"
-            onPress={() => {
-              connectionCheck.current?.abort();
-              connectionCheck.current = null;
-              attempt.current = false;
-              joinIntent.cancel();
-              setStarting(false);
-              setPage(page === 'host' || page === 'join' ? 'two' : 'title');
-              setError('');
-            }}
+          <ArenaButton
+            label="About the game"
+            icon="information-outline"
+            iconOnly
+            testID="arena-info"
+            onPress={() => setPage('info')}
           />
         )}
-        <ArenaMenuButton label="Home" onPress={() => router.dismissTo('/')} />
-      </ScrollView>
-    </View>
+      </View>
+      {informationPage ? (
+        <ArenaMenuPage page={informationPage} />
+      ) : (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 10,
+            paddingTop:
+              page === 'title'
+                ? Math.max(64, insets.top + 44 + 24 * fontScale)
+                : Math.max(64, insets.top + 54),
+            paddingBottom: Math.max(16, insets.bottom),
+            paddingLeft: leftPadding,
+            paddingRight: Math.max(24, insets.right),
+          }}>
+          <View
+            accessibilityLabel="Neo Rock 'Em Sock 'Em Robots"
+            style={{ alignItems: 'center', gap: 2 }}>
+            <ArenaDisplayText text="Neo" height={titleHeight * 0.7} maxWidth={titleWidth} />
+            <ArenaDisplayText
+              text="Rock 'Em Sock 'Em"
+              role="TitleFont"
+              height={titleHeight}
+              maxWidth={titleWidth}
+            />
+            <ArenaDisplayText
+              text="Robots"
+              role="TitleFont"
+              height={titleHeight}
+              maxWidth={titleWidth}
+            />
+          </View>
+          {(page === 'title' || page === 'two') && (
+            <Text
+              style={{
+                color: colors.text,
+                fontFamily: page === 'title' ? ARENA_FONTS.serif : ARENA_FONTS.body,
+                fontSize: 18,
+                textAlign: 'center',
+                backgroundColor: '#09090ba8',
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+                borderRadius: 8,
+              }}>
+              {page === 'title' ? 'Bring the fight to your table.' : 'Two iPhones. One arena.'}
+            </Text>
+          )}
+          <View
+            style={{
+              padding: 8,
+              borderRadius: 16,
+              backgroundColor: '#18181be8',
+              alignItems: 'center',
+              gap: 10,
+            }}>
+            {page === 'title' && (
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <ArenaButton label="1 Player" secondary onPress={() => setPage('solo')} />
+                <ArenaButton label="2 Players" secondary onPress={() => setPage('two')} />
+              </View>
+            )}
+            {page === 'two' && (
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <ArenaButton label="Host" primary onPress={() => setPage('host')} />
+                <ArenaButton label="Join" onPress={() => setPage('join')} />
+              </View>
+            )}
+            {(page === 'solo' || page === 'host') && (
+              <>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}>
+                  {([1, 3, 5] as const).map((value) => (
+                    <ArenaButton
+                      key={value}
+                      label={value === 1 ? '1 round' : 'Best of ' + value}
+                      primary={rounds === value}
+                      onPress={() => setRounds(value)}
+                    />
+                  ))}
+                </View>
+                {page === 'host' && (
+                  <ArenaAudioPicker value={mainAudioSource} onChange={setMainAudioSource} />
+                )}
+                <ArenaButton
+                  label={page === 'solo' ? 'Start' : 'Host match'}
+                  primary={page === 'host'}
+                  secondary={page === 'solo'}
+                  onPress={() => start(page === 'solo' ? 'solo' : 'host')}
+                  disabled={starting}
+                />
+              </>
+            )}
+            {page === 'join' && (
+              <>
+                <TextInput
+                  accessibilityLabel="Invite code"
+                  value={code}
+                  onChangeText={setCode}
+                  placeholder="Invite code"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={12}
+                  style={{
+                    color: colors.text,
+                    backgroundColor: colors.background,
+                    minWidth: 240,
+                    minHeight: 48,
+                    padding: 10,
+                    borderRadius: 12,
+                    fontFamily: ARENA_FONTS.mono,
+                    fontSize: 24,
+                    textAlign: 'center',
+                  }}
+                />
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <ArenaButton
+                    label="Scan QR"
+                    onPress={() => {
+                      joinIntent.beginScan();
+                      setPage('scan');
+                    }}
+                    disabled={starting}
+                  />
+                  <ArenaButton
+                    label="Join match"
+                    primary
+                    onPress={() => start('guest')}
+                    disabled={starting}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+          {!!error && (
+            <Text
+              accessibilityLiveRegion="polite"
+              style={{
+                color: colors.text,
+                fontFamily: ARENA_FONTS.body,
+                maxWidth: 600,
+                backgroundColor: colors.surface,
+                padding: 12,
+                borderRadius: 8,
+              }}>
+              {error}
+            </Text>
+          )}
+        </ScrollView>
+      )}
+    </ArenaMenuBackground>
   );
 }

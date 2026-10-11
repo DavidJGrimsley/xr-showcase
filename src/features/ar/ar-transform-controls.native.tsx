@@ -2,6 +2,7 @@ import { Host, Slider } from '@expo/ui';
 import { accessibilityLabel, accessibilityValue, frame } from '@expo/ui/swift-ui/modifiers';
 import { fillMaxWidth, height, semantics } from '@expo/ui/jetpack-compose/modifiers';
 import { Platform, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
 import {
   MAX_AR_HEIGHT,
   MAX_AR_SCALE,
@@ -21,6 +22,9 @@ export function ARTransformSlider({
   stacked,
   onValueChange,
   testID,
+  compact = false,
+  fontFamily,
+  seedColor = '#93f5c5',
 }: {
   label: string;
   value: number;
@@ -31,20 +35,25 @@ export function ARTransformSlider({
   stacked: boolean;
   onValueChange: (value: number) => void;
   testID: string;
+  compact?: boolean;
+  fontFamily?: string;
+  seedColor?: string;
 }) {
   return (
     <View
-      className="gap-3"
       style={{
+        gap: compact ? 2 : 12,
         flexDirection: stacked ? 'column' : 'row',
         alignItems: stacked ? 'stretch' : 'center',
       }}>
-      <Text className="text-base text-slate-200" style={stacked ? undefined : { width: 64 }}>
+      <Text
+        className="text-base text-slate-200"
+        style={{ fontFamily, ...(stacked ? {} : { width: 64 }) }}>
         {label}
       </Text>
       <Host
         colorScheme="dark"
-        seedColor="#93f5c5"
+        seedColor={seedColor}
         matchContents={{ vertical: true }}
         style={{
           ...(stacked ? {} : { flex: 1 }),
@@ -90,9 +99,13 @@ export function ARTransformControls({
   onYawChange,
   onHeightChange,
   onPosition,
+  positionControl,
   onReposition,
   stacked,
   onDone,
+  compact = false,
+  fontFamily,
+  seedColor,
 }: {
   scale: number;
   yaw: number;
@@ -106,15 +119,22 @@ export function ARTransformControls({
   onYawChange: (value: number) => void;
   onHeightChange: (value: number) => void;
   onPosition?: () => void;
+  positionControl?: ReactNode;
   onReposition?: () => void;
   stacked: boolean;
   onDone: () => void;
+  compact?: boolean;
+  fontFamily?: string;
+  seedColor?: string;
 }) {
   const sliderYaw = ((yaw % 360) + 360) % 360;
   return (
-    <View testID={`${testIDPrefix}-transform-controls`} className="gap-3">
+    <View testID={`${testIDPrefix}-transform-controls`} style={{ gap: compact ? 6 : 12 }}>
       <ARTransformSlider
         label="Scale"
+        compact={compact}
+        fontFamily={fontFamily}
+        seedColor={seedColor}
         testID={`${testIDPrefix}-transform-scale`}
         value={scale}
         spokenValue={`${scale.toFixed(2)} times original size`}
@@ -126,6 +146,9 @@ export function ARTransformControls({
       />
       <ARTransformSlider
         label="Rotate"
+        compact={compact}
+        fontFamily={fontFamily}
+        seedColor={seedColor}
         testID={`${testIDPrefix}-transform-rotate`}
         value={sliderYaw}
         spokenValue={`${Math.round(sliderYaw)} degrees`}
@@ -136,15 +159,22 @@ export function ARTransformControls({
         onValueChange={onYawChange}
       />
       {onPosition ? (
-        <ARControl
-          label="Position"
-          disabled={disabled}
-          testID={`${testIDPrefix}-transform-position`}
-          onPress={onPosition}
-        />
+        (positionControl ?? (
+          <ARControl
+            label="Position"
+            fontFamily={fontFamily}
+            seedColor={seedColor}
+            disabled={disabled}
+            testID={`${testIDPrefix}-transform-position`}
+            onPress={onPosition}
+          />
+        ))
       ) : (
         <ARTransformSlider
           label="Height"
+          compact={compact}
+          fontFamily={fontFamily}
+          seedColor={seedColor}
           testID={`${testIDPrefix}-transform-height`}
           value={height}
           spokenValue={`${(height / METRES_PER_FOOT).toFixed(1)} feet above the surface`}
@@ -155,22 +185,24 @@ export function ARTransformControls({
           onValueChange={onHeightChange}
         />
       )}
-      <View
-        className="items-center justify-center gap-2"
-        style={{ flexDirection: stacked ? 'column' : 'row', flexWrap: 'wrap' }}>
-        {onReposition && (
-          <ARControl
-            label="Reposition"
-            disabled={repositionDisabled}
-            testID={`${testIDPrefix}-reposition`}
-            onPress={() => {
-              onReposition();
-              onDone();
-            }}
-          />
-        )}
-        <ARControl label="Done" testID={`${testIDPrefix}-transform-done`} onPress={onDone} />
-      </View>
+      {!compact && (
+        <View
+          className="items-center justify-center gap-2"
+          style={{ flexDirection: stacked ? 'column' : 'row', flexWrap: 'wrap' }}>
+          {onReposition && (
+            <ARControl
+              label="Reposition"
+              disabled={repositionDisabled}
+              testID={`${testIDPrefix}-reposition`}
+              onPress={() => {
+                onReposition();
+                onDone();
+              }}
+            />
+          )}
+          <ARControl label="Done" testID={`${testIDPrefix}-transform-done`} onPress={onDone} />
+        </View>
+      )}
     </View>
   );
 }
