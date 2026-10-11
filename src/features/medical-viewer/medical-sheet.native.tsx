@@ -28,6 +28,7 @@ export function MedicalSheet({
   const insets = useSafeAreaInsets();
   const [sheetSize, setSheetSize] = useState({ width: 0, height: 0 });
   const [headerHeight, setHeaderHeight] = useState(64);
+  const measured = Platform.OS === 'web' || sheetSize.width > 0;
   const contentWidth = Math.max(1, Math.min(width, sheetSize.width || width, 560));
   const bodyHeight = Math.max(
     64,
@@ -75,48 +76,52 @@ export function MedicalSheet({
               />
             </RNHostView>
           ) : null}
-          <RNHostView matchContents>
-            <MedicalWidthProvider width={Math.max(1, contentWidth - 40)}>
-              <View
-                testID={`${testID}-header`}
-                style={[styles.header, { width: contentWidth }]}
-                onLayout={(event) => {
-                  if (event.nativeEvent.layout.height > 0)
-                    setHeaderHeight(event.nativeEvent.layout.height);
-                }}
-                onAccessibilityEscape={onDismiss}>
-                <View style={styles.headerCopy}>
-                  <GameText accessibilityRole="header" fontSize={20} bold color={colors.text}>
-                    {title}
-                  </GameText>
-                  {subtitle ? (
-                    <GameText fontSize={14} color={colors.text}>
-                      {subtitle}
-                    </GameText>
-                  ) : null}
-                </View>
-                <MedicalControl label="Done" testID={`${testID}-done`} onPress={onDismiss} />
-              </View>
-            </MedicalWidthProvider>
-          </RNHostView>
-          <ScrollView
-            testID={`${testID}-scroll`}
-            direction="vertical"
-            style={{ width: contentWidth, height: bodyHeight }}>
-            <RNHostView matchContents>
-              <MedicalWidthProvider width={Math.max(1, contentWidth - 40)}>
-                <View
-                  testID={`${testID}-content`}
-                  style={[
-                    styles.content,
-                    { width: contentWidth, paddingBottom: Math.max(32, insets.bottom) },
-                  ]}
-                  onAccessibilityEscape={onDismiss}>
-                  {children}
-                </View>
-              </MedicalWidthProvider>
-            </RNHostView>
-          </ScrollView>
+          {measured ? (
+            <>
+              <RNHostView matchContents>
+                <MedicalWidthProvider width={Math.max(1, contentWidth - 40)}>
+                  <View
+                    testID={`${testID}-header`}
+                    style={[styles.header, { width: contentWidth }]}
+                    onLayout={(event) => {
+                      if (event.nativeEvent.layout.height > 0)
+                        setHeaderHeight(event.nativeEvent.layout.height);
+                    }}
+                    onAccessibilityEscape={onDismiss}>
+                    <View style={styles.headerCopy}>
+                      <GameText accessibilityRole="header" fontSize={20} bold color={colors.text}>
+                        {title}
+                      </GameText>
+                      {subtitle ? (
+                        <GameText fontSize={14} color={colors.text}>
+                          {subtitle}
+                        </GameText>
+                      ) : null}
+                    </View>
+                    <MedicalControl label="Done" testID={`${testID}-done`} onPress={onDismiss} />
+                  </View>
+                </MedicalWidthProvider>
+              </RNHostView>
+              <ScrollView
+                testID={`${testID}-scroll`}
+                direction="vertical"
+                style={{ width: contentWidth, height: bodyHeight }}>
+                <RNHostView matchContents>
+                  <MedicalWidthProvider width={Math.max(1, contentWidth - 40)}>
+                    <View
+                      testID={`${testID}-content`}
+                      style={[
+                        styles.content,
+                        { width: contentWidth, paddingBottom: Math.max(32, insets.bottom) },
+                      ]}
+                      onAccessibilityEscape={onDismiss}>
+                      {children}
+                    </View>
+                  </MedicalWidthProvider>
+                </RNHostView>
+              </ScrollView>
+            </>
+          ) : null}
         </Column>
       </BottomSheet>
     </Host>

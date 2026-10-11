@@ -334,12 +334,16 @@ test('medical sheet bounds scrolling separately from the pinned Done header thro
       };
       let root = h.render('MedicalSheet', props);
       let scroll = nodes(root).find((n) => n.type === 'ScrollView');
+      assert.equal(scroll, undefined);
+      assert.equal(byID(root, 'sheet-header'), undefined);
       const column = nodes(root).find((n) => n.type === 'Column');
       const measure = column.props.modifiers.find(
         (m) => m.name === (platform === 'ios' ? 'onGeometryChange' : 'onSizeChanged')
       ).value;
       measure({ width: 0, height: 0 });
+      assert.equal(byID(h.render('MedicalSheet', props), 'sheet-header'), undefined);
       measure({ width: Math.min(width, 500), height: viewport.height - 40 });
+      root = h.render('MedicalSheet', props);
       byID(root, 'sheet-header').props.onLayout({ nativeEvent: { layout: { height: 140 } } });
       root = h.render('MedicalSheet', props);
       scroll = nodes(root).find((n) => n.type === 'ScrollView');
