@@ -16,5 +16,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
+      - name: Test project
+        run: npm test
       - name: Verify project
         run: npm run ci:verify --if-present
