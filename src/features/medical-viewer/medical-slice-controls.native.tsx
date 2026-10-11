@@ -4,7 +4,7 @@ import { accessibilityLabel, accessibilityValue, frame } from '@expo/ui/swift-ui
 import { fillMaxWidth, height, semantics } from '@expo/ui/jetpack-compose/modifiers';
 import { StyleSheet, Platform, Text, View } from 'react-native';
 import { MedicalControl as ARControl, useMedicalColors } from './medical-ui';
-import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
+import { ARTransformEditor } from '@/features/ar/ar-transform-editor.native';
 import {
   canManipulateSlices,
   type MedicalController,
@@ -169,8 +169,10 @@ export function MedicalPanelTransformControls({
     requestId: state.slices.requestId,
   };
   return (
-    <ARTransformControls
-      dense
+    <ARTransformEditor
+      key={`${scope.sessionId}:${scope.placementRevision}:${scope.requestId}`}
+      position={{ x: state.slices.x, y: state.slices.height, z: state.slices.z }}
+      onPositionChange={(axis, value) => controller.setPanelPosition(scope, axis, value)}
       seedColor={colors.primary}
       controlComponent={ARControl}
       testIDPrefix="medical-panel"

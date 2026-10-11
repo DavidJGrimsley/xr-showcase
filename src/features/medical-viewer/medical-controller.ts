@@ -9,6 +9,7 @@ import {
   type MedicalModelId,
 } from './medical-models.ts';
 import {
+  clampAROffset,
   clampARHeight,
   clampARScale,
   DEFAULT_AR_HEIGHT,
@@ -74,6 +75,8 @@ export interface MedicalSliceSnapshot {
   scale: number;
   yaw: number;
   height: number;
+  x: number;
+  z: number;
   pinching: boolean;
   rotating: boolean;
 }
@@ -99,6 +102,8 @@ export interface MedicalVolumeSnapshot {
   scale: number;
   yaw: number;
   height: number;
+  x: number;
+  z: number;
   pinching: boolean;
   rotating: boolean;
 }
@@ -118,6 +123,8 @@ export interface MedicalSnapshot {
   scale: number;
   yaw: number;
   height: number;
+  x: number;
+  z: number;
   labelsVisible: boolean;
   pinching: boolean;
   rotating: boolean;
@@ -221,6 +228,8 @@ export class MedicalController {
       scale: 1,
       yaw: DEFAULT_VOLUME_YAW,
       height: DEFAULT_AR_HEIGHT,
+      x: 0,
+      z: 0,
       pinching: false,
       rotating: false,
     },
@@ -233,6 +242,8 @@ export class MedicalController {
       scale: 1,
       yaw: 0,
       height: DEFAULT_AR_HEIGHT,
+      x: 0,
+      z: 0,
       pinching: false,
       rotating: false,
     },
@@ -247,6 +258,8 @@ export class MedicalController {
     scale: 1,
     yaw: 0,
     height: DEFAULT_AR_HEIGHT,
+    x: 0,
+    z: 0,
     labelsVisible: false,
     pinching: false,
     rotating: false,
@@ -457,17 +470,24 @@ export class MedicalController {
         scale: 1,
         yaw: 0,
         height: DEFAULT_AR_HEIGHT,
+        x: 0,
+        z: 0,
         pinching: false,
         rotating: false,
       }),
     });
   }
 
-  setPanelTransform(scope: MedicalSliceScope, axis: 'scale' | 'yaw' | 'height', value: number) {
+  setPanelTransform(
+    scope: MedicalSliceScope,
+    axis: 'scale' | 'yaw' | 'height' | 'x' | 'z',
+    value: number
+  ) {
     if (
       !this.currentSlice(scope) ||
       !canManipulateSlices(this.snapshot) ||
       !Number.isFinite(value) ||
+      !['scale', 'yaw', 'height', 'x', 'z'].includes(axis) ||
       (axis === 'scale' && this.snapshot.slices.pinching) ||
       (axis === 'yaw' && this.snapshot.slices.rotating)
     )
@@ -479,9 +499,16 @@ export class MedicalController {
             ? clampARScale(value)
             : axis === 'height'
               ? clampARHeight(value)
-              : normalizeYaw(value),
+              : axis === 'x' || axis === 'z'
+                ? clampAROffset(value)
+                : normalizeYaw(value),
       }),
     });
+  }
+
+  setPanelPosition(scope: MedicalSliceScope, axis: 'x' | 'y' | 'z', value: number) {
+    if (!['x', 'y', 'z'].includes(axis)) return;
+    this.setPanelTransform(scope, axis === 'y' ? 'height' : axis, value);
   }
 
   panelGesture(scope: MedicalSliceScope, kind: 'pinch' | 'rotate', gesture: number, value: number) {
@@ -849,16 +876,23 @@ export class MedicalController {
         scale: 1,
         yaw: DEFAULT_VOLUME_YAW,
         height: DEFAULT_AR_HEIGHT,
+        x: 0,
+        z: 0,
         pinching: false,
         rotating: false,
       }),
     });
   }
-  setVolumeTransform(scope: MedicalVolumeScope, axis: 'scale' | 'yaw' | 'height', value: number) {
+  setVolumeTransform(
+    scope: MedicalVolumeScope,
+    axis: 'scale' | 'yaw' | 'height' | 'x' | 'z',
+    value: number
+  ) {
     if (
       !this.currentVolume(scope) ||
       !canManipulateVolume(this.snapshot) ||
       !Number.isFinite(value) ||
+      !['scale', 'yaw', 'height', 'x', 'z'].includes(axis) ||
       (axis === 'scale' && this.snapshot.volume.pinching) ||
       (axis === 'yaw' && this.snapshot.volume.rotating)
     )
@@ -870,9 +904,15 @@ export class MedicalController {
             ? clampARScale(value)
             : axis === 'height'
               ? clampARHeight(value)
-              : normalizeYaw(value),
+              : axis === 'x' || axis === 'z'
+                ? clampAROffset(value)
+                : normalizeYaw(value),
       }),
     });
+  }
+  setVolumePosition(scope: MedicalVolumeScope, axis: 'x' | 'y' | 'z', value: number) {
+    if (!['x', 'y', 'z'].includes(axis)) return;
+    this.setVolumeTransform(scope, axis === 'y' ? 'height' : axis, value);
   }
   volumeGesture(
     scope: MedicalVolumeScope,
@@ -952,8 +992,16 @@ export class MedicalController {
       scale: 1,
       yaw: 0,
       height: DEFAULT_AR_HEIGHT,
-      slices: this.sliceUpdate({ scale: 1, yaw: 0, height: DEFAULT_AR_HEIGHT }),
-      volume: this.volumeUpdate({ scale: 1, yaw: DEFAULT_VOLUME_YAW, height: DEFAULT_AR_HEIGHT }),
+      x: 0,
+      z: 0,
+      slices: this.sliceUpdate({ scale: 1, yaw: 0, height: DEFAULT_AR_HEIGHT, x: 0, z: 0 }),
+      volume: this.volumeUpdate({
+        scale: 1,
+        yaw: DEFAULT_VOLUME_YAW,
+        height: DEFAULT_AR_HEIGHT,
+        x: 0,
+        z: 0,
+      }),
     });
     this.detach(sessionId);
   }
@@ -1095,6 +1143,18 @@ export class MedicalController {
     if (!this.current(scope) || !canManipulateMedical(this.snapshot) || !Number.isFinite(value))
       return;
     this.publish({ height: clampARHeight(value) });
+  }
+  setPosition(scope: MedicalScope, axis: 'x' | 'y' | 'z', value: number) {
+    if (
+      !this.current(scope) ||
+      !canManipulateMedical(this.snapshot) ||
+      !Number.isFinite(value) ||
+      !['x', 'y', 'z'].includes(axis)
+    )
+      return;
+    this.publish({
+      [axis === 'y' ? 'height' : axis]: axis === 'y' ? clampARHeight(value) : clampAROffset(value),
+    });
   }
   pinch(scope: MedicalScope, gesture: number, factor: number) {
     if (

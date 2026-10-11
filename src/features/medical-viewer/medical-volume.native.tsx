@@ -196,7 +196,7 @@ export default function MedicalVolume({ context, controller }: MedicalSceneProps
   ]);
   return (
     <ViroNode
-      position={[0, volume.height, 0]}
+      position={[volume.x, volume.height, volume.z]}
       rotation={[0, volume.yaw, 0]}
       scale={[volume.scale, volume.scale, volume.scale]}
       onPinch={

@@ -181,6 +181,13 @@ export class ArenaRemoteRoom implements ArenaRoomSession {
     this.detach();
     return true;
   };
+  reposition = () => {
+    if (this.disposed || !this.attached || !this.match.canTransform()) return;
+    this.update({ preview: null, repositioning: true, status: 'placing' });
+    this.match.invalidatePlacementReady();
+    this.match.setTransformLocked(true);
+    this.sync();
+  };
   retry = () => {
     this.network?.retry();
     this.sync();

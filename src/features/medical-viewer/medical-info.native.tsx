@@ -59,9 +59,10 @@ export function MedicalInfoModal({
         reveals the anatomy markers in Skull mode.
       </Text>
       <Text style={styles.body}>
-        Transform opens sliders for Scale, Rotate, and Height. Scale ranges from half to three times
-        the original size; Height moves the model from surface level to five feet above it. Done
-        returns to the main controls.
+        Transform opens Scale, Rotate, and Position. Scale ranges from half to three times the
+        original size. Position moves left/right and forward/back up to five feet from the placed
+        surface, and up/down from surface level to five feet above it. Its Done returns to
+        Transform; Transform’s Done returns to the main controls.
       </Text>
       <Text style={styles.body}>
         Reposition, inside Transform, lets you choose another surface while keeping your size,

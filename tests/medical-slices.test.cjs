@@ -39,6 +39,39 @@ function slices() {
   return controller;
 }
 
+test('slice XYZ offsets retain their own pose, reject stale/loading callbacks, and reset with the panel', () => {
+  const c = slices(),
+    old = scope(c);
+  c.setPanelPosition(old, 'x', 0.4);
+  c.setPanelPosition(old, 'y', 0.8);
+  c.setPanelPosition(old, 'z', -0.2);
+  c.setPanelTransform(old, 'scale', 2);
+  c.setPanelTransform(old, 'yaw', 90);
+  assert.equal(c.getSnapshot().x, 0);
+  assert.equal(c.getSnapshot().slices.x, 0.4);
+  assert.equal(c.getSnapshot().slices.z, -0.2);
+  c.selectModality(1, 'ct');
+  const pending = c.getSnapshot();
+  c.setPanelPosition(old, 'x', 1);
+  c.setPanelPosition(scope(c), 'x', 1);
+  assert.equal(c.getSnapshot(), pending);
+  c.finishSliceLoad(scope(c), true);
+  c.setPanelPosition(scope(c), 'x', 99);
+  c.setPanelPosition(scope(c), 'z', -99);
+  c.setPanelPosition(scope(c), 'y', -99);
+  assert.equal(c.getSnapshot().slices.x, 1.524);
+  assert.equal(c.getSnapshot().slices.z, -1.524);
+  assert.equal(c.getSnapshot().slices.height, 0);
+  const before = c.getSnapshot();
+  c.setPanelPosition(scope(c), 'x', NaN);
+  c.setPanelPosition(scope(c), 'invalid', 1);
+  assert.equal(c.getSnapshot(), before);
+  c.resetPanel(1);
+  assert.equal(c.getSnapshot().slices.x, 0);
+  assert.equal(c.getSnapshot().slices.z, 0);
+  assert.equal(c.getSnapshot().slices.height, 0.6096);
+});
+
 test('real export contains two complete series at identical axial positions', () => {
   assert.equal(dataset.error, null);
   assert.equal(dataset.series.length, 2);

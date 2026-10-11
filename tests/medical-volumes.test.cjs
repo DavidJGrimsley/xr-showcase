@@ -60,6 +60,43 @@ function ready(c) {
   c.openVolumeControls(1, false);
 }
 
+test('volume XYZ position preserves scientific crop/appearance and pose through surface changes; stale callbacks cannot move it', () => {
+  const c = volume(),
+    token = scope(c);
+  const crop = c.getSnapshot().volume.crop;
+  const appearance = c.getSnapshot().volume.appearance;
+  c.setVolumePosition(token, 'x', 0.4);
+  c.setVolumePosition(token, 'z', -0.2);
+  c.setVolumePosition(token, 'y', 0.8);
+  c.setVolumeTransform(token, 'scale', 2);
+  c.setVolumeTransform(token, 'yaw', 90);
+  assert.equal(c.getSnapshot().volume.x, 0.4);
+  assert.equal(c.getSnapshot().volume.z, -0.2);
+  assert.equal(c.getSnapshot().volume.crop, crop);
+  assert.equal(c.getSnapshot().volume.appearance, appearance);
+  assert.equal(c.getSnapshot().x, 0);
+  c.reposition(1);
+  c.selectPlane(1, c.getSnapshot().placementRevision, 'floor');
+  ready(c);
+  const moved = c.getSnapshot();
+  c.setVolumePosition(token, 'x', 1);
+  assert.equal(c.getSnapshot(), moved);
+  c.setVolumePosition(scope(c), 'x', 99);
+  c.setVolumePosition(scope(c), 'z', -99);
+  c.setVolumePosition(scope(c), 'y', 99);
+  assert.equal(c.getSnapshot().volume.x, 1.524);
+  assert.equal(c.getSnapshot().volume.z, -1.524);
+  assert.equal(c.getSnapshot().volume.height, 1.524);
+  const bounded = c.getSnapshot();
+  c.setVolumePosition(scope(c), 'x', Infinity);
+  c.setVolumePosition(scope(c), 'invalid', 1);
+  assert.equal(c.getSnapshot(), bounded);
+  c.resetVolumeTransform(1);
+  assert.equal(c.getSnapshot().volume.x, 0);
+  assert.equal(c.getSnapshot().volume.z, 0);
+  assert.equal(c.getSnapshot().volume.height, 0.6096);
+});
+
 test('real volume assets retain source identity, scalar precision, geometry, and bounded atlas sizes', () => {
   assert.equal(data.error, null);
   assert.deepEqual(data.dimensions, [160, 160, 149]);

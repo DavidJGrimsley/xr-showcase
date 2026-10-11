@@ -26,6 +26,7 @@ export function ARTransformSlider({
   dense = false,
   fontFamily,
   seedColor = '#93f5c5',
+  labelWidth,
 }: {
   label: string;
   value: number;
@@ -40,6 +41,7 @@ export function ARTransformSlider({
   dense?: boolean;
   fontFamily?: string;
   seedColor?: string;
+  labelWidth?: number;
 }) {
   return (
     <View
@@ -53,7 +55,7 @@ export function ARTransformSlider({
           fontFamily,
           fontSize: dense ? 14 : 16,
           color: '#e2e8f0',
-          ...(stacked ? {} : { width: dense ? 56 : 64 }),
+          ...(stacked ? {} : { width: labelWidth ?? (dense ? 56 : 64) }),
         }}>
         {label}
       </Text>
@@ -139,6 +141,18 @@ export function ARTransformControls({
   controlComponent?: ComponentType<ARControlProps>;
 }) {
   const sliderYaw = ((yaw % 360) + 360) % 360;
+  const positionButton = onPosition
+    ? (positionControl ?? (
+        <Control
+          label="Position"
+          fontFamily={fontFamily}
+          seedColor={seedColor}
+          disabled={disabled}
+          testID={`${testIDPrefix}-transform-position`}
+          onPress={onPosition}
+        />
+      ))
+    : null;
   return (
     <View testID={`${testIDPrefix}-transform-controls`} style={{ gap: dense || compact ? 6 : 12 }}>
       <ARTransformSlider
@@ -172,16 +186,9 @@ export function ARTransformControls({
         onValueChange={onYawChange}
       />
       {onPosition ? (
-        (positionControl ?? (
-          <Control
-            label="Position"
-            fontFamily={fontFamily}
-            seedColor={seedColor}
-            disabled={disabled}
-            testID={`${testIDPrefix}-transform-position`}
-            onPress={onPosition}
-          />
-        ))
+        compact ? (
+          positionButton
+        ) : null
       ) : (
         <ARTransformSlider
           label="Height"
@@ -208,9 +215,12 @@ export function ARTransformControls({
             flexDirection: stacked && !dense ? 'column' : 'row',
             flexWrap: 'wrap',
           }}>
+          {positionButton}
           {onReposition && (
             <Control
               label="Reposition"
+              fontFamily={fontFamily}
+              seedColor={seedColor}
               disabled={repositionDisabled}
               testID={`${testIDPrefix}-reposition`}
               onPress={() => {
@@ -219,7 +229,13 @@ export function ARTransformControls({
               }}
             />
           )}
-          <Control label="Done" testID={`${testIDPrefix}-transform-done`} onPress={onDone} />
+          <Control
+            label="Done"
+            fontFamily={fontFamily}
+            seedColor={seedColor}
+            testID={`${testIDPrefix}-transform-done`}
+            onPress={onDone}
+          />
         </View>
       )}
     </View>

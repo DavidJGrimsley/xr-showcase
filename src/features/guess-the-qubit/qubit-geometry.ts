@@ -1,8 +1,8 @@
 export type Point3 = [number, number, number];
 export const BLOCH_RADIUS = 0.125;
 // Height is the gap below the sphere, independent of its display scale.
-export function blochSpherePosition(scale: number, height: number): Point3 {
-  return [0, height + BLOCH_RADIUS * scale, 0];
+export function blochSpherePosition(scale: number, height: number, x = 0, z = 0): Point3 {
+  return [x, height + BLOCH_RADIUS * scale, z];
 }
 // Right-handed mapping: quantum (X,Y,Z) -> Viro (X,Z,-Y).
 export function blochToWorld([x, y, z]: Point3): Point3 {

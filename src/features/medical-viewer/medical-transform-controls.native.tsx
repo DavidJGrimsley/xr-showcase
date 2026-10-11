@@ -1,4 +1,4 @@
-import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
+import { ARTransformEditor } from '@/features/ar/ar-transform-editor.native';
 import { MedicalControl, useMedicalColors } from './medical-ui';
 import {
   canManipulateMedical,
@@ -22,8 +22,10 @@ export function MedicalTransformControls({
 }) {
   const colors = useMedicalColors();
   return (
-    <ARTransformControls
-      dense
+    <ARTransformEditor
+      key={`${scope.sessionId}:${scope.placementRevision}:${scope.modelId}:${scope.loadAttempt}`}
+      position={{ x: state.x, y: state.height, z: state.z }}
+      onPositionChange={(axis, value) => controller.setPosition(scope, axis, value)}
       seedColor={colors.primary}
       controlComponent={MedicalControl}
       testIDPrefix="medical"

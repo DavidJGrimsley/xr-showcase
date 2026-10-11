@@ -117,6 +117,7 @@ function load(
     },
     './medical-sheet.native': { MedicalSheet: 'Sheet' },
     '@/features/ar/ar-transform-controls.native': { ARTransformControls: 'Transform' },
+    '@/features/ar/ar-transform-editor.native': { ARTransformEditor: 'Transform' },
     '@/features/ar/ar-session-boundary': { default: 'ARBoundary' },
     'expo-router/stack': {
       Stack: Object.assign('Stack', {
@@ -283,6 +284,206 @@ function readyVolume(c) {
   for (let i = 0; i < 48; i++) c.finishVolumeStackImage(scope, i, true);
   c.finishVolumeBinding(scope, 'ready');
 }
+
+test('the shared transform editor opens XYZ Position, returns to transforms, and preserves completion/reposition callbacks', () => {
+  const common = {
+    './ar-transform': require('../src/features/ar/ar-transform.ts'),
+    './ar-control.native': { ARControl: 'Control' },
+  };
+  const transform = load('features/ar/ar-transform-controls.native.tsx', { overrides: common });
+  const position = load('features/ar/ar-position-controls.native.tsx', {
+    overrides: { ...common, './ar-transform-controls.native': transform.exports },
+  });
+  for (const controlled of [false, true])
+    for (const stacked of [false, true]) {
+      const h = load('features/ar/ar-transform-editor.native.tsx', {
+        overrides: {
+          '@/ui/game-ar-control': {
+            GameARControl: 'Control',
+            GameARControlWidthContext: { Provider: 'WidthProvider' },
+          },
+          './ar-transform-controls.native': transform.exports,
+          './ar-position-controls.native': position.exports,
+        },
+      });
+      let editing = false,
+        done = 0,
+        repositioned = 0;
+      const changes = [];
+      const render = () =>
+        h.render('ARTransformEditor', {
+          scale: 1,
+          yaw: 0,
+          height: 0.6,
+          position: { x: 0.2, y: 0.6, z: -0.3 },
+          stacked,
+          disabled: false,
+          pinching: false,
+          rotating: false,
+          repositionDisabled: false,
+          testIDPrefix: 'shared',
+          onScaleChange: () => {},
+          onYawChange: () => {},
+          onHeightChange: () => {},
+          onPositionChange: (axis, value) => changes.push([axis, value]),
+          onDone: () => done++,
+          onReposition: () => repositioned++,
+          ...(controlled
+            ? {
+                positioning: editing,
+                onPositioningChange: (value) => {
+                  editing = value;
+                },
+              }
+            : {}),
+        });
+      let root = render();
+      root.props.onLayout({ nativeEvent: { layout: { width: 240 } } });
+      const mainProps = () =>
+        nodes(render()).find((n) => n.type?.name === 'ARTransformControls').props;
+      let main = transform.render('ARTransformControls', mainProps());
+      byID(main, 'shared-transform-position').props.onPress();
+      const positionProps = nodes(render()).find(
+        (n) => n.type?.name === 'ARPositionControls'
+      ).props;
+      assert.deepEqual({ ...positionProps.position }, { x: 0.2, y: 0.6, z: -0.3 });
+      const pos = position.render('ARPositionControls', positionProps);
+      for (const axis of ['x', 'y', 'z'])
+        byID(pos, `shared-position-${axis}`).props.onValueChange(0.4);
+      assert.deepEqual(changes, [
+        ['x', 0.4],
+        ['y', 0.4],
+        ['z', 0.4],
+      ]);
+      byID(pos, 'shared-position-done').props.onPress();
+      assert.equal(done, 0, 'Position Done returns to the transform editor');
+      main = transform.render('ARTransformControls', mainProps());
+      byID(main, 'shared-reposition').props.onPress();
+      assert.equal(repositioned, 1);
+      assert.equal(done, 1);
+      byID(main, 'shared-transform-done').props.onPress();
+      assert.equal(done, 2);
+    }
+});
+
+test('Robots, Qubit and all three medical modes wire XYZ Position to the same editor and their live scoped controllers', () => {
+  const {
+    QubitRoundController,
+  } = require('../src/features/guess-the-qubit/qubit-round-controller.ts');
+  const { ArenaMatch } = require('../src/features/arena-fighter/arena-match.ts');
+  const shared = {
+    '@/features/ar/ar-transform-editor.native': { ARTransformEditor: 'Editor' },
+    './qubit-round-controller': require('../src/features/guess-the-qubit/qubit-round-controller.ts'),
+    './arena-ui': { useArenaColors: () => colors, ARENA_FONTS: { body: 'ArenaBody' } },
+  };
+  const cases = [];
+  const q = new QubitRoundController(() => null);
+  q.attach(1);
+  q.setTracking(1, true);
+  q.setPlaced(1, true);
+  const qs = q.getSnapshot();
+  cases.push({
+    file: 'guess-the-qubit/qubit-transform-controls.native.tsx',
+    name: 'QubitTransformControls',
+    controller: q,
+    props: {
+      state: qs,
+      scope: { sessionId: 1, placementRevision: qs.placementRevision, roundId: qs.roundId },
+      stacked: false,
+    },
+    read: () => ({
+      x: q.getSnapshot().sphereX,
+      y: q.getSnapshot().sphereHeight,
+      z: q.getSnapshot().sphereZ,
+    }),
+  });
+  const arena = new ArenaMatch('solo', 1, () => 0, { cpuEnabled: false });
+  const token = arena.attachSession(1);
+  arena.setLandscape(true);
+  arena.setTracking(token, true);
+  arena.setPlacement(token, true);
+  for (const asset of ['arena', 'blue', 'red'])
+    arena.assetLoaded(token, arena.getSnapshot().placementVersion, asset);
+  for (let i = 0; i < 60; i++) arena.tick(token, 1 / 60);
+  const as = arena.getSnapshot();
+  cases.push({
+    file: 'arena-fighter/arena-transform-controls.native.tsx',
+    name: 'default',
+    controller: arena,
+    props: {
+      state: as,
+      scope: { sessionToken: token, placementVersion: as.placementVersion },
+      positioning: false,
+      onPositioningChange: () => {},
+      onReposition: () => {},
+    },
+    read: () => ({
+      x: arena.getSnapshot().arenaTransform.x,
+      y: arena.getSnapshot().arenaTransform.height,
+      z: arena.getSnapshot().arenaTransform.z,
+    }),
+  });
+  for (const mode of ['anatomy', 'slices', 'volume']) {
+    const c = viewer();
+    c.selectViewerMode(1, mode);
+    if (mode === 'slices')
+      c.finishSliceLoad(
+        {
+          sessionId: 1,
+          placementRevision: c.getSnapshot().placementRevision,
+          requestId: c.getSnapshot().slices.requestId,
+        },
+        true
+      );
+    if (mode === 'volume') readyVolume(c);
+    const s = c.getSnapshot();
+    cases.push({
+      file: `medical-viewer/${mode === 'anatomy' ? 'medical-transform-controls' : mode === 'slices' ? 'medical-slice-controls' : 'medical-volume-controls'}.native.tsx`,
+      name:
+        mode === 'anatomy'
+          ? 'MedicalTransformControls'
+          : mode === 'slices'
+            ? 'MedicalPanelTransformControls'
+            : 'MedicalVolumeTransformControls',
+      controller: c,
+      props: {
+        state: s,
+        sessionId: 1,
+        stacked: false,
+        scope: {
+          sessionId: 1,
+          placementRevision: s.placementRevision,
+          modelId: s.modelId,
+          loadAttempt: s.loadAttempt,
+        },
+      },
+      read: () => {
+        const p = mode === 'anatomy' ? c.getSnapshot() : c.getSnapshot()[mode];
+        return { x: p.x, y: p.height, z: p.z };
+      },
+    });
+  }
+  for (const entry of cases) {
+    const h = load('features/' + entry.file, { overrides: shared });
+    const root = h.render(entry.name, {
+      ...entry.props,
+      controller: entry.controller,
+      onDone: () => {},
+    });
+    assert.equal(root.type, 'Editor');
+    assert.equal(typeof root.props.onReposition, 'function');
+    for (const [axis, value] of [
+      ['x', 0.4],
+      ['y', 0.8],
+      ['z', -0.2],
+    ])
+      root.props.onPositionChange(axis, value);
+    assert.deepEqual(entry.read(), { x: 0.4, y: 0.8, z: -0.2 }, entry.name);
+    root.props.onScaleChange(1.5);
+    root.props.onYawChange(45);
+    assert.deepEqual(entry.read(), { x: 0.4, y: 0.8, z: -0.2 }, 'scale/yaw cannot move position');
+  }
+});
 
 test('medical actions use app colors, retain labels/state and fit narrow widths at large text sizes', () => {
   for (const width of [320, 390, 844, 1024])

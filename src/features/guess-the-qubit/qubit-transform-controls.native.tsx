@@ -1,4 +1,4 @@
-import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
+import { ARTransformEditor } from '@/features/ar/ar-transform-editor.native';
 import {
   canManipulateQubit,
   type QubitRoundController,
@@ -20,7 +20,10 @@ export function QubitTransformControls({
   onDone: () => void;
 }) {
   return (
-    <ARTransformControls
+    <ARTransformEditor
+      key={`${scope.sessionId}:${scope.placementRevision}:${scope.roundId}`}
+      position={{ x: state.sphereX, y: state.sphereHeight, z: state.sphereZ }}
+      onPositionChange={(axis, value) => controller.setSpherePosition(scope, axis, value)}
       testIDPrefix="qubit"
       scale={state.sphereScale}
       yaw={state.sphereYaw}

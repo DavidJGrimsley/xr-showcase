@@ -73,7 +73,7 @@ function MedicalModels({ context, controller }: MedicalSceneProps) {
   if (!state.anchorId || state.loadStatus === 'error') return null;
   return (
     <ViroNode
-      position={[0, state.height, 0]}
+      position={[state.x, state.height, state.z]}
       rotation={[0, state.yaw, 0]}
       scale={[state.scale, state.scale, state.scale]}
       onPinch={
@@ -179,7 +179,7 @@ function MedicalSlicePanel({ context, controller }: MedicalSceneProps) {
   const height = (SLICE_PANEL_WIDTH_METRES * series.imageDimensions[1]) / series.imageDimensions[0];
   return (
     <ViroNode
-      position={[0, slices.height, 0]}
+      position={[slices.x, slices.height, slices.z]}
       rotation={[0, slices.yaw, 0]}
       scale={[slices.scale, slices.scale, slices.scale]}
       onPinch={

@@ -11,7 +11,7 @@ import { stackPlaneGeometry } from './medical-volume-stack';
 import { MedicalControl as ARControl, useMedicalColors } from './medical-ui';
 import { MedicalSheet } from './medical-sheet.native';
 import { GameCopy } from '@/ui/game-text';
-import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
+import { ARTransformEditor } from '@/features/ar/ar-transform-editor.native';
 import {
   canManipulateVolume,
   type MedicalController,
@@ -461,8 +461,10 @@ export function MedicalVolumeTransformControls({
     requestId: state.volume.requestId,
   };
   return (
-    <ARTransformControls
-      dense
+    <ARTransformEditor
+      key={`${scope.sessionId}:${scope.placementRevision}:${scope.requestId}`}
+      position={{ x: state.volume.x, y: state.volume.height, z: state.volume.z }}
+      onPositionChange={(axis, value) => controller.setVolumePosition(scope, axis, value)}
       seedColor={colors.primary}
       controlComponent={ARControl}
       {...state.volume}
