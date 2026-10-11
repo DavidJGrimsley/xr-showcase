@@ -2,7 +2,7 @@ name: MDS PR Checks
 
 on:
   pull_request:
-    branches: [test, main]
+    branches: [test, main, phase-2-arena, arena-cpu-opponent]
   push:
     branches: [test]
 
@@ -16,5 +16,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
+      - name: Test project
+        run: npm test
       - name: Verify project
         run: npm run ci:verify --if-present

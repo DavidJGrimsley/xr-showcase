@@ -172,7 +172,9 @@ test('health is public; hardware discovery must find an actual hardware backend'
   assert.match(calls[1].url, /list_backends\?provider=ibm/);
   assert.match(calls[1].url, /ibm_profile=test-profile/);
   list = [{ name: credentials.backend, is_hardware: false, is_simulator: true, num_qubits: 10 }];
-  await assert.rejects(client.checkHardware(new AbortController().signal), { code: 'unavailable' });
+  await assert.rejects(client.checkHardware(new AbortController().signal), {
+    code: 'backend_unavailable',
+  });
 });
 for (const [status, code] of [
   [401, 'credentials'],
@@ -364,4 +366,100 @@ test('build configuration accepts trimmed environment overrides and SDK normaliz
   assert.equal(await client.measure(new AbortController().signal), 0);
   assert.equal(calls[0].url, 'https://example.com/quantum/v1/gates/run');
   assert.equal(calls[0].init.headers.get('X-API-Key'), credentials.apiKey);
+});
+
+test('API diagnostics identify failed operations and timing without credentials, bodies or job IDs', async () => {
+  const events = [];
+  const c = clock();
+  const client = new QuantumApiClient(
+    async () => {
+      c.advance(150);
+      return response(
+        { message: credentials.apiKey, job_id: 'private-job', details: 'private-body' },
+        403
+      );
+    },
+    credentials,
+    c,
+    (event) => events.push(event)
+  );
+  await assert.rejects(client.status('private-job', new AbortController().signal), {
+    code: 'credentials',
+  });
+  assert.deepEqual(events, [
+    { request: 1, operation: 'status', event: 'started' },
+    {
+      request: 1,
+      operation: 'status',
+      event: 'failed',
+      durationMs: 150,
+      errorCode: 'credentials',
+      status: 403,
+      retryInMs: 0,
+    },
+  ]);
+  const logged = JSON.stringify(events);
+  for (const secret of [credentials.apiKey, 'private-job', 'private-body', credentials.profile])
+    assert.equal(logged.includes(secret), false);
+});
+
+test('diagnostics distinguish backend absence from malformed responses and HTTP outages', async () => {
+  for (const [body, status, code] of [
+    [{ backends: [] }, 200, 'backend_unavailable'],
+    [{ backends: null }, 200, 'invalid_result'],
+    [{ message: 'private-error' }, 503, 'unavailable'],
+  ]) {
+    const events = [];
+    const client = new QuantumApiClient(
+      async () => response(body, status),
+      credentials,
+      clock(),
+      (event) => events.push(event)
+    );
+    await assert.rejects(client.checkHardware(new AbortController().signal), { code });
+    assert.equal(events[1].operation, 'hardware');
+    assert.equal(events[1].errorCode, code);
+    assert.equal(events[1].status, status === 200 ? 0 : status);
+  }
+});
+
+test('a timed-out submission logs once and still cancels its eventual job without logging its identity', async () => {
+  const pending = deferred();
+  const c = clock();
+  const events = [];
+  const late = [];
+  const client = new QuantumApiClient(
+    () => pending.promise,
+    credentials,
+    c,
+    (event) => events.push(event)
+  );
+  const rejected = assert.rejects(
+    client.submit(new AbortController().signal, (job) => late.push(job)),
+    { code: 'timeout' }
+  );
+  c.advance(60000);
+  await rejected;
+  pending.resolve(response({ job_id: 'private-late-job', status: 'queued' }));
+  await flush();
+  assert.equal(events.length, 2);
+  assert.equal(events[1].errorCode, 'timeout');
+  assert.equal(events[1].durationMs, 60000);
+  assert.equal(late[0].jobId, 'private-late-job');
+  assert.equal(JSON.stringify(events).includes('private-late-job'), false);
+});
+
+test('a broken diagnostics sink cannot change a successful or failed API request', async () => {
+  let status = 200;
+  const client = new QuantumApiClient(
+    async () => response({ measurement: 0 }, status),
+    credentials,
+    clock(),
+    () => {
+      throw new Error('logger failure');
+    }
+  );
+  assert.equal(await client.measure(new AbortController().signal), 0);
+  status = 401;
+  await assert.rejects(client.measure(new AbortController().signal), { code: 'credentials' });
 });

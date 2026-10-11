@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "clips": [
+    {
+      "name": "BlockEnter",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_BlockEnter",
+      "file": "BlockEnter.glb",
+      "durationSeconds": 0.10000000149011612,
+      "loopRecommended": false,
+      "sourceExportSha256": "971c43381429fbeda90d05e4bd33a3eab78a47df5e431c4cde46e0a152ffc02b",
+      "sourceSampleSha256": "4f41f720a871ffa72e0e515acc34728b6cfa691e58da79a555f1c0c301a36f7b"
+    },
+    {
+      "name": "BlockHold",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_BlockHold",
+      "file": "BlockHold.glb",
+      "durationSeconds": 1.0,
+      "loopRecommended": true,
+      "sourceExportSha256": "8bd441f8759300ac0d94118d8a0957c106de5f59e95e7921bdb2cf344707ff1a",
+      "sourceSampleSha256": "73396c9a0c9bbb4254de884c3c12140b267d28ad59c0a5e0833661899482d5aa"
+    },
+    {
+      "name": "BlockExit",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_BlockExit",
+      "file": "BlockExit.glb",
+      "durationSeconds": 0.10000000149011612,
+      "loopRecommended": false,
+      "sourceExportSha256": "9853989b9d328709f05adb357b597689d14936609125b18a980a6c610718b608",
+      "sourceSampleSha256": "60ed2370c3d44ea511eb2db42563637464045f0d06b515b569a09a6306799c94"
+    },
+    {
+      "name": "BlockHit",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_BlockHit",
+      "file": "BlockHit.glb",
+      "durationSeconds": 0.13333334028720856,
+      "loopRecommended": false,
+      "sourceExportSha256": "f00d560f21dbb008fa5d791898c70f591ca9162f85eabbde55157b1a970e9e41",
+      "sourceSampleSha256": "1cd19d305965a86168d954a95112bae420dcb2171a3ccaadb5d50589622789a7"
+    },
+    {
+      "name": "BlockAdvance",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_BlockAdvance",
+      "file": "BlockAdvance.glb",
+      "durationSeconds": 1.4666666984558105,
+      "loopRecommended": true,
+      "sourceExportSha256": "447b5215b84f64ba04eaf42ea01aa50188a94a062707300bd131843c1ddd8eea",
+      "sourceSampleSha256": "748be5d2977bdda077b0a8cc47b6260bad7f49d2d9644c2333b26dbffad9725d"
+    },
+    {
+      "name": "BlockStrafeLeft",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_BlockStrafeLeft",
+      "file": "BlockStrafeLeft.glb",
+      "durationSeconds": 1.4666666984558105,
+      "loopRecommended": true,
+      "sourceExportSha256": "1e48ebdeddc688b57e787594d2961690cabd9b30b78b8a54b6d0633f40d59723",
+      "sourceSampleSha256": "98cc42791c653e328792d01aee8d72db68836f3d0d7b4f34d6645d1f09e59b80"
+    },
+    {
+      "name": "BlockStrafeRight",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_BlockStrafeRight",
+      "file": "BlockStrafeRight.glb",
+      "durationSeconds": 1.4666666984558105,
+      "loopRecommended": true,
+      "sourceExportSha256": "51b0991b86fa2f0c35382fe373a774141a7bb8f41f315bacee48a23e4f389275",
+      "sourceSampleSha256": "a7b601518d2b2af01c0615ad1b9c9c3d5131256f6716551c9a7c8b33d0d1edcf"
+    },
+    {
+      "name": "JumpBack",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_JumpBack",
+      "file": "JumpBack.glb",
+      "durationSeconds": 0.4000000059604645,
+      "loopRecommended": false,
+      "sourceExportSha256": "8789c5198f5e0cae97aa6fdec12dc2d433cd257a90110ec3ae08ab853ef73d74",
+      "sourceSampleSha256": "1ae1c2e7e9e60c611651361365ed908d36277be57f2ed2839dd74b4d6893424e"
+    },
+    {
+      "name": "VictoryUppercut",
+      "sourceAsset": "/Game/Quasicombo/Mike/Arena/AS_Mike_VictoryUppercut",
+      "file": "VictoryUppercut.glb",
+      "durationSeconds": 2.0,
+      "loopRecommended": false,
+      "sourceExportSha256": "abe4b1dee3be449228885c24390de964513b8d4fdb77ac3c1625be935981270b",
+      "sourceSampleSha256": "108841d25c84ed44c04f34979d4abca81ef4a352c61bcee67c926f3ce31c6479"
+    },
+    {
+      "name": "HitFrontFast",
+      "durationSeconds": 0.2,
+      "loopRecommended": false,
+      "derivation": "HitFront retimed to 200ms; final 50ms blend to IdleAggro start",
+      "file": null,
+      "sourceSampleSha256": "ba3acbfdf5887488253e6cd5878797a1f9e5990abf60ecf980f3ca5a0a2c1360"
+    }
+  ],
+  "files": [
+    {
+      "file": "Mike_Player1_Blue_Combat_AR.glb",
+      "bytes": 19978136,
+      "sha256": "ac3afd1fa615a2ea5b34de72f22a5780a158369e7b425d619dfcc5cd3b69833f"
+    },
+    {
+      "file": "Mike_Player2_RedOrange_Combat_AR.glb",
+      "bytes": 19087388,
+      "sha256": "a8436e15934cfc82c0f1bbc8c10b63d07289b9787656d5ffcfcf49a362bd7ba5"
+    }
+  ],
+  "preservesOriginalGeometrySkinningTexturesAndAnimationSamples": true,
+  "sources": {
+    "guardArmPose": ["Anim_ZMIKE_UppercutL", "Anim_ZMIKE_UppercutR"],
+    "guardBase": "Anim_ZMIKE_IdleAggro",
+    "movement": ["Anim_ZMIKE_Walk", "Anim_ZMIKE_WalkLeft", "Anim_ZMIKE_WalkRight"],
+    "hop": ["Anim_ZMIKE_JumpStart", "Anim_ZMIKE_JumpApex", "Anim_ZMIKE_JumpEnd"],
+    "victory": ["Anim_ZMIKE_CalibrationStretches", "Anim_ZMIKE_UppercutR", "Anim_ZMIKE_IdleAggro"]
+  },
+  "sourceAssetsByteIdentical": true,
+  "positionAndAirborneLiftOwnedByApp": true,
+  "nativePhoneValidation": "pending",
+  "originals": {
+    "Fight_Arena.glb": "a02bdcce1731f00381511dbf9e9d796d6707a536b771480eef8ce43f7b895735",
+    "Mike_Player1_Blue_AR.glb": "906e8fa6902683cebc3850806353be117e92db8ab4b8118f5e638ee112b4696d",
+    "Mike_Player2_RedOrange_AR.glb": "3dcbd37716c377d2314ab40c8f4542fc0d48905189f288ae5e7e455757e47948",
+    "fighter-animation-manifest.json": "c4de9f109460d7ee9bc7cd42168eb23d67b471bec46dc67217e88434a28228bc"
+  },
+  "previewInspection": {
+    "packSha256": "1370c228d11a35d5ff02d2387823bbe4e9bf671a572208a1bac2923205682070",
+    "renderer": "Blender 5.0.1, 30 fps import; front and three-quarter renders",
+    "reviewedClips": ["Victory", "VictoryUppercut"],
+    "reviewedStages": [
+      "stretch handoff",
+      "crouched anticipation",
+      "rising fist",
+      "extended fist hold",
+      "return to idle"
+    ],
+    "notes": "Large upward right-fist sweep is clear from both views. Endpoint matches the stretch, followed by a settled IdleAggro pose. Actual iPhone playback still pending.",
+    "preservedDefenseInspection": {
+      "packSha256": "1e3b41e311b3fa49ff8deff87192c1c5b284081801be8a26be6531e4db155716",
+      "views": ["front", "three-quarter"],
+      "clips": ["BlockHold", "BlockAdvance", "BlockStrafeLeft", "BlockStrafeRight", "JumpBack"],
+      "renderCount": 14,
+      "inspection": "Both forearms and fists visible in front of the face; restrained guard breathing; raised arms maintained with source leg gait. Hop preparation, airborne and planted landing sampled. Blender appearance check; physical iPhone transition and contact review pending."
+    }
+  },
+  "previousPackHashes": {
+    "Mike_Player1_Blue_Combat_AR.glb": "ac3afd1fa615a2ea5b34de72f22a5780a158369e7b425d619dfcc5cd3b69833f",
+    "Mike_Player2_RedOrange_Combat_AR.glb": "a8436e15934cfc82c0f1bbc8c10b63d07289b9787656d5ffcfcf49a362bd7ba5"
+  },
+  "collisionDataSha256": "d2c0cb91e8b18fcb5076f014ec6d74c95618690f601a39326e1f1a981f231d4f",
+  "contactPreviewInspection": {
+    "packHashes": {
+      "Mike_Player1_Blue_Combat_AR.glb": "ac3afd1fa615a2ea5b34de72f22a5780a158369e7b425d619dfcc5cd3b69833f",
+      "Mike_Player2_RedOrange_Combat_AR.glb": "a8436e15934cfc82c0f1bbc8c10b63d07289b9787656d5ffcfcf49a362bd7ba5"
+    },
+    "collisionDataSha256": "d2c0cb91e8b18fcb5076f014ec6d74c95618690f601a39326e1f1a981f231d4f",
+    "views": ["front", "overhead", "three-quarter"],
+    "renderCount": 24,
+    "notes": "Reviewed both hands from front, overhead and three-quarter views. Fitted striking gauntlet includes hand and distal 17.5mm forearm vertices. Body boxes follow posed mesh groups; head uses fighter-local axes. Close side overlaps count, off-path glove/body separation misses. Physical iPhone assessment pending."
+  }
+}

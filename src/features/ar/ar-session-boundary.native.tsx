@@ -10,12 +10,13 @@ import {
 } from 'react';
 import { router } from 'expo-router';
 import { useIsFocused } from 'expo-router/react-navigation';
-import { AppState, Linking, ScrollView, View } from 'react-native';
+import { AppState, Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '@/theme/provider';
 
 import { nativeARRuntime } from './ar-runtime.native';
+import { shouldActivateAR } from './ar-activation';
 import { ARSessionController } from './ar-session-controller';
 import type { ARSceneContext, ARSessionBoundaryProps } from './ar-session-types';
 import ARStatusPanel from './ar-status-panel';
@@ -59,12 +60,18 @@ function SceneRenderer({
 export default function ARSessionBoundary({
   renderNavigator,
   renderActiveOverlay,
+  renderStatusPanel,
+  activeOverlayLayout = 'panel',
+  enabled: featureEnabled = true,
+  keepSessionOnInactive = false,
+  onExit,
+  exitLabel = 'Home',
 }: ARSessionBoundaryProps) {
   const { activeColors: colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const appState = useSyncExternalStore(subscribeAppState, () => AppState.currentState);
-  const enabled = focused && appState === 'active';
+  const enabled = shouldActivateAR(featureEnabled, focused, appState, keepSessionOnInactive);
   const [controller] = useState(() => new ARSessionController(nativeARRuntime));
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [settingsError, setSettingsError] = useState(false);
@@ -86,7 +93,8 @@ export default function ARSessionBoundary({
 
   const home = () => {
     controller.setActive(false);
-    router.dismissTo('/');
+    if (onExit) onExit();
+    else router.dismissTo('/');
   };
   const openSettings = () => {
     setSettingsError(false);
@@ -117,56 +125,70 @@ export default function ARSessionBoundary({
       onPress: controller.retry,
     });
   }
-  actions.push({ label: 'Home', onPress: home });
+  actions.push({ label: exitLabel, onPress: home });
 
-  const panel = (
-    <ARStatusPanel
-      title={title}
-      message={
-        settingsError && ['permission', 'denied'].includes(snapshot.status)
-          ? 'Settings could not open. Allow camera access in device Settings.'
-          : snapshot.instruction || 'AR starts when this screen is active.'
-      }
-      loading={loading}
-      actions={actions}
-    />
+  const panelProps = {
+    title,
+    message:
+      settingsError && ['permission', 'denied'].includes(snapshot.status)
+        ? 'Settings could not open. Allow camera access in device Settings.'
+        : snapshot.instruction || 'AR starts when this screen is active.',
+    loading,
+    actions,
+  };
+  const panel = renderStatusPanel ? (
+    renderStatusPanel(panelProps)
+  ) : (
+    <ARStatusPanel {...panelProps} />
   );
 
+  const hasActiveOverlay = mounting && renderActiveOverlay;
+  const activeOverlay = hasActiveOverlay
+    ? renderActiveOverlay({
+        sessionId: snapshot.sessionId,
+        status: snapshot.status === 'running' ? 'running' : 'starting',
+        instruction: snapshot.instruction,
+        home,
+        restartAR: controller.retry,
+      })
+    : null;
+
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       {mounting ? (
         <SceneErrorBoundary key={snapshot.sessionId} onError={context.onError}>
           <SceneRenderer context={context} renderNavigator={renderNavigator} />
         </SceneErrorBoundary>
       ) : null}
-      <View
-        pointerEvents="box-none"
-        className={mounting ? 'absolute inset-0 justify-end' : 'flex-1'}>
-        <ScrollView
-          className={mounting ? 'max-h-[55%]' : 'flex-1'}
-          style={mounting ? { flexGrow: 0 } : undefined}
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerClassName="grow justify-center px-5 pt-5"
-          contentContainerStyle={{
-            paddingBottom: Math.max(20, insets.bottom),
-            paddingLeft: Math.max(20, insets.left),
-            paddingRight: Math.max(20, insets.right),
-          }}>
-          <View className="items-center">
-            <View className="w-full max-w-[720px]">
-              {mounting && renderActiveOverlay
-                ? renderActiveOverlay({
-                    sessionId: snapshot.sessionId,
-                    status: snapshot.status === 'running' ? 'running' : 'starting',
-                    instruction: snapshot.instruction,
-                    home,
-                    restartAR: controller.retry,
-                  })
-                : panel}
+      {hasActiveOverlay && activeOverlayLayout === 'fullscreen' ? (
+        activeOverlay
+      ) : (
+        <View pointerEvents="box-none" style={mounting ? styles.overlay : styles.fill}>
+          <ScrollView
+            style={mounting ? { maxHeight: '55%', flexGrow: 0 } : styles.fill}
+            contentInsetAdjustmentBehavior="automatic"
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: Math.max(20, insets.bottom),
+              paddingLeft: Math.max(20, insets.left),
+              paddingRight: Math.max(20, insets.right),
+            }}>
+            <View style={{ alignItems: 'center' }}>
+              <View style={{ width: '100%', maxWidth: 720 }}>
+                {hasActiveOverlay ? activeOverlay : panel}
+              </View>
             </View>
-          </View>
-        </ScrollView>
-      </View>
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  overlay: { position: 'absolute', inset: 0, justifyContent: 'flex-end' },
+});

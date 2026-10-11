@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Alert, Platform, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { GameText } from '@/ui/game-text';
+import { GameProgress } from '@/ui/game-progress';
+import { GameConfirmSheet } from '@/ui/game-confirm-sheet';
 import { Button, Column, Host, Picker, Row, Spacer, Text as NativeText } from '@expo/ui';
 import { fixedSize } from '@expo/ui/swift-ui/modifiers';
 import { Stack } from 'expo-router/stack';
-import ARSessionBoundary from '@/features/ar/ar-session-boundary';
+import ARSessionBoundary from '@/ui/game-ar-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { useQubitConfiguration } from './use-qubit-configuration.native';
 import { qubitPresentation } from './qubit-presentation';
@@ -13,27 +16,6 @@ import { QubitTransformControls } from './qubit-transform-controls.native';
 
 const QubitNavigator = lazy(() => import('./qubit-navigator.native'));
 type Configuration = ReturnType<typeof useQubitConfiguration>;
-
-function resetQubit(controller: Configuration['controller']) {
-  if (!controller.getSnapshot().uncertainSubmission) {
-    controller.reset();
-    return;
-  }
-  Alert.alert(
-    'Submission interrupted',
-    'The service did not confirm the job. It may still run. Start a new round?',
-    [
-      { text: 'Wait', style: 'cancel' },
-      {
-        text: 'Reset Qubit',
-        onPress: () => {
-          controller.reset();
-          controller.acknowledgeUnknown();
-        },
-      },
-    ]
-  );
-}
 
 function QubitStatus({
   display,
@@ -46,16 +28,11 @@ function QubitStatus({
   const outcomeColor = outcome && { won: '#86efac', lost: '#fca5a5' }[outcome];
   const color = display.warning ? '#fde68a' : outcomeColor || '#e2e8f0';
   return (
-    <View className="flex-row items-center justify-center gap-2">
-      {display.spinning ? (
-        <ActivityIndicator accessibilityLabel="Waiting for the result" color="#93f5c5" />
-      ) : null}
-      <Text
-        accessibilityLiveRegion="polite"
-        className="shrink text-center text-base"
-        style={{ color }}>
+    <View style={styles.status}>
+      {display.spinning ? <GameProgress label="Waiting for the result" color="#93f5c5" /> : null}
+      <GameText accessibilityLiveRegion="polite" centered color={color} style={{ flex: 1 }}>
         {display.status}
-      </Text>
+      </GameText>
     </View>
   );
 }
@@ -152,6 +129,7 @@ function QubitMainControls({
   guessHint,
   controlsWidth,
   onTransform,
+  onReset,
 }: {
   controller: Configuration['controller'];
   state: QubitSnapshot;
@@ -160,6 +138,7 @@ function QubitMainControls({
   guessHint: string;
   controlsWidth: number;
   onTransform: () => void;
+  onReset: () => void;
 }) {
   const { fontScale, width } = useWindowDimensions();
   const disabled = !canGuessQubit(state, now);
@@ -219,7 +198,7 @@ function QubitMainControls({
             testID="qubit-reset"
             label="Reset Qubit"
             disabled={resetDisabled}
-            onPress={() => resetQubit(controller)}
+            onPress={onReset}
             height={actionHeight}
             fontSize={Platform.OS === 'ios' ? 17 * fontScale : 17}
           />
@@ -251,9 +230,12 @@ function QubitControls({
   const { width, fontScale } = useWindowDimensions();
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const [transformRevision, setTransformRevision] = useState<number | null>(null);
+  const [resetRound, setResetRound] = useState<number | null>(null);
   const controlsWidth = measuredWidth || Math.max(1, Math.min(width, 720) - 72);
   return (
-    <View className="w-full" onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}>
+    <View
+      style={{ width: '100%' }}
+      onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}>
       {transformRevision === state.placementRevision ? (
         <QubitTransformControls
           controller={controller}
@@ -275,8 +257,27 @@ function QubitControls({
           guessHint={guessHint}
           controlsWidth={controlsWidth}
           onTransform={() => setTransformRevision(state.placementRevision)}
+          onReset={() => {
+            if (controller.getSnapshot().uncertainSubmission) setResetRound(state.roundId);
+            else controller.reset();
+          }}
         />
       )}
+      <GameConfirmSheet
+        isPresented={resetRound === state.roundId}
+        onDismiss={() => setResetRound(null)}
+        onConfirm={() => {
+          setResetRound(null);
+          // A sheet left open across AR/round recreation cannot reset a later round.
+          if (
+            controller.getSessionId() !== context.sessionId ||
+            controller.getSnapshot().roundId !== resetRound
+          )
+            return;
+          controller.reset();
+          controller.acknowledgeUnknown();
+        }}
+      />
     </View>
   );
 }
@@ -289,34 +290,55 @@ function QubitHUD({
   configuration: Configuration;
 }) {
   const { controller, busy, message } = configuration;
+  const { fontScale } = useWindowDimensions();
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!state.retryAt) return;
+    const retryAt = Math.max(state.retryAt, configuration.retryAt);
+    if (!retryAt) return;
     const timer = setInterval(() => {
       const time = Date.now();
       setNow(time);
-      if (time >= state.retryAt) clearInterval(timer);
+      if (time >= retryAt) clearInterval(timer);
     }, 1000);
     return () => clearInterval(timer);
-  }, [state.retryAt]);
-  const display = qubitPresentation(state, message, busy, now);
+  }, [state.retryAt, configuration.retryAt]);
+  const display = qubitPresentation(state, message, busy, now, configuration);
+  const retry = display.retryConnection ? (
+    <Host
+      matchContents={{ vertical: true }}
+      colorScheme="dark"
+      seedColor="#93f5c5"
+      style={{ width: '100%' }}>
+      <Column alignment="center">
+        <Button
+          testID="qubit-retry-connection"
+          label="Retry connection"
+          variant="outlined"
+          disabled={display.retryDisabled}
+          onPress={() => configuration.retryConnection()}
+          style={{ height: Math.max(48, 17 * fontScale + 20) }}
+        />
+      </Column>
+    </Host>
+  ) : null;
   if (!state.placed)
     return (
-      <View className="rounded-2xl px-4 py-3" style={{ backgroundColor: '#10191fe6' }}>
-        <Text className="text-center text-base" style={{ color: '#e2e8f0' }}>
-          {display.caption}
-        </Text>
+      <View style={[styles.panel, { paddingVertical: 12 }]}>
+        <GameText centered>{display.caption}</GameText>
+        <QubitStatus display={display} outcome={null} />
+        {retry}
       </View>
     );
   return (
-    <View className="gap-3 rounded-2xl p-4" style={{ backgroundColor: '#10191fe6' }}>
+    <View style={styles.panel}>
       {display.caption ? (
-        <Text className="text-center text-sm" style={{ color: '#cbd5e1' }}>
+        <GameText centered fontSize={14} color="#cbd5e1">
           {display.caption}
-        </Text>
+        </GameText>
       ) : null}
       <QubitStatus display={display} outcome={state.outcome} />
+      {retry}
       <QubitControls
         controller={controller}
         state={state}
@@ -327,6 +349,11 @@ function QubitHUD({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  status: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  panel: { gap: 12, borderRadius: 16, padding: 16, backgroundColor: '#10191fe6' },
+});
 export default function GuessTheQubitScreen() {
   const configuration = useQubitConfiguration();
   const [infoOpen, setInfoOpen] = useState(false);
@@ -352,7 +379,7 @@ export default function GuessTheQubitScreen() {
           <Stack.Toolbar.Button
             icon="info.circle"
             accessibilityLabel="About Guess the Qubit"
-            accessibilityHint="Explains the game, Bloch sphere, and circuit"
+            accessibilityHint="Explains qubits, the Bloch vector, and the circuit"
             hidesSharedBackground
             onPress={openInfo}
           />

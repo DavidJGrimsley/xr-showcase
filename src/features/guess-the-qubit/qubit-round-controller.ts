@@ -6,6 +6,7 @@ import type {
   QuantumRuntime,
 } from '../../services/quantum-api';
 import type { QubitCleanup } from './qubit-job-cleanup';
+import { qubitFailure, qubitRoundMessage } from './qubit-errors.ts';
 import {
   clampARHeight,
   clampARScale,
@@ -441,15 +442,14 @@ export class QubitRoundController {
     this.clearTimer();
     this.update({
       phase: this.snapshot.introDone ? 'waiting' : 'intro',
-      message: 'Reconnecting…',
+      message: 'Checking the existing hardware job…',
     });
     void this.poll(round);
   }
   private fail(round: Round, error: unknown) {
     if (!this.current(round)) return;
     this.clearTimer();
-    const data =
-      error && typeof error === 'object' ? (error as { code?: string; retryAt?: number }) : {};
+    const data = qubitFailure(error);
     const uncertain =
       round.submitted &&
       !round.job &&
@@ -460,15 +460,7 @@ export class QubitRoundController {
       !!round.job && !['invalid_result', 'credentials', 'request_failed'].includes(data.code ?? '');
     const message = uncertain
       ? 'Submission interrupted before confirmation. The job may still run. Reset Qubit to retry.'
-      : data.code === 'credentials'
-        ? 'Service unavailable. Reset Qubit to retry.'
-        : data.code === 'rate_limit'
-          ? 'Reconnecting…'
-          : data.code === 'invalid_result'
-            ? 'Invalid result. Reset Qubit to retry.'
-            : resumable
-              ? 'Reconnecting…'
-              : 'Connection interrupted. Reset Qubit to retry.';
+      : qubitRoundMessage(data.code, resumable);
     this.update({
       phase: resumable ? 'paused' : 'error',
       message,

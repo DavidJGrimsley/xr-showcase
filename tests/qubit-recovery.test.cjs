@@ -62,7 +62,7 @@ function storage(initial = []) {
     ids: () => JSON.parse(stored),
   };
 }
-function harness(overrides = {}, saved = storage()) {
+function harness(overrides = {}, saved = storage(), diagnostics) {
   const time = clock();
   const calls = [];
   const defaults = {
@@ -88,7 +88,7 @@ function harness(overrides = {}, saved = storage()) {
   rounds.attach(1);
   rounds.setPlaced(1, true);
   rounds.setTracking(1, true);
-  const connection = new QubitConnectionController(api, rounds, cleanup, time);
+  const connection = new QubitConnectionController(api, rounds, cleanup, time, diagnostics);
   return {
     time,
     calls,
@@ -201,7 +201,7 @@ test('offline connection automatically retries without overlapping health reques
   h.connection.start();
   h.connection.start();
   await flush();
-  assert.equal(h.connection.getSnapshot().message, 'Reconnecting…');
+  assert.match(h.connection.getSnapshot().message, /Cannot reach the quantum service/);
   assert.equal(h.rounds.canGuess(), false);
   h.time.advance(15000);
   await flush();
@@ -327,7 +327,10 @@ test('failed cancellation persists only job IDs and reconnect retries until conf
   assert.deepEqual(h.saved.ids(), ['old-job']);
   assert.equal(h.rounds.getSnapshot().simulatorReady, true);
   assert.equal(h.rounds.getSnapshot().hardwareReady, false);
-  assert.equal(h.connection.getSnapshot().message, 'Finishing cancellation…');
+  assert.match(
+    h.connection.getSnapshot().message,
+    /Previous hardware job cancellation is still pending/
+  );
   h.time.advance(15000);
   await flush();
   assert.equal(h.count('cancel'), 2);
@@ -549,5 +552,226 @@ test('a fatal round error keeps retrying failed cancellation even before Reset',
   assert.deepEqual(h.saved.ids(), []);
   assert.equal(h.count('submit'), 1);
   assert.equal(h.count('result'), 0);
+  h.connection.stop();
+});
+
+for (const [code, status, expected] of [
+  ['credentials', 401, /access denied/],
+  ['credentials', 403, /access denied/],
+  ['network', 0, /Check your internet connection/],
+  ['timeout', 0, /timed out/],
+  ['unavailable', 503, /service is unavailable/],
+  ['invalid_result', 0, /invalid response/],
+  ['request_failed', 422, /rejected the request/],
+])
+  test(`connection ${code}/${status} has an actionable message and sanitized stage diagnostics`, async () => {
+    const events = [];
+    const h = harness(
+      {
+        health: async () => {
+          throw { code, status, message: 'private-key-body' };
+        },
+      },
+      storage(),
+      (event) => events.push(event)
+    );
+    h.connection.start();
+    await flush();
+    const state = h.connection.getSnapshot();
+    assert.match(state.message, expected);
+    assert.equal(state.warning, true);
+    assert.equal(state.canRetry, true);
+    assert.equal(h.rounds.canGuess(), false);
+    const failure = events.find((event) => event.event === 'stage_failed');
+    assert.equal(failure.stage, 'health');
+    assert.equal(failure.errorCode, code);
+    assert.equal(failure.status, status);
+    assert.equal(events.find((event) => event.event === 'retry_scheduled').retryInMs, 15000);
+    assert.equal(JSON.stringify([events, state]).includes('private-key-body'), false);
+    h.connection.stop();
+  });
+
+test('manual connection retry replaces the timer, cannot overlap, and never starts a round', async () => {
+  let attempt = 0;
+  const pending = deferred();
+  const h = harness({
+    health: () => (++attempt === 1 ? Promise.reject({ code: 'network' }) : pending.promise),
+  });
+  h.connection.start();
+  await flush();
+  assert.equal(h.connection.retry(), true);
+  assert.equal(h.connection.retry(), false);
+  await flush();
+  assert.equal(h.count('health'), 2);
+  h.time.advance(90000);
+  await flush();
+  assert.equal(h.count('health'), 2);
+  pending.resolve('qiskit');
+  await flush();
+  assert.equal(h.connection.getSnapshot().warning, false);
+  assert.equal(h.connection.getSnapshot().canRetry, false);
+  assert.equal(h.rounds.canGuess(), true);
+  assert.equal(h.count('measure') + h.count('submit'), 0);
+  h.rounds.guess(0);
+  assert.equal(h.connection.retry(), false);
+  h.connection.stop();
+  h.rounds.detach(1);
+  assert.equal(h.connection.retry(), false);
+});
+
+test('rate limits show remaining wait and manual retries cannot bypass Retry-After', async () => {
+  let attempt = 0;
+  const h = harness({
+    checkHardware: async () => {
+      if (++attempt === 1) throw { code: 'rate_limit', status: 429, retryAt: 60000 };
+    },
+  });
+  h.connection.start();
+  await flush();
+  const connection = h.connection.getSnapshot();
+  const display = qubitPresentation(
+    h.rounds.getSnapshot(),
+    connection.message,
+    connection.busy,
+    0,
+    connection
+  );
+  assert.match(display.status, /Quantum service is busy/);
+  assert.match(display.status, /60s/);
+  assert.equal(display.warning, true);
+  assert.equal(display.spinning, false);
+  assert.equal(display.retryConnection, true);
+  assert.equal(display.retryDisabled, true);
+  assert.equal(h.connection.retry(), false);
+  h.time.advance(59999);
+  assert.equal(h.connection.retry(), false);
+  assert.equal(h.count('checkHardware'), 1);
+  h.time.advance(1);
+  await flush();
+  assert.equal(h.rounds.canGuess(), true);
+  h.connection.stop();
+});
+
+test('a round rate limit also gates connection checks after Reset', async () => {
+  const h = harness({
+    measure: async () => {
+      throw { code: 'rate_limit', retryAt: 60000 };
+    },
+  });
+  h.connection.start();
+  await flush();
+  h.rounds.guess(0);
+  await flush();
+  h.rounds.reset();
+  assert.equal(h.connection.retry(), false);
+  assert.equal(h.count('health'), 1);
+  h.time.advance(60000);
+  assert.equal(h.connection.retry(), true);
+  await flush();
+  assert.equal(h.count('health'), 2);
+  assert.equal(h.count('measure'), 1);
+  h.connection.stop();
+});
+
+test('hardware-only errors appear when Hardware is selected while Simulator stays usable', async () => {
+  const h = harness({
+    checkHardware: async () => {
+      throw { code: 'backend_unavailable' };
+    },
+  });
+  h.connection.start();
+  await flush();
+  const connection = h.connection.getSnapshot();
+  let display = qubitPresentation(h.rounds.getSnapshot(), connection.message, false, 0, connection);
+  assert.equal(h.rounds.canGuess(), true);
+  assert.equal(display.status, '');
+  assert.equal(display.retryConnection, false);
+  h.rounds.setMode('hardware');
+  display = qubitPresentation(h.rounds.getSnapshot(), connection.message, false, 0, connection);
+  assert.match(display.status, /Selected quantum hardware is unavailable/);
+  assert.match(display.status, /Try Simulator/);
+  assert.equal(display.warning, true);
+  assert.equal(display.retryConnection, true);
+  assert.equal(h.rounds.canGuess(), false);
+  h.connection.stop();
+});
+
+test('access errors are visible before placement without removing placement guidance', async () => {
+  const h = harness({
+    health: async () => {
+      throw { code: 'credentials', status: 401 };
+    },
+  });
+  h.rounds.setPlaced(1, false);
+  h.connection.start();
+  await flush();
+  const connection = h.connection.getSnapshot();
+  const display = qubitPresentation(
+    h.rounds.getSnapshot(),
+    connection.message,
+    false,
+    0,
+    connection
+  );
+  assert.equal(display.caption, PLACEMENT_CAPTION);
+  assert.match(display.status, /access denied/);
+  assert.equal(display.warning, true);
+  assert.equal(display.spinning, false);
+  assert.equal(display.retryConnection, true);
+  h.connection.stop();
+});
+
+test('missing build configuration has a clear message and no ineffective retry action', () => {
+  const h = harness();
+  const connection = new QubitConnectionController(null, h.rounds, h.cleanup, h.time);
+  assert.match(connection.getSnapshot().message, /not configured/);
+  assert.equal(connection.getSnapshot().warning, true);
+  assert.equal(connection.getSnapshot().canRetry, false);
+  connection.start();
+  assert.equal(connection.retry(), false);
+  assert.equal(h.calls.length, 0);
+});
+
+test('local cleanup storage errors stay distinct from service or network errors', async () => {
+  const events = [];
+  const h = harness(
+    {},
+    {
+      getItem: async () => {
+        throw new Error('private-storage-error');
+      },
+      setItem: async () => {},
+    },
+    (event) => events.push(event)
+  );
+  h.connection.start();
+  await flush();
+  assert.match(h.connection.getSnapshot().message, /read or save job cleanup on this phone/);
+  assert.equal(h.rounds.getSnapshot().simulatorReady, true);
+  assert.equal(h.rounds.getSnapshot().hardwareReady, false);
+  assert.equal(events.find((event) => event.event === 'stage_failed').errorCode, 'cleanup_storage');
+  assert.equal(JSON.stringify(events).includes('private-storage-error'), false);
+  h.connection.stop();
+});
+
+test('denied cancellation of an old job is explained without exposing its ID or disabling Simulator', async () => {
+  const events = [];
+  const h = harness(
+    {
+      cancel: async () => {
+        throw { code: 'credentials', status: 403, message: 'private-key' };
+      },
+    },
+    storage(['private-old-job']),
+    (event) => events.push(event)
+  );
+  h.connection.start();
+  await flush();
+  assert.match(h.connection.getSnapshot().message, /Previous hardware job cancellation was denied/);
+  assert.equal(h.rounds.canGuess(), true);
+  assert.equal(h.rounds.getSnapshot().hardwareReady, false);
+  assert.equal(events.find((event) => event.event === 'stage_failed').status, 403);
+  assert.equal(JSON.stringify(events).includes('private-old-job'), false);
+  assert.equal(JSON.stringify(events).includes('private-key'), false);
   h.connection.stop();
 });
