@@ -57,6 +57,8 @@ Product tasks take precedence over retained starter checklist items. The retaine
 
 - [ ] Add the user-supplied MRI-derived brain 3D model to Medical Viewer and a third dropdown option, Both, that displays the user-supplied half-skull and brain models together; the user will supply both models when implementation starts.
 
+- [ ] Add a Scan Slices option to Medical Viewer for actual CT and registered MRI axial images in AR, with a 3D Slicer exporter, generated static asset mappings, modality selection and slice navigation; preserve the separate 3D Anatomy mode.
+
 - [ ] Implement Medical Viewer with the packaged CT-derived skull, plane placement and calibrated anatomy labels.
 - [ ] Add bounded pinch/rotate gestures and reset placement; validate readability, loading errors and asset provenance on iPhone.
 
