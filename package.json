@@ -25,7 +25,8 @@
     "test": "npm run lint && npm run typecheck && npm run test:ar && npm run test:qubit && npm run test:medical",
     "test:ar": "node --experimental-strip-types --test tests/ar-session.test.cjs",
     "test:qubit": "node --experimental-strip-types --test tests/qubit-*.test.cjs",
-    "test:medical": "node --experimental-strip-types --test tests/medical-controller.test.cjs tests/medical-assets.test.cjs",
+    "test:medical": "node --experimental-strip-types --test tests/medical-controller.test.cjs tests/medical-assets.test.cjs tests/medical-slices.test.cjs tests/medical-volumes.test.cjs",
+    "test:medical:shader": "node --experimental-strip-types tools/medical/test_volume_shader.cjs",
     "build:ios": "expo export --platform ios --max-workers 2",
     "react:check": "react-doctor -y --no-telemetry",
     "build": "npm run build:ios"

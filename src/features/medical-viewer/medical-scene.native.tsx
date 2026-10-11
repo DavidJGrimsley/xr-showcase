@@ -5,6 +5,7 @@ import {
   ViroARPlaneSelector,
   ViroARScene,
   ViroDirectionalLight,
+  ViroImage,
   ViroMaterials,
   ViroNode,
   ViroPolyline,
@@ -13,8 +14,10 @@ import {
   ViroTrackingStateConstants,
 } from '@reactvision/react-viro';
 import type { ARSceneContext } from '@/features/ar/ar-session-types';
-import type { MedicalController, MedicalScope } from './medical-controller';
-import { canManipulateMedical } from './medical-controller';
+import type { MedicalController, MedicalScope, MedicalSliceScope } from './medical-controller';
+import { canManipulateMedical, canManipulateSlices } from './medical-controller';
+import { SLICE_PANEL_WIDTH_METRES } from './medical-slices';
+import { medicalSliceSource } from './medical-slice-assets.native';
 import {
   hasMedicalLabels,
   MEDICAL_ASSETS,
@@ -23,6 +26,7 @@ import {
 } from './medical-models';
 import { MEDICAL_ASSET_SOURCES } from './medical-asset-sources.native';
 import calibration from '../../../assets/medical/skull-labels.json';
+import MedicalVolume from './medical-volume.native';
 
 ViroMaterials.createMaterials({
   medicalLabel: { diffuseColor: '#fff1da', lightingModel: 'Constant' },
@@ -141,6 +145,79 @@ function MedicalModels({ context, controller }: MedicalSceneProps) {
   );
 }
 
+function MedicalSlicePanel({ context, controller }: MedicalSceneProps) {
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { slices } = state;
+  const series = controller.getSliceSeries();
+  const source = medicalSliceSource(slices.modality, slices.orientation, slices.index);
+  const scope: MedicalSliceScope = {
+    sessionId: context.sessionId,
+    placementRevision: state.placementRevision,
+    requestId: slices.requestId,
+  };
+  useEffect(() => {
+    if (!state.anchorId || slices.loadStatus !== 'loading') return;
+    if (source === undefined) {
+      controller.finishSliceLoad(scope, false);
+      return;
+    }
+    const timeout = setTimeout(() => controller.finishSliceLoad(scope, false), 30000);
+    return () => clearTimeout(timeout);
+    // Scope values identify this mounted image request, including Retry and placement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    controller,
+    context.sessionId,
+    state.anchorId,
+    state.placementRevision,
+    slices.requestId,
+    slices.loadStatus,
+    source,
+  ]);
+  if (!state.anchorId || !series || source === undefined) return null;
+  const interactive = canManipulateSlices(state);
+  const height = (SLICE_PANEL_WIDTH_METRES * series.imageDimensions[1]) / series.imageDimensions[0];
+  return (
+    <ViroNode
+      position={[0, slices.height, 0]}
+      rotation={[0, slices.yaw, 0]}
+      scale={[slices.scale, slices.scale, slices.scale]}
+      onPinch={
+        interactive
+          ? (gesture, factor) => controller.panelGesture(scope, 'pinch', gesture, factor)
+          : undefined
+      }
+      onRotate={
+        interactive
+          ? (gesture, factor) => controller.panelGesture(scope, 'rotate', gesture, factor)
+          : undefined
+      }>
+      {slices.loadStatus !== 'error' ? (
+        <ViroImage
+          // Viro 3.0.3 load events carry success but no source ID. Remount only
+          // the texture node so an old native event retains its original scope.
+          key={`${scope.sessionId}:${scope.placementRevision}:${scope.requestId}`}
+          source={source}
+          width={SLICE_PANEL_WIDTH_METRES}
+          height={height}
+          resizeMode="ScaleToFit"
+          mipmap
+          onLoadEnd={(event) => controller.finishSliceLoad(scope, event.nativeEvent.success)}
+          onError={() => controller.finishSliceLoad(scope, false)}
+        />
+      ) : null}
+      <ViroText
+        text={`${slices.modality.toUpperCase()} · ${slices.orientation} · ${slices.index + 1}/${series.imageCount}\nR  ←  A at top  →  L`}
+        position={[0, -height / 2 - 0.055, 0.002]}
+        width={SLICE_PANEL_WIDTH_METRES / 0.05}
+        height={0.09 / 0.05}
+        scale={[0.05, 0.05, 0.05]}
+        style={{ fontSize: 20, color: '#e2e8f0', textAlign: 'center' }}
+      />
+    </ViroNode>
+  );
+}
+
 export default function MedicalScene({
   sceneNavigator,
 }: {
@@ -185,7 +262,13 @@ export default function MedicalScene({
         onPlaneRemoved={(id) =>
           controller.losePlane(context.sessionId, state.placementRevision, id)
         }>
-        <MedicalModels context={context} controller={controller} />
+        {state.mode === 'anatomy' ? (
+          <MedicalModels context={context} controller={controller} />
+        ) : state.mode === 'slices' ? (
+          <MedicalSlicePanel context={context} controller={controller} />
+        ) : (
+          <MedicalVolume context={context} controller={controller} />
+        )}
       </ViroARPlaneSelector>
     </ViroARScene>
   );

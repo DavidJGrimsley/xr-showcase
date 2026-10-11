@@ -106,6 +106,25 @@ export function MedicalInfoModal({
                   models together. Its controls become ready only after both models finish loading.
                 </Text>
                 <Text className="text-base leading-6 text-slate-200">
+                  Scan Slices shows real axial MRI and CT images on an upright panel. Drag the slice
+                  slider or use Previous and Next. Switching MRI and CT keeps the nearest physical
+                  slice position. Reset Slice returns to the middle; Reset Panel restores its size,
+                  rotation, and two-foot height. The panel and 3D Anatomy keep separate transforms.
+                </Text>
+                <Text className="text-base leading-6 text-slate-200">
+                  Images use radiological orientation: patient right is at image left, and anterior
+                  is at the top. Slice positions are millimetres in the scan RAS coordinate frame.
+                  The floating panel is a separate view and does not intersect or align with the
+                  meshes.
+                </Text>
+                <Text className="text-base leading-6 text-slate-200">
+                  3D Scan shows the CT or MRI volume, starting with an MRI cutaway. Walk around it
+                  to see the scan from different angles. Scan Controls opens presets, window, level,
+                  transparency, and six crop boundaries. Reset Crop reveals the whole scan; Reset
+                  Scan restores the selected scan’s appearance and cutaway. Fast quality uses fewer
+                  samples. All three views keep their own size, rotation, and height.
+                </Text>
+                <Text className="text-base leading-6 text-slate-200">
                   The skull and half-skull come from CT segmentation, and the brain from an MRI mask
                   exported in 3D Slicer. The models were simplified for mobile viewing while
                   preserving their shared coordinates. Both displays the half-skull and brain

@@ -141,7 +141,9 @@ test('skull is centred, grounded, opaque and exported without additional resourc
   assert.equal(gltf.images?.length || 0, 0);
   assert.ok(gltf.buffers.every((buffer) => !buffer.uri));
   const files = fs.readdirSync(path.join(__dirname, '../assets/medical'));
-  assert.ok(files.every((file) => /\.(glb|json)$/.test(file)));
+  assert.ok(
+    files.every((file) => ['slices', 'volumes'].includes(file) || /\.(glb|json)$/.test(file))
+  );
 });
 test('four named labels are calibrated on the actual exported surface', () => {
   assert.deepEqual(
@@ -336,9 +338,13 @@ test('the pair preserves one Slicer conversion frame, retains physical bounds an
 
 // Execute the actual scene JSX with native components represented as nodes.
 // This checks scene/controller wiring; it does not emulate native AR rendering.
-function renderScene(controller) {
+function renderScene(controller, { shaderAPI = true, failUniformUpdates = false } = {}) {
   const effects = [],
     timers = new Map();
+  const materials = [],
+    deletions = [],
+    uniforms = [],
+    frames = new Map();
   const element = (type, props, key) =>
     typeof type === 'function' ? type(props) : { type, props, key };
   function load(file) {
@@ -362,14 +368,36 @@ function renderScene(controller) {
           if (name === '@reactvision/react-viro')
             return new Proxy(
               {
-                ViroMaterials: { createMaterials() {} },
+                ViroMaterials: {
+                  createMaterials(value) {
+                    materials.push(value);
+                  },
+                  deleteMaterials(value) {
+                    deletions.push(value);
+                  },
+                  updateShaderUniform(...value) {
+                    if (failUniformUpdates) throw new Error('Bridge rejected uniform update');
+                    uniforms.push(value);
+                  },
+                },
                 ViroTrackingStateConstants: { TRACKING_NORMAL: 3 },
               },
               { get: (target, key) => target[key] || key }
             );
+          if (name === 'react-native')
+            return {
+              Image: { resolveAssetSource: (uri) => ({ uri }) },
+              NativeModules: shaderAPI ? { VRTMaterialManager: { updateShaderUniform() {} } } : {},
+              TurboModuleRegistry: {
+                get() {
+                  return null;
+                },
+              },
+            };
           const resolved = path.resolve(path.dirname(file), name);
-          if (name.endsWith('.glb')) return resolved;
-          if (name === './medical-asset-sources.native') return load(`${resolved}.ts`);
+          if (name.endsWith('.glb') || name.endsWith('.png')) return resolved;
+          if (name.endsWith('.native'))
+            return load(fs.existsSync(`${resolved}.ts`) ? `${resolved}.ts` : `${resolved}.tsx`);
           return require(
             resolved.endsWith('.json') || resolved.endsWith('.ts') ? resolved : `${resolved}.ts`
           );
@@ -380,6 +408,12 @@ function renderScene(controller) {
           return handle;
         },
         clearTimeout: (handle) => timers.delete(handle),
+        requestAnimationFrame(callback) {
+          const handle = Symbol('frame');
+          frames.set(handle, callback);
+          return handle;
+        },
+        cancelAnimationFrame: (handle) => frames.delete(handle),
       },
       { filename: file }
     );
@@ -405,7 +439,15 @@ function renderScene(controller) {
   }
   walk(tree);
   const cleanups = effects.map((effect) => effect()).filter(Boolean);
-  return { nodes, timers, cleanup: () => cleanups.forEach((cleanup) => cleanup()) };
+  return {
+    nodes,
+    timers,
+    materials,
+    deletions,
+    uniforms,
+    frames,
+    cleanup: () => cleanups.forEach((cleanup) => cleanup()),
+  };
 }
 
 function sceneController(modelId) {
@@ -499,4 +541,184 @@ test('only the full Skull scene exposes its calibrated labels and teardown clear
     ready.cleanup();
     assert.equal(loading.timers.size, 0);
   }
+});
+
+function sliceSceneController() {
+  const { parseMedicalSliceDataset } = require('../src/features/medical-viewer/medical-slices.ts');
+  const dataset = parseMedicalSliceDataset(require('../assets/medical/slices/metadata.json'));
+  const c = new MedicalController(undefined, dataset);
+  c.attach(1);
+  c.setTracking(1, true);
+  c.selectViewerMode(1, 'slices');
+  c.selectPlane(1, c.getSnapshot().placementRevision, 'table');
+  return c;
+}
+
+test('slice scene mounts one image, shares the plane, changes only its key and ignores stale native events', () => {
+  const c = sliceSceneController();
+  const first = renderScene(c);
+  const images = first.nodes.filter(({ type }) => type === 'ViroImage');
+  assert.equal(images.length, 1);
+  assert.equal(first.nodes.filter(({ type }) => type === 'ViroARPlaneSelector').length, 1);
+  assert.equal(first.nodes.filter(({ type }) => type === 'Viro3DObject').length, 0);
+  assert.equal(images[0].props.width, 0.55);
+  assert.equal(images[0].props.height, 0.55);
+  assert.equal(images[0].props.resizeMode, 'ScaleToFit');
+  assert.ok(images[0].props.source.endsWith('mri_axial_040.png'));
+  images[0].props.onLoadEnd({ nativeEvent: { success: true } });
+  const before = c.getSnapshot();
+  c.selectSlice(
+    {
+      sessionId: 1,
+      placementRevision: before.placementRevision,
+      requestId: before.slices.requestId,
+    },
+    60
+  );
+  const next = renderScene(c);
+  const nextImage = next.nodes.find(({ type }) => type === 'ViroImage');
+  assert.notEqual(nextImage.key, images[0].key);
+  assert.equal(c.getSnapshot().placementRevision, before.placementRevision);
+  assert.ok(nextImage.props.source.endsWith('mri_axial_060.png'));
+  images[0].props.onLoadEnd({ nativeEvent: { success: true } });
+  images[0].props.onError();
+  assert.equal(c.getSnapshot().slices.loadStatus, 'loading');
+  nextImage.props.onLoadEnd({ nativeEvent: { success: true } });
+  assert.equal(c.getSnapshot().slices.loadStatus, 'ready');
+  first.cleanup();
+  next.cleanup();
+  assert.equal(first.timers.size, 0);
+  assert.equal(next.timers.size, 0);
+});
+
+test('slice scene handles failed load events, deadline, retry and teardown', () => {
+  const c = sliceSceneController();
+  const loading = renderScene(c);
+  const [timer] = loading.timers.values();
+  assert.equal(timer.delay, 30000);
+  timer.callback();
+  const failed = renderScene(c);
+  assert.equal(failed.nodes.filter(({ type }) => type === 'ViroImage').length, 0);
+  c.retrySliceLoad(1);
+  const retry = renderScene(c);
+  const image = retry.nodes.find(({ type }) => type === 'ViroImage');
+  image.props.onLoadEnd({ nativeEvent: { success: false } });
+  assert.equal(c.getSnapshot().slices.loadStatus, 'error');
+  c.detach(1);
+  image.props.onLoadEnd({ nativeEvent: { success: true } });
+  assert.equal(c.getSnapshot().slices.loadStatus, 'idle');
+  for (const render of [loading, failed, retry]) {
+    render.cleanup();
+    assert.equal(render.timers.size, 0);
+  }
+});
+
+function volumeSceneController() {
+  const {
+    parseMedicalVolumeDataset,
+  } = require('../src/features/medical-viewer/medical-volumes.ts');
+  const c = new MedicalController(
+    undefined,
+    undefined,
+    parseMedicalVolumeDataset(require('../assets/medical/volumes/metadata.json'))
+  );
+  c.attach(1);
+  c.setTracking(1, true);
+  c.selectViewerMode(1, 'volume');
+  c.selectPlane(1, c.getSnapshot().placementRevision, 'table');
+  return c;
+}
+
+test('volume probes gate one proxy box, alpha textures and bounded material cleanup', () => {
+  const c = volumeSceneController();
+  const loading = renderScene(c);
+  const probes = loading.nodes.filter(({ type }) => type === 'ViroImage');
+  assert.equal(probes.length, 3);
+  assert.ok(
+    probes.every(
+      ({ props }) => props.opacity === 0 && props.mipmap === false && props.format === 'RGBA8'
+    )
+  );
+  assert.equal(loading.materials.filter((value) => value.medicalVolume).length, 0);
+  probes.forEach(({ props }) => props.onLoadEnd({ nativeEvent: { success: true } }));
+  assert.equal(c.getSnapshot().volume.loadStatus, 'binding');
+  const binding = renderScene(c);
+  const material = binding.materials.find((value) => value.medicalVolume)?.medicalVolume;
+  assert.equal(c.getSnapshot().volume.loadStatus, 'ready');
+  assert.equal(material.cullMode, 'Front');
+  assert.equal(material.writesToDepthBuffer, false);
+  const samplers = material.materialUniforms.filter(({ type }) => type === 'sampler2D');
+  assert.equal(samplers.length, 3);
+  assert.ok(
+    samplers.every(
+      ({ value }) =>
+        value.uri.endsWith('.png') && value.mipmap === false && value.format === 'RGBA8'
+    )
+  );
+  assert.ok(
+    material.materialUniforms.every(({ type }) =>
+      ['sampler2D', 'float', 'vec3', 'vec4'].includes(type)
+    )
+  );
+  const ready = renderScene(c);
+  const boxes = ready.nodes.filter(({ type }) => type === 'ViroBox');
+  assert.equal(boxes.length, 1);
+  // Viro iOS 3.0.3 drops custom textures in its materials clone constructor.
+  // shaderOverrides explicitly merges the three textures onto the geometry's material.
+  assert.equal(boxes[0].props.materials, undefined);
+  assert.deepEqual(Array.from(boxes[0].props.shaderOverrides), ['medicalVolume']);
+  assert.equal(ready.nodes.filter(({ type }) => type === 'ViroImage').length, 0);
+  assert.equal(ready.nodes.filter(({ type }) => type === 'ViroARPlaneSelector').length, 1);
+  assert.equal(Math.max(boxes[0].props.width, boxes[0].props.height, boxes[0].props.length), 0.55);
+  for (const callback of ready.frames.values()) callback();
+  assert.ok(ready.uniforms.length > 0);
+  assert.ok(ready.uniforms.every(([name]) => name === 'medicalVolume'));
+  c.selectViewerMode(1, 'anatomy');
+  boxes[0].props.onError();
+  probes[0].props.onError();
+  assert.equal(c.getSnapshot().volume.loadStatus, 'idle');
+  for (const rendered of [loading, binding, ready]) {
+    rendered.cleanup();
+    assert.equal(rendered.timers.size, 0);
+    assert.equal(rendered.frames.size, 0);
+  }
+  assert.ok(binding.deletions.some((names) => names.length === 1 && names[0] === 'medicalVolume'));
+});
+
+test('volume scene deadlines, retry keys, unsupported bridge and old probe events are scoped', () => {
+  const c = volumeSceneController();
+  const first = renderScene(c);
+  const old = first.nodes.filter(({ type }) => type === 'ViroImage');
+  const [deadline] = first.timers.values();
+  assert.equal(deadline.delay, 30000);
+  deadline.callback();
+  assert.equal(c.getSnapshot().volume.loadStatus, 'error');
+  c.retryVolumeLoad(1);
+  const retry = renderScene(c);
+  const probes = retry.nodes.filter(({ type }) => type === 'ViroImage');
+  assert.ok(probes.every((node, i) => node.key !== old[i].key));
+  old.forEach(({ props }) => props.onLoadEnd({ nativeEvent: { success: true } }));
+  assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
+  probes.forEach(({ props }) => props.onLoadEnd({ nativeEvent: { success: true } }));
+  const unsupported = renderScene(c, { shaderAPI: false });
+  assert.equal(c.getSnapshot().volume.loadStatus, 'unsupported');
+  assert.equal(unsupported.materials.filter((value) => value.medicalVolume).length, 0);
+  c.detach(1);
+  for (const rendered of [first, retry, unsupported]) rendered.cleanup();
+  assert.equal(first.timers.size, 0);
+});
+
+test('a rejected shader update becomes a recoverable volume error', () => {
+  const c = volumeSceneController();
+  const loading = renderScene(c);
+  loading.nodes
+    .filter(({ type }) => type === 'ViroImage')
+    .forEach(({ props }) => props.onLoadEnd({ nativeEvent: { success: true } }));
+  const binding = renderScene(c);
+  const ready = renderScene(c, { failUniformUpdates: true });
+  for (const update of ready.frames.values()) assert.doesNotThrow(update);
+  assert.equal(c.getSnapshot().volume.loadStatus, 'error');
+  c.retryVolumeLoad(1);
+  assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
+  for (const rendered of [loading, binding, ready]) rendered.cleanup();
 });

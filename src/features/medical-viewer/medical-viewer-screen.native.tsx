@@ -14,21 +14,42 @@ import { MedicalInfoButton, MedicalInfoModal } from './medical-info.native';
 import { MedicalModelPicker } from './medical-model-picker.native';
 import { MedicalTransformControls } from './medical-transform-controls.native';
 import { hasMedicalLabels } from './medical-models';
+import { MEDICAL_SLICE_DATASET } from './medical-slice-assets.native';
+import { MEDICAL_VOLUME_DATASET } from './medical-volume-assets.native';
+import {
+  MedicalVolumeControls,
+  MedicalVolumeSheet,
+  MedicalVolumeTransformControls,
+} from './medical-volume-controls.native';
+import {
+  MedicalPanelTransformControls,
+  MedicalSliceControls,
+} from './medical-slice-controls.native';
 
 const MedicalNavigator = lazy(() => import('./medical-navigator.native'));
 
 function MedicalStatus({ state }: { state: MedicalSnapshot }) {
   const status = medicalStatus(state);
+  const loading =
+    state.mode === 'volume'
+      ? ['loading', 'binding'].includes(state.volume.loadStatus)
+      : state.mode === 'slices'
+        ? state.slices.loadStatus === 'loading'
+        : state.loadStatus === 'loading';
+  const failed =
+    state.mode === 'volume'
+      ? ['error', 'missing', 'unsupported'].includes(state.volume.loadStatus)
+      : state.mode === 'slices'
+        ? ['error', 'missing'].includes(state.slices.loadStatus)
+        : state.loadStatus === 'error';
   if (!status) return null;
   return (
     <View className="flex-row items-center justify-center gap-2">
-      {state.loadStatus === 'loading' || state.tracking === 'initializing' ? (
-        <ActivityIndicator color="#93f5c5" />
-      ) : null}
+      {loading || state.tracking === 'initializing' ? <ActivityIndicator color="#93f5c5" /> : null}
       <Text
         accessibilityLiveRegion="polite"
         className="shrink text-center text-base"
-        style={{ color: state.loadStatus === 'error' ? '#fde68a' : '#e2e8f0' }}>
+        style={{ color: failed ? '#fde68a' : '#e2e8f0' }}>
         {status}
       </Text>
     </View>
@@ -83,6 +104,86 @@ function MedicalMainControls({
   );
 }
 
+function MedicalRepresentationControls({
+  context,
+  controller,
+  state,
+  stacked,
+  transformOpen,
+  onTransform,
+  onDone,
+  onRestart,
+}: {
+  context: ARActiveOverlayContext;
+  controller: MedicalController;
+  state: MedicalSnapshot;
+  stacked: boolean;
+  transformOpen: boolean;
+  onTransform: () => void;
+  onDone: () => void;
+  onRestart: () => void;
+}) {
+  if (state.mode === 'volume')
+    return transformOpen ? (
+      <MedicalVolumeTransformControls
+        controller={controller}
+        state={state}
+        sessionId={context.sessionId}
+        stacked={stacked}
+        onDone={onDone}
+      />
+    ) : (
+      <MedicalVolumeControls
+        controller={controller}
+        state={state}
+        sessionId={context.sessionId}
+        onTransform={onTransform}
+        onRestart={onRestart}
+      />
+    );
+  if (state.mode === 'slices')
+    return transformOpen ? (
+      <MedicalPanelTransformControls
+        controller={controller}
+        state={state}
+        sessionId={context.sessionId}
+        stacked={stacked}
+        onDone={onDone}
+      />
+    ) : (
+      <MedicalSliceControls
+        controller={controller}
+        state={state}
+        sessionId={context.sessionId}
+        stacked={stacked}
+        onTransform={onTransform}
+      />
+    );
+  return transformOpen ? (
+    <MedicalTransformControls
+      controller={controller}
+      state={state}
+      scope={{
+        sessionId: context.sessionId,
+        modelId: state.modelId,
+        placementRevision: state.placementRevision,
+        loadAttempt: state.loadAttempt,
+      }}
+      stacked={stacked}
+      onDone={onDone}
+    />
+  ) : (
+    <MedicalMainControls
+      context={context}
+      controller={controller}
+      state={state}
+      stacked={stacked}
+      onTransform={onTransform}
+      onRestart={onRestart}
+    />
+  );
+}
+
 function MedicalControls({
   context,
   controller,
@@ -108,44 +209,76 @@ function MedicalControls({
       className="gap-3 rounded-2xl p-4"
       style={{ backgroundColor: '#10191fe6' }}>
       <MedicalStatus state={state} />
-      {state.loadStatus === 'error' ? (
+      <View className="flex-row flex-wrap items-center justify-center gap-2">
+        <ARControl
+          label="3D Anatomy"
+          selected={state.mode === 'anatomy'}
+          testID="medical-mode-anatomy"
+          onPress={() => {
+            setTransformRevision(null);
+            controller.selectViewerMode(context.sessionId, 'anatomy');
+          }}
+        />
+        <ARControl
+          label="Scan Slices"
+          selected={state.mode === 'slices'}
+          testID="medical-mode-slices"
+          onPress={() => {
+            setTransformRevision(null);
+            controller.selectViewerMode(context.sessionId, 'slices');
+          }}
+        />
+        <ARControl
+          label="3D Scan"
+          selected={state.mode === 'volume'}
+          testID="medical-mode-volume"
+          onPress={() => {
+            setTransformRevision(null);
+            controller.selectViewerMode(context.sessionId, 'volume');
+          }}
+        />
+      </View>
+      {(state.mode === 'volume'
+        ? state.volume.loadStatus
+        : state.mode === 'anatomy'
+          ? state.loadStatus
+          : state.slices.loadStatus) === 'error' ? (
         <View className="items-center">
           <ARControl
             label="Retry"
             testID="medical-load-retry"
-            onPress={() => controller.retryLoad(context.sessionId)}
+            onPress={() =>
+              state.mode === 'volume'
+                ? controller.retryVolumeLoad(context.sessionId)
+                : state.mode === 'anatomy'
+                  ? controller.retryLoad(context.sessionId)
+                  : controller.retrySliceLoad(context.sessionId)
+            }
           />
         </View>
       ) : null}
-      {transformRevision === state.placementRevision && state.anchorId ? (
-        <MedicalTransformControls
-          controller={controller}
-          state={state}
-          scope={{
-            sessionId: context.sessionId,
-            modelId: state.modelId,
-            placementRevision: state.placementRevision,
-            loadAttempt: state.loadAttempt,
-          }}
-          stacked={stacked}
-          onDone={() => setTransformRevision(null)}
-        />
-      ) : (
-        <MedicalMainControls
-          context={context}
-          controller={controller}
-          state={state}
-          stacked={stacked}
-          onTransform={() => setTransformRevision(state.placementRevision)}
-          onRestart={restart}
-        />
-      )}
+      <MedicalRepresentationControls
+        context={context}
+        controller={controller}
+        state={state}
+        stacked={stacked}
+        transformOpen={transformRevision === state.placementRevision && !!state.anchorId}
+        onTransform={() => setTransformRevision(state.placementRevision)}
+        onDone={() => setTransformRevision(null)}
+        onRestart={restart}
+      />
+      <View className="items-center">
+        <ARControl label="Home" testID="medical-home" onPress={context.home} />
+      </View>
+      <MedicalVolumeSheet controller={controller} state={state} sessionId={context.sessionId} />
     </View>
   );
 }
 
 export default function MedicalViewerScreen() {
-  const [controller] = useState(() => new MedicalController());
+  const [controller] = useState(
+    () => new MedicalController(undefined, MEDICAL_SLICE_DATASET, MEDICAL_VOLUME_DATASET)
+  );
   const [infoOpen, setInfoOpen] = useState(false);
   return (
     <>
