@@ -19,6 +19,7 @@ export function MedicalInfoButton({ onPress }: { onPress: () => void }) {
       textColor={colors.primary}
       variant="text"
       iconOnly
+      compact
       icon={
         <Svg width={26} height={26} viewBox="0 0 26 26" accessible={false}>
           <Circle cx={13} cy={13} r={11} fill="none" stroke={colors.primary} strokeWidth={1.8} />

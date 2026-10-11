@@ -232,6 +232,31 @@ test('game AR status actions stay centered in a row and preserve Retry and Home 
   assert.deepEqual(calls, ['Home', 'Retry', 'Home']);
 });
 
+test('medical permission/retry actions keep compact primary actions and outlined Home without changing game defaults', () => {
+  const { GameStatusPanel } = load('ui/game-status-panel.tsx', {
+    './game-button': { GameButton: 'GameButton' },
+    './game-text': { GameText: 'GameText' },
+    './game-progress': { GameProgress: 'Progress' },
+  });
+  const props = {
+    title: 'AR needs another try',
+    message: 'Try again.',
+    actions: [
+      { label: 'Retry', onPress: () => {} },
+      { label: 'Home', onPress: () => {} },
+    ],
+  };
+  const medical = nodes(
+    GameStatusPanel({ ...props, compact: true, outlinedActions: ['Home'] })
+  ).filter((n) => n.type === 'GameButton');
+  assert.equal(medical[0].props.variant, 'filled');
+  assert.equal(medical[1].props.variant, 'outlined');
+  assert.equal(medical[1].props.textColor, colors.text);
+  assert.ok(medical.every((n) => n.props.compact));
+  const game = nodes(GameStatusPanel(props)).filter((n) => n.type === 'GameButton');
+  assert.ok(game.every((n) => !n.props.compact && n.props.variant === 'filled'));
+});
+
 test('web viewport sizing matches static markup through hydration, then follows real dimensions; native sizing is immediate', () => {
   for (const platform of ['ios', 'android', 'web']) {
     let hydrated = false;

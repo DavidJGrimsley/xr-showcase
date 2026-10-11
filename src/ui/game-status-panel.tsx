@@ -12,11 +12,24 @@ export function GameStatusPanel({
   loading,
   actions,
   selectableMessage = false,
-}: ARStatusPanelModel & { selectableMessage?: boolean }) {
+  compact = false,
+  outlinedActions = [],
+}: ARStatusPanelModel & {
+  selectableMessage?: boolean;
+  compact?: boolean;
+  outlinedActions?: readonly string[];
+}) {
   const { activeColors: colors } = useAppTheme();
   const { width, fontScale } = useGameWindowDimensions();
+  const fontSize = compact ? 15 : 16;
   return (
-    <View style={{ padding: 20, gap: 16, borderRadius: 16, backgroundColor: colors.surface }}>
+    <View
+      style={{
+        padding: compact ? 16 : 20,
+        gap: compact ? 12 : 16,
+        borderRadius: 16,
+        backgroundColor: colors.surface,
+      }}>
       {loading ? <GameProgress color={colors.primary} label={title} /> : null}
       <GameText color={colors.text} fontSize={22} bold accessibilityRole="header">
         {title}
@@ -36,7 +49,7 @@ export function GameStatusPanel({
       <View
         testID="game-status-actions"
         style={{
-          gap: 12,
+          gap: compact ? 4 : 12,
           flexDirection: 'row',
           flexWrap: 'wrap',
           alignItems: 'center',
@@ -47,11 +60,19 @@ export function GameStatusPanel({
             key={action.label}
             label={action.label}
             color={colors.primary}
-            textColor={colors.background}
+            textColor={outlinedActions.includes(action.label) ? colors.text : colors.background}
+            variant={outlinedActions.includes(action.label) ? 'outlined' : 'filled'}
+            compact={compact}
+            fontSize={fontSize}
             onPress={action.onPress}
             width={Math.max(
               48,
-              Math.min(Math.ceil(action.label.length * 16 * fontScale * 0.6) + 32, width - 80, 520)
+              Math.min(
+                Math.ceil(action.label.length * fontSize * fontScale * (compact ? 0.7 : 0.6)) +
+                  (compact ? 24 : 32),
+                width - 80,
+                520
+              )
             )}
           />
         ))}
