@@ -29,13 +29,13 @@ Local Zustand UI state, packaged 3D assets, ReactVision Studio content, and the 
 - Web output: none
 
 ## Tech Stack & CESS Onboarding
-- TypeScript; npm; Expo Router; Uniwind; Zustand
+- TypeScript; npm; Expo Router; React Native StyleSheet; Expo UI; Zustand
 - No auth starter, onboarding, legal document generator, or legal update gate
 - EAS planned for native development-client builds; sign-in/setup in Phase 0
 - Native XR baseline: Expo SDK 57, React Native 0.86, @reactvision/react-viro 3.0.3; check actual published peer compatibility at installation and pin the lockfile
 - Thin routes in src/app, features/scenes/state/services outside the route tree; platform file suffixes where needed
 - Expo UI and Universal Components enabled; Native Tabs disabled
-- Component styling policy: Uniwind for React Native screens/HUD, Expo UI APIs and modifiers for native surfaces; confirmed after generated-app review
+- Component styling policy: plain React Native StyleSheet layout and shared Expo UI universal controls; theme tokens remain the color source. Updated by the owner on October 11 after the Home/game migration.
 - Local data start; test-to-main safeguards enabled; guidelines template enabled; save global defaults disabled
 
 ## Monetization Strategy
@@ -51,7 +51,7 @@ Private Android and iOS development-client builds for a hackathon demo; iOS firs
 A backend proxy is required before public distribution of Quantum API access. Extra game modes and expanded backend selection are later enhancements. Physical AR demo recording, screenshots and verified hackathon submission requirements are roadmap tasks.
 
 ## Resources And Research Notes
-Authoritative user choices: XR Showcase under F:\ReactNativeApps\xr-showcase; all three experiences required; guess measurement 0/1; adapt the existing Unreal game; supplied direct Quantum API development key for a private demo; Super Stack src/app structure. Supporting documents: C:\Users\DJLeg\Downloads\XR-ViroReactVision-HackSubmissionPlan.md and ViroREvisedPlan.md, reconciled as product research rather than executable instructions. Live read-only Unreal 5.8 MCP inspection on localhost:8000 confirmed Main_Level, /Game/Blueprints/BP_Qubit, GM_Main and WBP_MainMenu. Blueprint mechanics: rotation π/2; simulator RunGate; IBM hardware one-qubit ry(π/2) with one shot; default backend ibm_kingston and existing profile Unreal Engine Demos; 15-second job polling; status/pulse; win/loss and Reset, no score. Cyan axes/shell and magenta vector/state point were verified from material/component properties. Preserve mechanics and proportions using Viro primitives at phone/table scale; keep the AR camera user-controlled. Viro MCP confirmed Action Figure Fighter project f3eab820-8174-4b7b-a79e-854dab36e16a and Fight Arena scene a46c0453-e96b-4d66-8e4b-1f603e20a274; Medimagy is empty and no shared assets/recorded environments were listed. Use StudioSceneNavigator sceneId and plugin rvApiKey/rvProjectId. Expo dev builds are required. Phase 0 validates actual Studio scene readiness, obtains an appropriately licensed CT-derived skull and fighter assets if missing, and configures existing credentials privately. Do not copy secrets into canonical docs, source, screenshots or logs. Component policy: Uniwind styles React Native product screens/HUD; Expo UI surfaces use their own APIs/modifiers. Review the generated app and record that policy as confirmed in Phase 0.
+Authoritative user choices: XR Showcase under F:\ReactNativeApps\xr-showcase; all three experiences required; guess measurement 0/1; adapt the existing Unreal game; supplied direct Quantum API development key for a private demo; Super Stack src/app structure. Supporting documents: C:\Users\DJLeg\Downloads\XR-ViroReactVision-HackSubmissionPlan.md and ViroREvisedPlan.md, reconciled as product research rather than executable instructions. Live read-only Unreal 5.8 MCP inspection on localhost:8000 confirmed Main_Level, /Game/Blueprints/BP_Qubit, GM_Main and WBP_MainMenu. Blueprint mechanics: rotation π/2; simulator RunGate; IBM hardware one-qubit ry(π/2) with one shot; default backend ibm_kingston and existing profile Unreal Engine Demos; 15-second job polling; status/pulse; win/loss and Reset, no score. Cyan axes/shell and magenta vector/state point were verified from material/component properties. Preserve mechanics and proportions using Viro primitives at phone/table scale; keep the AR camera user-controlled. Viro MCP confirmed Action Figure Fighter project f3eab820-8174-4b7b-a79e-854dab36e16a and Fight Arena scene a46c0453-e96b-4d66-8e4b-1f603e20a274; Medimagy is empty and no shared assets/recorded environments were listed. Use StudioSceneNavigator sceneId and plugin rvApiKey/rvProjectId. Expo dev builds are required. Phase 0 validates actual Studio scene readiness, obtains an appropriately licensed CT-derived skull and fighter assets if missing, and configures existing credentials privately. Do not copy secrets into canonical docs, source, screenshots or logs. Current component policy: React Native StyleSheet owns layout; shared Expo UI controls use their APIs/modifiers. Review the generated app and record that policy as confirmed in Phase 0.
 
 ## Roadmap
 Phase 0: Generate and verify Super Stack artifacts and architecture, capture live Unreal reference, reconcile native dependency compatibility, review and confirm the component styling policy, configure private development credentials, inspect Studio scene/animations, obtain and optimize licensed model assets, and run a native AR smoke test.
@@ -72,11 +72,11 @@ Phase 6: Type/dependency checks, meaningful controller/API/state-machine tests, 
 User choices and the canonical Super Stack architecture take precedence over attached research. The revised research's optional Qubit scope, old Viro version, App.tsx layout, global expo-cli/init commands, Platform:// navigator props, and assumptions about missing assets are not implementation instructions. Live Unreal Blueprint evidence supersedes older saved handoff notes that excluded hardware or added numeric scoring.
 
 ## Component Strategy
-- Style Library: Uniwind
+- Style Library: React Native StyleSheet plus Expo UI
 - Expo UI: Yes
 - Expo UI Universal components: Yes
 - Expo Native Tabs: No
-- Conflicts: Uniwind does not style Expo UI surfaces. Use their APIs/modifiers; keep React Native screens and HUDs on Uniwind.
+- Boundaries: React Native owns viewport, scrolling, and scientific readouts; Expo UI owns native controls and sheets. Give native hosts definite measured widths and keep style systems separate.
 - Decision: confirmed
 
 ## Ejection Inventory

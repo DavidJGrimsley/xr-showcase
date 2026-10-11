@@ -2,7 +2,7 @@ import { Host, Slider } from '@expo/ui';
 import { accessibilityLabel, accessibilityValue, frame } from '@expo/ui/swift-ui/modifiers';
 import { fillMaxWidth, height, semantics } from '@expo/ui/jetpack-compose/modifiers';
 import { Platform, Text, View } from 'react-native';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import {
   MAX_AR_HEIGHT,
   MAX_AR_SCALE,
@@ -10,7 +10,7 @@ import {
   MIN_AR_HEIGHT,
   MIN_AR_SCALE,
 } from './ar-transform';
-import { ARControl } from './ar-control.native';
+import { ARControl, type ARControlProps } from './ar-control.native';
 
 export function ARTransformSlider({
   label,
@@ -105,6 +105,7 @@ export function ARTransformControls({
   compact = false,
   fontFamily,
   seedColor,
+  controlComponent: Control = ARControl,
 }: {
   scale: number;
   yaw: number;
@@ -125,6 +126,7 @@ export function ARTransformControls({
   compact?: boolean;
   fontFamily?: string;
   seedColor?: string;
+  controlComponent?: ComponentType<ARControlProps>;
 }) {
   const sliderYaw = ((yaw % 360) + 360) % 360;
   return (
@@ -159,7 +161,7 @@ export function ARTransformControls({
       />
       {onPosition ? (
         (positionControl ?? (
-          <ARControl
+          <Control
             label="Position"
             fontFamily={fontFamily}
             seedColor={seedColor}
@@ -194,7 +196,7 @@ export function ARTransformControls({
             flexWrap: 'wrap',
           }}>
           {onReposition && (
-            <ARControl
+            <Control
               label="Reposition"
               disabled={repositionDisabled}
               testID={`${testIDPrefix}-reposition`}
@@ -204,7 +206,7 @@ export function ARTransformControls({
               }}
             />
           )}
-          <ARControl label="Done" testID={`${testIDPrefix}-transform-done`} onPress={onDone} />
+          <Control label="Done" testID={`${testIDPrefix}-transform-done`} onPress={onDone} />
         </View>
       )}
     </View>

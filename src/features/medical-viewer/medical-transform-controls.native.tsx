@@ -1,4 +1,5 @@
 import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
+import { MedicalControl, useMedicalColors } from './medical-ui';
 import {
   canManipulateMedical,
   type MedicalController,
@@ -19,8 +20,11 @@ export function MedicalTransformControls({
   stacked: boolean;
   onDone: () => void;
 }) {
+  const colors = useMedicalColors();
   return (
     <ARTransformControls
+      seedColor={colors.primary}
+      controlComponent={MedicalControl}
       testIDPrefix="medical"
       scale={state.scale}
       yaw={state.yaw}

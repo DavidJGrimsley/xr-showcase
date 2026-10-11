@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Host, Slider } from '@expo/ui';
 import { accessibilityLabel, accessibilityValue, frame } from '@expo/ui/swift-ui/modifiers';
 import { fillMaxWidth, height, semantics } from '@expo/ui/jetpack-compose/modifiers';
-import { Platform, Text, View } from 'react-native';
-import { ARControl } from '@/features/ar/ar-control.native';
+import { StyleSheet, Platform, Text, View } from 'react-native';
+import { MedicalControl as ARControl, useMedicalColors } from './medical-ui';
 import { ARTransformControls } from '@/features/ar/ar-transform-controls.native';
 import {
   canManipulateSlices,
@@ -25,6 +25,7 @@ export function MedicalSliceControls({
   stacked: boolean;
   onTransform: () => void;
 }) {
+  const colors = useMedicalColors();
   const [scheduler] = useState(
     () => new SliceSelectionScheduler(requestAnimationFrame, cancelAnimationFrame)
   );
@@ -44,8 +45,8 @@ export function MedicalSliceControls({
     flexWrap: 'wrap' as const,
   };
   return (
-    <View className="gap-3" testID="medical-slice-controls">
-      <View className="items-center justify-center gap-2" style={rowStyle}>
+    <View style={styles.group} testID="medical-slice-controls">
+      <View style={[styles.controlRow, rowStyle]}>
         {(['mri', 'ct'] as const).map((modality) => (
           <ARControl
             key={modality}
@@ -64,15 +65,15 @@ export function MedicalSliceControls({
         <>
           <Text
             selectable
-            className="text-center text-base text-slate-200"
-            style={{ fontVariant: ['tabular-nums'] }}>
+
+            style={[styles.centeredBody, { fontVariant: ['tabular-nums'] }]}>
             Slice {slices.index + 1} / {series.imageCount} ·{' '}
             {series.slices[slices.index].positionMm.toFixed(1)} mm (RAS S)
           </Text>
           <Host
             matchContents={{ vertical: true }}
             colorScheme="dark"
-            seedColor="#93f5c5"
+            seedColor={colors.primary}
             style={{ minHeight: 48, width: '100%' }}>
             <Slider
               testID="medical-slice-slider"
@@ -101,7 +102,7 @@ export function MedicalSliceControls({
               }
             />
           </Host>
-          <View className="items-center justify-center gap-2" style={rowStyle}>
+          <View style={[styles.controlRow, rowStyle]}>
             <ARControl
               label="Previous"
               disabled={slices.index === 0}
@@ -131,7 +132,7 @@ export function MedicalSliceControls({
           </View>
         </>
       ) : null}
-      <View className="items-center justify-center gap-2" style={rowStyle}>
+      <View style={[styles.controlRow, rowStyle]}>
         <ARControl
           label="Transform"
           disabled={!canManipulateSlices(state)}
@@ -145,7 +146,7 @@ export function MedicalSliceControls({
           onPress={() => controller.resetPanel(sessionId)}
         />
       </View>
-      <Text className="text-center text-sm text-slate-300">
+      <Text style={styles.centeredCaption}>
         Axial view · Patient right at image left · Anterior at top
       </Text>
     </View>
@@ -165,6 +166,7 @@ export function MedicalPanelTransformControls({
   stacked: boolean;
   onDone: () => void;
 }) {
+  const colors = useMedicalColors();
   const scope = {
     sessionId,
     placementRevision: state.placementRevision,
@@ -172,6 +174,8 @@ export function MedicalPanelTransformControls({
   };
   return (
     <ARTransformControls
+      seedColor={colors.primary}
+      controlComponent={ARControl}
       testIDPrefix="medical-panel"
       scale={state.slices.scale}
       yaw={state.slices.yaw}
@@ -189,3 +193,24 @@ export function MedicalPanelTransformControls({
     />
   );
 }
+
+const styles = StyleSheet.create({
+  group: {
+    gap: 12,
+  },
+  controlRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  centeredBody: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#e2e8f0',
+  },
+  centeredCaption: {
+    textAlign: 'center',
+    fontSize: 14,
+    color: '#cbd5e1',
+  },
+});

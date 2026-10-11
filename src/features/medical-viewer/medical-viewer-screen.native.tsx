@@ -1,5 +1,7 @@
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Platform, Text, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, Platform, useWindowDimensions, View } from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
+import { GameProgress } from '@/ui/game-progress';
 import { Stack } from 'expo-router/stack';
 import ARSessionBoundary from '@/features/ar/ar-session-boundary';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
@@ -9,7 +11,7 @@ import {
   medicalStatus,
   type MedicalSnapshot,
 } from './medical-controller';
-import { ARControl } from '@/features/ar/ar-control.native';
+import { MedicalControl as ARControl, MedicalWidthProvider, useMedicalColors } from './medical-ui';
 import { MedicalInfoButton, MedicalInfoModal } from './medical-info.native';
 import { MedicalModelPicker } from './medical-model-picker.native';
 import { MedicalTransformControls } from './medical-transform-controls.native';
@@ -29,6 +31,7 @@ import {
 const MedicalNavigator = lazy(() => import('./medical-navigator.native'));
 
 function MedicalStatus({ state }: { state: MedicalSnapshot }) {
+  const colors = useMedicalColors();
   const status = medicalStatus(state);
   const loading =
     state.mode === 'volume'
@@ -44,12 +47,13 @@ function MedicalStatus({ state }: { state: MedicalSnapshot }) {
         : state.loadStatus === 'error';
   if (!status) return null;
   return (
-    <View className="flex-row items-center justify-center gap-2">
-      {loading || state.tracking === 'initializing' ? <ActivityIndicator color="#93f5c5" /> : null}
+    <View style={styles.statusRow}>
+      {loading || state.tracking === 'initializing' ? (
+        <GameProgress color={colors.primary} label={status} />
+      ) : null}
       <Text
         accessibilityLiveRegion="polite"
-        className="shrink text-center text-base"
-        style={{ color: failed ? '#fde68a' : '#e2e8f0' }}>
+        style={[styles.status, { color: failed ? '#fde68a' : '#e2e8f0' }]}>
         {status}
       </Text>
     </View>
@@ -77,7 +81,7 @@ function MedicalMainControls({
   };
   return (
     <>
-      <View className="items-center justify-center gap-2" style={rowStyle}>
+      <View style={[styles.controlRow, rowStyle]}>
         <MedicalModelPicker
           selectedValue={state.modelId}
           onValueChange={(model) => controller.selectModel(context.sessionId, model)}
@@ -89,7 +93,7 @@ function MedicalMainControls({
           onPress={onTransform}
         />
       </View>
-      <View className="items-center justify-center gap-2" style={rowStyle}>
+      <View style={[styles.controlRow, rowStyle]}>
         <ARControl
           label="Labels"
           selected={state.labelsVisible}
@@ -184,7 +188,7 @@ function MedicalRepresentationControls({
   );
 }
 
-function MedicalControls({
+export function MedicalControls({
   context,
   controller,
 }: {
@@ -192,10 +196,14 @@ function MedicalControls({
   controller: MedicalController;
 }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const colors = useMedicalColors();
   const { width, fontScale } = useWindowDimensions();
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const [transformRevision, setTransformRevision] = useState<number | null>(null);
-  const availableWidth = measuredWidth ? measuredWidth - 32 : Math.min(width, 720) - 72;
+  const availableWidth = Math.max(
+    1,
+    measuredWidth ? measuredWidth - 32 : Math.min(width - 40, 560) - 32
+  );
   const stacked = fontScale > 1.3 || availableWidth < 290;
   const restart = () => {
     if (controller.getSessionId() !== context.sessionId) return;
@@ -203,75 +211,76 @@ function MedicalControls({
     context.restartAR();
   };
   return (
-    <View
-      testID="medical-controls"
-      onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}
-      className="gap-3 rounded-2xl p-4"
-      style={{ backgroundColor: '#10191fe6' }}>
-      <MedicalStatus state={state} />
-      <View className="flex-row flex-wrap items-center justify-center gap-2">
-        <ARControl
-          label="3D Anatomy"
-          selected={state.mode === 'anatomy'}
-          testID="medical-mode-anatomy"
-          onPress={() => {
-            setTransformRevision(null);
-            controller.selectViewerMode(context.sessionId, 'anatomy');
-          }}
-        />
-        <ARControl
-          label="Scan Slices"
-          selected={state.mode === 'slices'}
-          testID="medical-mode-slices"
-          onPress={() => {
-            setTransformRevision(null);
-            controller.selectViewerMode(context.sessionId, 'slices');
-          }}
-        />
-        <ARControl
-          label="3D Scan"
-          selected={state.mode === 'volume'}
-          testID="medical-mode-volume"
-          onPress={() => {
-            setTransformRevision(null);
-            controller.selectViewerMode(context.sessionId, 'volume');
-          }}
-        />
-      </View>
-      {(state.mode === 'volume'
-        ? state.volume.loadStatus
-        : state.mode === 'anatomy'
-          ? state.loadStatus
-          : state.slices.loadStatus) === 'error' ? (
-        <View className="items-center">
+    <MedicalWidthProvider width={availableWidth}>
+      <View
+        testID="medical-controls"
+        onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}
+        style={[styles.panel, { backgroundColor: colors.surface }]}>
+        <MedicalStatus state={state} />
+        <View style={styles.modeActions}>
           <ARControl
-            label="Retry"
-            testID="medical-load-retry"
-            onPress={() =>
-              state.mode === 'volume'
-                ? controller.retryVolumeLoad(context.sessionId)
-                : state.mode === 'anatomy'
-                  ? controller.retryLoad(context.sessionId)
-                  : controller.retrySliceLoad(context.sessionId)
-            }
+            label="3D Anatomy"
+            selected={state.mode === 'anatomy'}
+            testID="medical-mode-anatomy"
+            onPress={() => {
+              setTransformRevision(null);
+              controller.selectViewerMode(context.sessionId, 'anatomy');
+            }}
+          />
+          <ARControl
+            label="Scan Slices"
+            selected={state.mode === 'slices'}
+            testID="medical-mode-slices"
+            onPress={() => {
+              setTransformRevision(null);
+              controller.selectViewerMode(context.sessionId, 'slices');
+            }}
+          />
+          <ARControl
+            label="3D Scan"
+            selected={state.mode === 'volume'}
+            testID="medical-mode-volume"
+            onPress={() => {
+              setTransformRevision(null);
+              controller.selectViewerMode(context.sessionId, 'volume');
+            }}
           />
         </View>
-      ) : null}
-      <MedicalRepresentationControls
-        context={context}
-        controller={controller}
-        state={state}
-        stacked={stacked}
-        transformOpen={transformRevision === state.placementRevision && !!state.anchorId}
-        onTransform={() => setTransformRevision(state.placementRevision)}
-        onDone={() => setTransformRevision(null)}
-        onRestart={restart}
-      />
-      <View className="items-center">
-        <ARControl label="Home" testID="medical-home" onPress={context.home} />
+        {(state.mode === 'volume'
+          ? state.volume.loadStatus
+          : state.mode === 'anatomy'
+            ? state.loadStatus
+            : state.slices.loadStatus) === 'error' ? (
+          <View style={styles.centered}>
+            <ARControl
+              label="Retry"
+              testID="medical-load-retry"
+              onPress={() =>
+                state.mode === 'volume'
+                  ? controller.retryVolumeLoad(context.sessionId)
+                  : state.mode === 'anatomy'
+                    ? controller.retryLoad(context.sessionId)
+                    : controller.retrySliceLoad(context.sessionId)
+              }
+            />
+          </View>
+        ) : null}
+        <MedicalRepresentationControls
+          context={context}
+          controller={controller}
+          state={state}
+          stacked={stacked}
+          transformOpen={transformRevision === state.placementRevision && !!state.anchorId}
+          onTransform={() => setTransformRevision(state.placementRevision)}
+          onDone={() => setTransformRevision(null)}
+          onRestart={restart}
+        />
+        <View style={styles.centered}>
+          <ARControl label="Home" testID="medical-home" onPress={context.home} />
+        </View>
+        <MedicalVolumeSheet controller={controller} state={state} sessionId={context.sessionId} />
       </View>
-      <MedicalVolumeSheet controller={controller} state={state} sessionId={context.sessionId} />
-    </View>
+    </MedicalWidthProvider>
   );
 }
 
@@ -313,3 +322,40 @@ export default function MedicalViewerScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  status: {
+    flexShrink: 1,
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  controlRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  panel: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+    gap: 12,
+    borderRadius: 16,
+    padding: 16,
+  },
+  modeActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  centered: {
+    alignItems: 'center',
+  },
+});

@@ -4,6 +4,7 @@ import { Platform, useWindowDimensions, View } from 'react-native';
 
 export interface GameButtonProps {
   label: string;
+  accessibilityLabel?: string;
   onPress: () => void;
   color: string;
   textColor: string;
@@ -22,6 +23,7 @@ export interface GameButtonProps {
 /** One native button API for the home screen and both games. */
 export function GameButton({
   label,
+  accessibilityLabel = label,
   onPress,
   color,
   textColor,
@@ -54,7 +56,7 @@ export function GameButton({
     <View
       accessible={nativeAccessibility}
       accessibilityRole={nativeAccessibility ? 'button' : undefined}
-      accessibilityLabel={nativeAccessibility ? label : undefined}
+      accessibilityLabel={nativeAccessibility ? accessibilityLabel : undefined}
       accessibilityHint={nativeAccessibility ? hint : undefined}
       accessibilityState={
         nativeAccessibility

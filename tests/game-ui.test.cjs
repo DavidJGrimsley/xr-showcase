@@ -44,6 +44,9 @@ function load(file, overrides = {}, expose = '') {
       useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
     },
     '@/theme/provider': { useAppTheme: () => ({ activeColors: colors }) },
+    './use-game-window-dimensions': {
+      useGameWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
+    },
     'react-native-safe-area-context': {
       useSafeAreaInsets: () => ({ top: 0, bottom: 20, left: 0, right: 0 }),
     },

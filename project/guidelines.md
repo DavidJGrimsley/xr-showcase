@@ -6,7 +6,7 @@ Read project/info.md, project/todo.md, project/style.md and this file before cha
 ## Architecture
 Use TypeScript, npm, Expo Router and src/app. Keep route files thin and put product screens, scenes, controllers and services in src/features and src/services. Use platform file suffixes when native implementations differ. No end-user authentication, onboarding, separate backend or web release is planned.
 
-Uniwind styles React Native product screens and HUDs. Expo UI controls use their own APIs/modifiers. Use Zustand for shared app state; keep per-round/scene state local unless it needs to cross screens.
+React Native StyleSheet owns screen and HUD layout. Shared Expo UI universal controls use their supported APIs/modifiers and the app theme; use platform-specific controls only when the universal API lacks a needed capability. Uniwind and Tailwind have been removed. Use Zustand for shared app state; keep per-round/scene state local unless it needs to cross screens.
 
 ## Native AR
 iOS is the first target; Android follows. Use EAS development clients from Windows and physical iPhone AR testing. Expo Go and browser previews are not evidence that native AR works. Only one AR session may own the camera. Handle denied permissions, unsupported devices, backgrounding and route teardown. Keep the AR camera under user control.
