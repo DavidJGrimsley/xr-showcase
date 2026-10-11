@@ -1,5 +1,6 @@
 import { Host, Picker } from '@expo/ui';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
 import { ARENA_FONTS, useArenaColors } from './arena-ui';
 import type { MainAudioSource } from './arena-audio-policy';
 
@@ -12,19 +13,26 @@ export default function ArenaAudioPicker({
 }) {
   const colors = useArenaColors();
   return (
-    <View style={{ maxWidth: 520, gap: 8, alignItems: 'center' }}>
-      <Text style={{ color: colors.text, fontFamily: ARENA_FONTS.button }}>Main audio</Text>
-      <Host
-        matchContents
-        colorScheme="dark"
-        seedColor={colors.primary}
-        style={{ minWidth: 170, minHeight: 44 }}>
-        <Picker selectedValue={value} onValueChange={onChange} testID="arena-main-audio">
-          <Picker.Item label="Host phone" value="host" />
-          <Picker.Item label="Guest phone" value="guest" />
-          <Picker.Item label="Both phones" value="both" />
-        </Picker>
-      </Host>
+    <View
+      testID="arena-audio-panel"
+      style={{ width: '100%', maxWidth: 520, gap: 8, alignItems: 'center' }}>
+      <Text style={{ color: colors.text, fontFamily: ARENA_FONTS.button, textAlign: 'center' }}>
+        Main audio
+      </Text>
+      <View style={{ width: 170, maxWidth: '100%', minHeight: 44 }}>
+        <Host
+          matchContents={{ vertical: true }}
+          ignoreSafeArea="all"
+          colorScheme="dark"
+          seedColor={colors.primary}
+          style={{ width: 170, minHeight: 44 }}>
+          <Picker selectedValue={value} onValueChange={onChange} testID="arena-main-audio">
+            <Picker.Item label="Host phone" value="host" />
+            <Picker.Item label="Guest phone" value="guest" />
+            <Picker.Item label="Both phones" value="both" />
+          </Picker>
+        </Host>
+      </View>
       <Text
         style={{
           color: colors.text,

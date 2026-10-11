@@ -1,3 +1,5 @@
+import { parseArenaInvite } from './arena-invite.ts';
+import { ARENA_PROTOCOL } from './arena-protocol-version.ts';
 import {
   ARENA_CLIPS,
   ARENA_RULES,
@@ -14,9 +16,13 @@ import {
 } from './arena-audio-policy.ts';
 import { validArenaTransform, type ArenaTransform } from './arena-transform.ts';
 
-// Audio ownership and cue completion must agree on both phones.
-export const ARENA_PROTOCOL = 11;
+export { ARENA_PROTOCOL } from './arena-protocol-version.ts';
 export type ArenaMode = 'solo' | 'host' | 'guest';
+export type ArenaSpace = 'same-space' | 'remote';
+export interface MovementStamp {
+  seq: number;
+  time: number;
+}
 export type MatchLength = 1 | 3 | 5;
 export type MatchPhase =
   | 'lobby'
@@ -39,6 +45,9 @@ export interface ArenaCommand {
   kind: CombatCommand;
 }
 export interface PeerInput {
+  sentAt: number;
+  space: ArenaSpace;
+  movement: MovementStamp;
   protocol: number;
   clientId: string;
   session: string;
@@ -60,7 +69,10 @@ export interface PeerInput {
   announcementDone: string | null;
   leaving: boolean;
 }
-export interface ArenaPacket {
+interface ArenaPacketBase {
+  echoSentAt: number | null;
+  movementAck: MovementStamp;
+  simulationTime: number;
   mainAudioSource: MainAudioSource;
   announcement: ArenaAnnouncement | null;
   audioAvailable: boolean;
@@ -80,13 +92,22 @@ export interface ArenaPacket {
   ack: number;
   hostCapable: boolean;
   hostReady: boolean;
-  placement: ArenaPlacement | null;
-  arenaTransform: ArenaTransform;
   orientationPaused: boolean;
 }
+export type ArenaPacket = ArenaPacketBase &
+  (
+    | { space: 'same-space'; placement: ArenaPlacement | null; arenaTransform: ArenaTransform }
+    | { space: 'remote'; placement?: never; arenaTransform?: never }
+  );
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const integer = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
+const validStamp = (value: unknown) =>
+  object(value) &&
+  integer(value.seq) &&
+  typeof value.time === 'number' &&
+  Number.isFinite(value.time) &&
+  value.time >= 0;
 const vector = (value: unknown) =>
   Array.isArray(value) &&
   value.length === 3 &&
@@ -98,6 +119,11 @@ export function validInput(value: unknown): value is PeerInput {
   if (
     !object(value) ||
     value.protocol !== ARENA_PROTOCOL ||
+    !['same-space', 'remote'].includes(value.space as string) ||
+    !validStamp(value.movement) ||
+    typeof value.sentAt !== 'number' ||
+    !Number.isFinite(value.sentAt) ||
+    value.sentAt < 0 ||
     typeof value.clientId !== 'string' ||
     value.clientId.length > 100 ||
     typeof value.session !== 'string'
@@ -143,6 +169,15 @@ export function validPacket(value: unknown): value is ArenaPacket {
   if (
     !object(value) ||
     value.protocol !== ARENA_PROTOCOL ||
+    !['same-space', 'remote'].includes(value.space as string) ||
+    !validStamp(value.movementAck) ||
+    (value.echoSentAt !== null &&
+      (typeof value.echoSentAt !== 'number' ||
+        !Number.isFinite(value.echoSentAt) ||
+        value.echoSentAt < 0)) ||
+    typeof value.simulationTime !== 'number' ||
+    !Number.isFinite(value.simulationTime) ||
+    value.simulationTime < 0 ||
     typeof value.session !== 'string' ||
     !object(value.round) ||
     !object(value.transforms) ||
@@ -172,7 +207,7 @@ export function validPacket(value: unknown): value is ArenaPacket {
     typeof value.hostCapable !== 'boolean' ||
     typeof value.hostReady !== 'boolean' ||
     typeof value.orientationPaused !== 'boolean' ||
-    !validArenaTransform(value.arenaTransform) ||
+    (value.space === 'same-space' && !validArenaTransform(value.arenaTransform)) ||
     !integer(value.round.roundId) ||
     !Number.isFinite(value.round.arenaYaw)
   )
@@ -184,7 +219,9 @@ export function validPacket(value: unknown): value is ArenaPacket {
     value.round.impactPauseRemaining > 0.1
   )
     return false;
-  if (value.placement !== null && !validPlacement(value.placement)) return false;
+  if (value.space === 'remote' && ('placement' in value || 'arenaTransform' in value)) return false;
+  if (value.space === 'same-space' && value.placement !== null && !validPlacement(value.placement))
+    return false;
   if (
     value.knockout !== null &&
     (!object(value.knockout) ||
@@ -314,15 +351,7 @@ export function validPacket(value: unknown): value is ArenaPacket {
 export function joinLink(code: string) {
   return 'xr-showcase://arena-fighter?join=' + encodeURIComponent(code) + '&v=' + ARENA_PROTOCOL;
 }
+/** Legacy code-only parser; new UI retains the space in parseArenaInvite. */
 export function parseJoinLink(value: string): string | null {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'xr-showcase:' &&
-      url.hostname === 'arena-fighter' &&
-      url.searchParams.get('v') === String(ARENA_PROTOCOL)
-      ? url.searchParams.get('join')
-      : null;
-  } catch {
-    return null;
-  }
+  return parseArenaInvite(value)?.code ?? null;
 }

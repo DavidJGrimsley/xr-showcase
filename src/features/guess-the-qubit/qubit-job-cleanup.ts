@@ -1,4 +1,5 @@
 import type { QuantumClock, QuantumJob, QuantumRuntime } from '../../services/quantum-api';
+import { qubitFailure } from './qubit-errors.ts';
 
 export const QUBIT_PENDING_JOBS_KEY = 'xr-showcase.qubit.pending-jobs.v1';
 export interface QubitJobStorage {
@@ -40,7 +41,7 @@ export class QubitJobCleanup implements QubitCleanup {
       })
       .catch(() => {
         this.loadPromise = undefined;
-        throw new Error('Job cleanup could not load.');
+        throw Object.assign(new Error('Job cleanup could not load.'), { code: 'cleanup_storage' });
       });
     return this.loadPromise;
   }
@@ -51,7 +52,7 @@ export class QubitJobCleanup implements QubitCleanup {
       .then(() => this.storage.setItem(QUBIT_PENDING_JOBS_KEY, ids));
     this.writes = next;
     return next.catch(() => {
-      throw new Error('Job cleanup could not save.');
+      throw Object.assign(new Error('Job cleanup could not save.'), { code: 'cleanup_storage' });
     });
   }
   async track(jobId: string) {
@@ -68,24 +69,25 @@ export class QubitJobCleanup implements QubitCleanup {
     const existing = this.cancellations.get(job.jobId);
     if (existing) return existing;
     const cancellation = (async () => {
-      if (this.clock.now() < this.retryAt) throw new Error('Cancellation pending.');
+      if (this.clock.now() < this.retryAt)
+        throw Object.assign(new Error('Cancellation pending.'), {
+          code: 'rate_limit',
+          retryAt: this.retryAt,
+        });
       // Still attempt the bounded network cancellation if local storage fails.
       const tracking = this.track(job.jobId).catch(() => {});
       let result: QuantumJob;
       try {
         result = await api.cancel(job.jobId);
       } catch (error) {
-        const data =
-          error && typeof error === 'object'
-            ? (error as { status?: number; retryAt?: number })
-            : {};
+        const data = qubitFailure(error);
         if (data.status === 404) {
           await tracking;
           await this.settle(job.jobId);
           return;
         }
-        if (Number.isFinite(data.retryAt)) this.retryAt = Math.max(this.retryAt, data.retryAt!);
-        throw new Error('Cancellation pending.');
+        this.retryAt = Math.max(this.retryAt, data.retryAt);
+        throw Object.assign(new Error('Cancellation pending.'), data);
       }
       if (result.jobId !== job.jobId) throw new Error('Cancellation was not confirmed.');
       if (['succeeded', 'failed', 'cancelled'].includes(result.status)) {
@@ -101,7 +103,14 @@ export class QubitJobCleanup implements QubitCleanup {
     const results = await Promise.allSettled(
       [...this.ids].map((jobId) => this.cancel(api, { jobId, status: 'queued' }))
     );
-    if (results.some((result) => result.status === 'rejected') || this.ids.size)
-      throw Object.assign(new Error('Job cleanup pending.'), { retryAt: this.retryAt });
+    const rejection = results.find((result) => result.status === 'rejected');
+    if (rejection || this.ids.size)
+      throw Object.assign(
+        new Error('Job cleanup pending.'),
+        rejection?.status === 'rejected'
+          ? qubitFailure(rejection.reason)
+          : { code: 'cleanup_pending', status: 0 },
+        { retryAt: this.retryAt }
+      );
   }
 }

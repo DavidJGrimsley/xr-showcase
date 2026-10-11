@@ -1,4 +1,6 @@
-import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
+import { GameProgress } from '@/ui/game-progress';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ARENA_FONTS, ArenaButton, ArenaMenuBackground, useArenaColors } from './arena-ui';
 
@@ -20,7 +22,7 @@ export default function ArenaLoadingScreen({
     <ArenaMenuBackground>
       <ScrollView
         testID="arena-loading-screen"
-        style={{ marginTop: topSpace, marginBottom: Math.max(10, insets.bottom) }}
+        style={{ flex: 1, marginTop: topSpace, marginBottom: Math.max(10, insets.bottom) }}
         contentContainerStyle={{
           flexGrow: 1,
           alignItems: 'center',
@@ -41,12 +43,7 @@ export default function ArenaLoadingScreen({
             backgroundColor: '#09090be8',
             alignItems: 'center',
           }}>
-          <ActivityIndicator
-            size="large"
-            color={colors.primary}
-            accessibilityLabel={title}
-            style={{ width: 56, height: 56 }}
-          />
+          <GameProgress large color={colors.primary} label={title} />
           <Text
             accessibilityRole="header"
             style={{

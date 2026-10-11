@@ -1,7 +1,8 @@
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { createContext, useContext, type ReactNode } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { arSessionCoordinator } from '@/features/ar/ar-session-controller';
 import { ARENA_FONTS, ArenaButton } from './arena-ui';

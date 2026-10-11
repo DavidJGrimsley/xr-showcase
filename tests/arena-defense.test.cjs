@@ -262,13 +262,13 @@ for (const id of ['blue', 'red'])
     });
 test('hop clamps along its captured path at a circular boundary and rejects under one cm', () => {
   const h = harness();
-  h.c.fighters.blue.x = -0.12;
+  h.c.fighters.blue.x = -(ARENA_RULES.boundary - 0.02);
   h.c.fighters.blue.z = 0.04;
   h.c.fighters.red.x = 0.0;
   h.c.fighters.red.z = 0.04;
   assert.ok(h.cmd('jump-back'));
   h.step(0.4);
-  near(Math.hypot(h.c.getTransform('blue').x, h.c.getTransform('blue').z), 0.14);
+  near(Math.hypot(h.c.getTransform('blue').x, h.c.getTransform('blue').z), ARENA_RULES.boundary);
   h.step(0.25);
   assert.equal(h.cmd('jump-back'), false);
 });
@@ -361,7 +361,9 @@ test('boundary-constrained spirals remain in the circle and never push a station
   for (let i = 0; i < 600; i++) {
     h.step(1 / 60);
     for (const id of ['blue', 'red'])
-      assert.ok(Math.hypot(h.c.getTransform(id).x, h.c.getTransform(id).z) <= 0.14 + 1e-7);
+      assert.ok(
+        Math.hypot(h.c.getTransform(id).x, h.c.getTransform(id).z) <= ARENA_RULES.boundary + 1e-7
+      );
     assert.ok(distance(h.c.getTransform('blue'), h.c.getTransform('red')) >= 0.055 - 1e-7);
   }
   near(h.c.getTransform('red').x, red.x);

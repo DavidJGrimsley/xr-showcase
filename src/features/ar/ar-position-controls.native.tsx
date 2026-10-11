@@ -31,7 +31,7 @@ export function ARPositionControls({
   return (
     <View testID={`${testIDPrefix}-position-controls`} style={{ gap: compact ? 6 : 12 }}>
       {(['x', 'y', 'z'] as const).map((axis) => (
-        <View key={axis} className="gap-1">
+        <View key={axis} style={{ gap: 4 }}>
           <ARTransformSlider
             compact={compact}
             fontFamily={fontFamily}
@@ -47,7 +47,9 @@ export function ARPositionControls({
             onValueChange={(value) => onChange(axis, value)}
           />
           {!compact && (
-            <Text className="text-sm text-slate-300">{(position[axis] * 100).toFixed(0)} cm</Text>
+            <Text style={{ fontSize: 14, color: '#cbd5e1' }}>
+              {(position[axis] * 100).toFixed(0)} cm
+            </Text>
           )}
         </View>
       ))}

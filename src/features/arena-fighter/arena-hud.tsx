@@ -4,16 +4,18 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ComponentProps 
 import {
   findNodeHandle,
   ScrollView,
+  StyleSheet,
   Text,
   View,
   useWindowDimensions,
   type GestureResponderEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GameCopy } from '@/ui/game-text';
 import type { ARActiveOverlayContext } from '@/features/ar/ar-session-types';
 import { ARENA_RULES, type Movement } from './arena-controller';
 import { ArenaMatch } from './arena-match';
-import type { ArenaRoom } from './arena-room.native';
+import type { ArenaRoomSession } from './arena-room-session';
 import ArenaRoomPanel, { ArenaGuidance } from './arena-room-panel.native';
 import { updateHeldTouches } from './arena-touch-input';
 import { combatControlLayout } from './arena-control-layout';
@@ -38,13 +40,17 @@ function Health({
 }) {
   const colors = useArenaColors();
   return (
-    <View className="flex-1 gap-1 rounded-lg px-2 py-1" style={{ backgroundColor: colors.surface }}>
+    <View style={[styles.health, { backgroundColor: colors.surface }]}>
       <Text
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.5}
-        className="font-semibold"
-        style={{ color: colors.text, fontFamily: ARENA_FONTS.body, fontSize: 11 }}>
+        style={{
+          color: colors.text,
+          fontFamily: ARENA_FONTS.body,
+          fontSize: 11,
+          fontWeight: '600',
+        }}>
         {label} ·{' '}
         <Text style={{ fontFamily: ARENA_FONTS.mono }}>
           {health}/{ARENA_RULES.health}
@@ -54,11 +60,13 @@ function Health({
         accessibilityRole="progressbar"
         accessibilityLabel={`${label} health`}
         accessibilityValue={{ min: 0, max: ARENA_RULES.health, now: health }}
-        className="h-1 overflow-hidden rounded-full"
-        style={{ backgroundColor: colors.background }}>
+        style={[styles.healthTrack, { backgroundColor: colors.background }]}>
         <View
-          className="h-full"
-          style={{ width: `${(health / ARENA_RULES.health) * 100}%`, backgroundColor: color }}
+          style={{
+            height: '100%',
+            width: `${(health / ARENA_RULES.health) * 100}%`,
+            backgroundColor: color,
+          }}
         />
       </View>
       <View
@@ -181,8 +189,8 @@ function CombatButton({
       onTouchEnd={release}
       onTouchCancel={release}
       testID={`arena-${movement ?? attack ?? defense}`}
-      className="items-center justify-center rounded-xl border px-2"
       style={{
+        ...styles.combatButton,
         position: 'absolute',
         ...layout.rectangles[movement ?? attack ?? defense!],
         backgroundColor: (press.held && !disabled) || accepted ? colors.primary : colors.surface,
@@ -251,7 +259,7 @@ export default function ArenaHUD({
 }: {
   controller: ArenaMatch;
   controls: ARActiveOverlayContext;
-  room?: ArenaRoom;
+  room?: ArenaRoomSession;
 }) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const roomState = useSyncExternalStore(
@@ -317,8 +325,9 @@ export default function ArenaHUD({
   return (
     <View
       pointerEvents="box-none"
-      className="absolute inset-0 justify-between"
+      testID="arena-hud"
       style={{
+        ...styles.overlay,
         paddingTop: Math.max(10, insets.top),
         paddingBottom: Math.max(10, insets.bottom),
         paddingLeft: Math.max(12, insets.left),
@@ -410,6 +419,7 @@ export default function ArenaHUD({
           (ui.controls && !ui.ready && snapshot.stage !== 'finished' && !!ui.guidance) ||
           (snapshot.orientationPaused && !snapshot.localOrientationPaused)) && (
           <ArenaGuidance
+            width={availableWidth}
             message={ui.guidance || 'Move slowly. Scan a table or floor.'}
             loading={
               !ui.error &&
@@ -436,16 +446,20 @@ export default function ArenaHUD({
           {standardActions &&
             ui.ready &&
             (snapshot.localReady ? (
-              <Text
+              <GameCopy
                 accessibilityLiveRegion="polite"
                 style={{ color: colors.text, fontFamily: ARENA_FONTS.body, padding: 14 }}>
                 Waiting for opponent…
-              </Text>
+              </GameCopy>
             ) : (
               <ArenaButton label="Ready" primary onPress={controller.ready} />
             ))}
           {standardActions && ui.setup && snapshot.canTransform && (
-            <ArenaButton label="Swap Sides" secondary onPress={controller.swapSides} />
+            <ArenaButton
+              label={snapshot.space === 'remote' ? 'Rotate view 180°' : 'Swap Sides'}
+              secondary
+              onPress={controller.swapSides}
+            />
           )}
           {ui.transform && (
             <ArenaButton
@@ -458,11 +472,11 @@ export default function ArenaHUD({
           {standardActions &&
             snapshot.stage === 'finished' &&
             (snapshot.localReady ? (
-              <Text
+              <GameCopy
                 accessibilityLiveRegion="polite"
                 style={{ color: colors.text, fontFamily: ARENA_FONTS.body, padding: 14 }}>
                 Waiting for opponent…
-              </Text>
+              </GameCopy>
             ) : snapshot.canRematch ? (
               <ArenaButton label="Rematch" primary onPress={controller.rematch} />
             ) : null)}
@@ -543,3 +557,16 @@ export default function ArenaHUD({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  health: { flex: 1, gap: 4, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  healthTrack: { height: 4, overflow: 'hidden', borderRadius: 9999 },
+  combatButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+  },
+  overlay: { position: 'absolute', inset: 0, justifyContent: 'space-between' },
+});

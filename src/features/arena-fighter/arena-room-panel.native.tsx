@@ -1,7 +1,10 @@
-import { ActivityIndicator, Text, View } from 'react-native';
+import { Share, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GameText } from '@/ui/game-text';
+import { GameProgress } from '@/ui/game-progress';
 import QRCode from 'react-native-qrcode-svg';
 import type { MatchSnapshot } from './arena-match';
-import { joinLink } from './arena-protocol';
+import { inviteLink } from './arena-invite';
 import { arenaInviteLayout } from './arena-hud-state';
 import { ARENA_FONTS, ArenaButton, useArenaColors } from './arena-ui';
 
@@ -17,6 +20,7 @@ export default function ArenaRoomPanel({
   const colors = useArenaColors();
   const layout = arenaInviteLayout(width, height);
   if (!match.displayCode) return null;
+  const link = inviteLink({ code: match.displayCode.replace(/\s/g, ''), space: match.space });
   return (
     <View
       testID="arena-invite"
@@ -34,7 +38,7 @@ export default function ArenaRoomPanel({
       <View
         testID="arena-invite-qr"
         style={{ padding: 12, backgroundColor: 'white', borderRadius: 8, flexShrink: 0 }}>
-        <QRCode value={joinLink(match.displayCode.replace(/\s/g, ''))} size={layout.qrSize} />
+        <QRCode value={link} size={layout.qrSize} />
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
         <Text
@@ -61,8 +65,19 @@ export default function ArenaRoomPanel({
           accessibilityLiveRegion="polite"
           maxFontSizeMultiplier={1.35}
           style={{ color: colors.secondary, fontFamily: ARENA_FONTS.body, fontSize: 14 }}>
-          {match.rounds === 1 ? '1 round' : 'Best of ' + match.rounds} · Waiting for opponent…
+          {match.rounds === 1 ? '1 round' : 'Best of ' + match.rounds} ·{' '}
+          {match.peerConnected ? 'Opponent connected' : 'Waiting for opponent…'}
         </Text>
+        {match.space === 'remote' && (
+          <ArenaButton
+            label="Share invite"
+            onPress={() => {
+              void Share.share({ message: 'Join my long-distance arena match: ' + link }).catch(
+                () => {}
+              );
+            }}
+          />
+        )}
       </View>
     </View>
   );
@@ -73,16 +88,29 @@ export function ArenaGuidance({
   loading = false,
   onRetry,
   onRestart,
+  width,
 }: {
   message: string;
   loading?: boolean;
   onRetry?: () => void;
   onRestart?: () => void;
+  width?: number;
 }) {
   const colors = useArenaColors();
+  const viewport = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const panelWidth = Math.max(
+    1,
+    Math.min(420, width ?? viewport.width - Math.max(12, insets.left) - Math.max(12, insets.right))
+  );
   return (
-    <View testID="arena-guidance" style={{ maxWidth: 420, alignSelf: 'flex-end', gap: 8 }}>
+    <View
+      testID="arena-guidance"
+      pointerEvents="box-none"
+      style={{ width: panelWidth, maxWidth: '100%', alignSelf: 'flex-end', gap: 8 }}>
       <View
+        pointerEvents="none"
+        testID="arena-scan-guidance"
         style={{
           backgroundColor: colors.surface,
           borderRadius: 28,
@@ -92,17 +120,21 @@ export function ArenaGuidance({
           alignItems: 'center',
           gap: 10,
         }}>
-        {loading && (
-          <ActivityIndicator color={colors.primary} accessibilityLabel="Preparing arena" />
-        )}
-        <Text
+        {loading && <GameProgress color={colors.primary} label="Preparing arena" />}
+        <GameText
           accessibilityLiveRegion="polite"
-          style={{ color: colors.text, fontFamily: ARENA_FONTS.body, fontSize: 15, flexShrink: 1 }}>
+          color={colors.text}
+          fontFamily={ARENA_FONTS.body}
+          fontSize={15}
+          // A definite width breaks the native text/Yoga intrinsic-size loop.
+          style={{ width: Math.max(1, panelWidth - 36 - (loading ? 34 : 0)) }}>
           {message}
-        </Text>
+        </GameText>
       </View>
       {(onRetry || onRestart) && (
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+        <View
+          pointerEvents="box-none"
+          style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
           {onRetry && <ArenaButton label="Retry connection" onPress={onRetry} />}
           {onRestart && <ArenaButton label="Restart AR" danger onPress={onRestart} />}
         </View>

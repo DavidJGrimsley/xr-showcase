@@ -19,10 +19,35 @@ export function useQubitConfiguration() {
       backend: process.env.EXPO_PUBLIC_QUANTUM_BACKEND,
       profile: process.env.EXPO_PUBLIC_QUANTUM_IBM_PROFILE,
     });
-    return credentials ? new QuantumApiClient(fetch, credentials) : null;
+    if (__DEV__)
+      console.info('[Qubit config]', {
+        diagnosticsVersion: 1,
+        configured: !!credentials,
+        apiKeyConfigured: !!process.env.EXPO_PUBLIC_QUANTUM_API_KEY?.trim(),
+        serviceHost: credentials ? new URL(credentials.baseUrl!).host : null,
+        backend: credentials?.backend ?? null,
+        profileConfigured: !!credentials?.profile,
+      });
+    return credentials
+      ? new QuantumApiClient(
+          fetch,
+          credentials,
+          undefined,
+          __DEV__ ? (event) => console.info('[Qubit API]', event) : undefined
+        )
+      : null;
   });
   const [controller] = useState(() => new QubitRoundController(() => client, undefined, cleanup));
-  const [connection] = useState(() => new QubitConnectionController(client, controller, cleanup));
+  const [connection] = useState(
+    () =>
+      new QubitConnectionController(
+        client,
+        controller,
+        cleanup,
+        undefined,
+        __DEV__ ? (event) => console.info('[Qubit connection]', event) : undefined
+      )
+  );
   const state = useSyncExternalStore(connection.subscribe, connection.getSnapshot);
   useFocusEffect(
     useCallback(() => {
@@ -42,5 +67,5 @@ export function useQubitConfiguration() {
       };
     }, [connection, controller])
   );
-  return { controller, ...state };
+  return { controller, retryConnection: connection.retry, ...state };
 }

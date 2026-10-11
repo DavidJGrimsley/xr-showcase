@@ -420,6 +420,8 @@ for (const swapped of [false, true]) {
     h.tick(0.7);
     h.controller.command('jump-back', 'red');
     h.tick(1.25);
+    h.controller.command('jump-back', 'red');
+    h.tick(0.65);
     h.controller.setMovement('advance', false);
 
     const target = h.controller.getTransform('red').x;

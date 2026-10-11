@@ -1,8 +1,9 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
-import { Link } from 'expo-router';
 import type { ComponentProps, ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Linking, ScrollView, View, useWindowDimensions } from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
+import { GameButton } from '@/ui/game-button';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ARENA_FONTS, ARENA_TITLE, useArenaColors } from './arena-ui';
 
@@ -84,22 +85,25 @@ function Control({
 export default function ArenaMenuPage({ page }: { page: 'how' | 'info' }) {
   const colors = useArenaColors();
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, width } = useWindowDimensions();
+  const contentWidth = Math.max(
+    1,
+    Math.min(660, width - Math.max(20, insets.left) - Math.max(20, insets.right))
+  );
   return (
     <ScrollView
       testID={`arena-${page}-page`}
-      style={{ marginTop: Math.max(76, insets.top + 44 + 24 * fontScale) }}
+      style={{ flex: 1, marginTop: Math.max(76, insets.top + 44 + 24 * fontScale) }}
       contentContainerStyle={{
-        flexGrow: 1,
         alignItems: 'center',
-        paddingBottom: Math.max(20, insets.bottom),
         paddingLeft: Math.max(20, insets.left),
         paddingRight: Math.max(20, insets.right),
+        paddingBottom: Math.max(20, insets.bottom),
       }}>
       <View
         style={{
-          width: '100%',
-          maxWidth: 660,
+          width: contentWidth,
+          alignSelf: 'center',
           gap: 22,
           padding: 20,
           borderRadius: 16,
@@ -123,8 +127,9 @@ export default function ArenaMenuPage({ page }: { page: 'how' | 'info' }) {
                 view. Tap Ready when you’re set.
               </Body>
               <Body>
-                For two players, the host shares a QR code or invite code. Your friend joins and
-                scans the same space. Both players tap Ready before each round.
+                For two players, choose Same table to align both phones with one arena, or Long
+                distance to place your own arena wherever you are. The host shares a link, QR or
+                invite code. Both players tap Ready before each round. Internet is required.
               </Body>
             </Section>
             <Section title="Move, defend, strike">
@@ -166,7 +171,7 @@ export default function ArenaMenuPage({ page }: { page: 'how' | 'info' }) {
             <Section title={ARENA_TITLE}>
               <Body>
                 A pocket-sized robot boxing arena, brought into your room with augmented reality.
-                Play against the computer or face a friend in the same space.
+                Play against the computer or face a friend nearby or from far away.
               </Body>
             </Section>
             <Section title="How the arena stays in place">
@@ -176,36 +181,31 @@ export default function ArenaMenuPage({ page }: { page: 'how' | 'info' }) {
                 settle into place.
               </Body>
               <Body>
-                In two-player mode, both phones align to the same surroundings so you see the same
-                arena. The host shares an invite, and both players scan the space before the fight
-                begins. Keep both phones connected and use the same app version.
+                Same table aligns both phones with the same surroundings. Long distance lets each
+                player place and adjust their own arena while sharing the same fight. The host
+                shares an invite in either mode. Keep both phones connected and use the same app
+                version.
               </Body>
             </Section>
             <Section title="Made possible by">
               {ARENA_CREDITS.map((credit) => (
-                <Link key={credit.role} href={credit.href} asChild>
-                  <Pressable
-                    accessibilityRole="link"
-                    accessibilityLabel={`${credit.role}: ${credit.name}`}
-                    style={({ pressed }) => ({
-                      minHeight: 48,
-                      gap: 4,
-                      paddingVertical: 8,
-                      opacity: pressed ? 0.6 : 1,
-                    })}>
-                    <Text style={{ color: '#cbd5e1', fontFamily: ARENA_FONTS.body, fontSize: 14 }}>
-                      {credit.role}
-                    </Text>
-                    <Text
-                      style={{
-                        color: colors.primary,
-                        fontFamily: ARENA_FONTS.button,
-                        fontSize: 17,
-                      }}>
-                      {credit.name} ↗
-                    </Text>
-                  </Pressable>
-                </Link>
+                <View key={credit.role} style={{ gap: 4 }}>
+                  <Text style={{ color: '#cbd5e1', fontFamily: ARENA_FONTS.body, fontSize: 14 }}>
+                    {credit.role}
+                  </Text>
+                  <GameButton
+                    label={`${credit.name} ↗`}
+                    width={contentWidth - 40}
+                    hint={`Visit ${credit.role}: ${credit.name}`}
+                    variant="text"
+                    color={colors.primary}
+                    textColor={colors.primary}
+                    fontFamily={ARENA_FONTS.button}
+                    onPress={() => {
+                      void Linking.openURL(credit.href).catch(() => {});
+                    }}
+                  />
+                </View>
               ))}
             </Section>
           </>

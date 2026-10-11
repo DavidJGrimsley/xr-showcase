@@ -18,7 +18,7 @@ Record device model, iOS version, build identifier/date, Expo SDK, Viro version,
 | --- | --- | --- |
 | Enter Arena Fighter / Home / other routes | Arena is landscape; other routes return to portrait. Home stays reachable at both landscape orientations. Camera ownership is released. | User reports Arena landscape entry works. Other navigation/camera checks pending. |
 | Permission denied / Retry | Existing shared permission and recoverable error UI remains usable. | Pending |
-| Plane placement | Tap a horizontal surface at least 60 cm across. Arena base rests on it, longest dimension is about 60 cm, fighters are about 12 cm tall and feet meet the arena floor. | Pending |
+| Plane placement | Tap a detected horizontal surface at least 60 cm across. At default placement scale, the arena's longest horizontal dimension is now about 75 cm; its height is unchanged, fighters are about 12 cm tall and feet meet the arena floor. | Pending |
 | Setup | Swap sides and Rotate 90° work before Ready. Ready waits for all three models and 0.5 s of normal tracking. | Pending |
 | Blue and red visuals | Skinning stays intact; colors, lenses and LEDs match the repaired source models. No giant triangles or missing mesh parts. | Pending |
 | Clip tester, both fighters | Before Ready, open Test fighter clips. Validate IdleAggro, WalkForward/Backward, Combo_PunchL/R, Combo_UppercutL/R, HitFront, Defeat, DefeatedLoop, Victory and VictoryUppercut; all 32 names, including the guard and JumpBack clips, are selectable. Close the tester before Ready. | Pending |

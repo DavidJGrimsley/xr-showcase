@@ -9,12 +9,13 @@ export function arenaHUDState(match: MatchSnapshot, room: RoomView | null = null
     match.connected &&
     !!match.displayCode &&
     !match.peerConnected &&
-    room?.status === 'ready';
+    room?.status === 'ready' &&
+    (match.space !== 'remote' || match.placed);
   const placed =
     match.placed &&
     match.assetsLoaded === 3 &&
     !match.error &&
-    (!room || (room.status === 'ready' && !!match.sharedPlacement));
+    (!room || (room.status === 'ready' && (match.space === 'remote' || !!match.sharedPlacement)));
   const setup =
     match.stage === 'lobby' &&
     placed &&
@@ -23,7 +24,9 @@ export function arenaHUDState(match: MatchSnapshot, room: RoomView | null = null
   const betweenRounds = match.stage === 'intermission' && match.mode !== 'solo';
   const controls = setup || betweenRounds || match.stage === 'finished' || match.stage === 'paused';
   const transform =
-    (match.mode === 'host' && match.stage === 'lobby' && match.placed) ||
+    ((match.mode === 'host' || match.space === 'remote') &&
+      match.stage === 'lobby' &&
+      match.placed) ||
     ((setup || match.stage === 'finished') && match.canTransform);
   const ready = (setup || betweenRounds) && (match.canReady || match.localReady);
   const error = !!match.error || room?.status === 'error' || !!match.networkMessage;

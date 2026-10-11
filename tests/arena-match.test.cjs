@@ -1104,10 +1104,10 @@ test('reward expiry and damage-reset progress are authoritative and synchronized
   assert.equal(p.guest.snapshot().blue.punchProgress, 0);
 });
 
-test('protocol 11 rejects invalid progress, availability, flight, pause and impact fields', () => {
+test('protocol 12 rejects invalid progress, availability, flight, pause and impact fields', () => {
   const p = pair();
   const packet = p.host.match.packet();
-  assert.equal(packet.protocol, 11);
+  assert.equal(packet.protocol, 12);
   assert.equal(validPacket({ ...packet, protocol: 3 }), false);
   assert.equal(validPacket({ ...packet, protocol: 9 }), false);
   assert.equal(validInput({ ...p.guest.match.input(), protocol: 9 }), false);

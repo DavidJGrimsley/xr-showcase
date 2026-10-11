@@ -1,7 +1,8 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFonts } from 'expo-font';
 import { useMemo, type ReactNode } from 'react';
-import { ImageBackground, Pressable, Text, View } from 'react-native';
+import { ImageBackground, Text, View } from 'react-native';
+import { GameButton } from '@/ui/game-button';
 import Svg, { Defs, LinearGradient, Rect, Stop, SvgXml } from 'react-native-svg';
 import { useAppTheme } from '@/theme/provider';
 import lettering from '../../../assets/arena/ui/lettering.json';
@@ -36,6 +37,7 @@ export function ArenaButton({
   icon,
   iconOnly = false,
   testID,
+  selected,
 }: {
   label: string;
   onPress: () => void;
@@ -46,54 +48,40 @@ export function ArenaButton({
   icon?: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
   iconOnly?: boolean;
   testID?: string;
+  selected?: boolean;
 }) {
   const colors = useArenaColors();
   const filled = primary || secondary || danger;
   return (
-    <Pressable
+    <GameButton
+      label={label}
       testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
       disabled={disabled}
+      selected={selected}
       onPress={onPress}
-      style={({ pressed }) => ({
-        minHeight: 48,
-        minWidth: 48,
-        paddingHorizontal: iconOnly ? 12 : 16,
-        paddingVertical: 10,
-        borderRadius: 12,
-        backgroundColor: danger
+      fontFamily={ARENA_FONTS.button}
+      color={
+        danger
           ? '#d99a9a'
           : secondary
             ? colors.secondary
             : primary
               ? colors.primary
-              : colors.surface,
-        opacity: disabled ? 0.45 : pressed ? 0.7 : 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-      })}>
-      {icon && (
-        <MaterialCommunityIcons
-          name={icon}
-          size={iconOnly ? 24 : 20}
-          color={filled ? colors.background : colors.text}
-        />
-      )}
-      {!iconOnly && (
-        <Text
-          style={{
-            color: filled ? colors.background : colors.text,
-            fontFamily: ARENA_FONTS.button,
-            fontSize: 16,
-          }}>
-          {label}
-        </Text>
-      )}
-    </Pressable>
+              : colors.surface
+      }
+      textColor={filled ? colors.background : colors.text}
+      iconOnly={iconOnly}
+      icon={
+        icon ? (
+          <MaterialCommunityIcons
+            name={icon}
+            size={iconOnly ? 24 : 20}
+            color={filled ? colors.background : colors.text}
+            style={{ width: iconOnly ? 24 : 20, height: iconOnly ? 24 : 20 }}
+          />
+        ) : undefined
+      }
+    />
   );
 }
 

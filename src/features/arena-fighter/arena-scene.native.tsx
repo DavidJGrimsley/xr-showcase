@@ -47,10 +47,10 @@ const scale: [number, number, number] = Array(3).fill(ARENA_LAYOUT.fighterScale)
   number,
   number,
 ];
-const arenaScale: [number, number, number] = Array(3).fill(ARENA_LAYOUT.arenaScale) as [
-  number,
-  number,
-  number,
+const arenaScale: [number, number, number] = [
+  ARENA_LAYOUT.arenaScale * ARENA_LAYOUT.arenaHorizontalScale,
+  ARENA_LAYOUT.arenaScale,
+  ARENA_LAYOUT.arenaScale * ARENA_LAYOUT.arenaHorizontalScale,
 ];
 const fighterY = ARENA_LAYOUT.floorHeight + ARENA_LAYOUT.footOffset;
 const loopingClips = new Set([
@@ -255,6 +255,7 @@ export default function ArenaScene({
         }}
       />
       {(!room ||
+        room?.space === 'remote' ||
         (controller.mode === 'host' && (!controller.placement || roomState?.repositioning))) && (
         <ViroNode visible={!room || (roomState?.status === 'placing' && !roomState.preview)}>
           <ViroARPlaneSelector
@@ -289,7 +290,7 @@ export default function ArenaScene({
           </ViroARPlaneSelector>
         </ViroNode>
       )}
-      {room && sharedSource && (
+      {room?.space === 'same-space' && sharedSource && (
         <ViroSharedFrame
           source={sharedSource}
           arSceneNavigator={sceneNavigator}
@@ -380,7 +381,7 @@ function ImpactFeedback({ binding }: { binding: ArenaSceneBinding }) {
           for (const { fighter, impact } of controller.takeImpacts()) {
             const key = `${fighter}:${impact.kind === 'uppercut' ? 'uppercut' : impact.hand === 'L' ? 'left' : 'right'}`;
             const slot = playsImpact(
-              state.mode === 'solo' ? 'solo' : 'same-space',
+              state.mode === 'solo' ? 'solo' : state.space,
               state.localFighter,
               fighter
             )

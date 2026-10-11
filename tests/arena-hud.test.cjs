@@ -67,6 +67,7 @@ function renderHUD(patch = {}, fontScale = 1, matchState = {}, options = {}) {
     useSyncExternalStore: (_, get) => get(),
   };
   const native = {
+    StyleSheet: { create: (styles) => styles },
     View: 'View',
     Text: 'Text',
     ScrollView: 'ScrollView',
@@ -98,6 +99,7 @@ function renderHUD(patch = {}, fontScale = 1, matchState = {}, options = {}) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name === 'react-native') return native;
+      if (name === '@/ui/game-text') return { GameCopy: 'Text' };
       if (name === 'react-native-safe-area-context')
         return { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) };
       if (name === '@/theme/provider') return { useAppTheme: () => ({ activeColors: colors }) };
@@ -488,7 +490,7 @@ test('the cue is absolute and non-interactive while progress reserves the same a
       h.texts.find((props) => props.accessibilityLabel?.startsWith('Uppercut progress'));
     assert.equal(row(idle).style.height, row(ready).style.height);
     assert.equal(row(ready).pointerEvents, 'none');
-    const anchor = (h) => h.views.find((props) => props.className?.includes('absolute inset-0'));
+    const anchor = (h) => h.views.find((props) => props.testID === 'arena-hud');
     assert.equal(JSON.stringify(anchor(idle).style), JSON.stringify(anchor(ready).style));
     assert.equal(anchor(ready).style.paddingBottom, 10);
     assert.equal(anchor(ready).style.paddingLeft, 12);

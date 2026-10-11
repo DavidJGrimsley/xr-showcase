@@ -462,7 +462,7 @@ for (const { file } of manifest.files) {
   });
 }
 
-test('arena retains its baked axis conversion and 200,000 triangles; placement puts its base at zero and normalizes to 60cm', () => {
+test('arena retains its baked axis conversion and 200,000 triangles; its footprint grows to 75cm with the same height and base at zero', () => {
   const { json } = readGLB('Fight_Arena.glb');
   const root = json.nodes[json.scenes[0].nodes[0]];
   const meshNode = json.nodes[root.children[0]];
@@ -470,11 +470,29 @@ test('arena retains its baked axis conversion and 200,000 triangles; placement p
   assert.ok(Math.abs(meshNode.rotation[0] - Math.SQRT1_2) < 1e-6);
   assert.ok(Math.abs(meshNode.rotation[3] - Math.SQRT1_2) < 1e-6);
   const position = json.accessors[json.meshes[meshNode.mesh].primitives[0].attributes.POSITION];
-  assert.ok(Math.abs((position.max[1] - position.min[1]) * ARENA_LAYOUT.arenaScale - 0.6) < 1e-6);
+  // The baked quarter-turn maps source Y to world Z, and source Z to world Y.
+  const horizontalScale = ARENA_LAYOUT.arenaScale * ARENA_LAYOUT.arenaHorizontalScale;
+  assert.ok(Math.abs((position.max[1] - position.min[1]) * horizontalScale - 0.75) < 1e-6);
+  const originalScale = 0.6 / 1.1391900181770325;
+  assert.ok(
+    Math.abs(
+      (position.max[0] - position.min[0]) * horizontalScale -
+        (position.max[0] - position.min[0]) * originalScale * 1.25
+    ) < 1e-6
+  );
+  assert.ok(
+    Math.abs(
+      (position.max[2] - position.min[2]) * ARENA_LAYOUT.arenaScale -
+        (position.max[2] - position.min[2]) * originalScale
+    ) < 1e-6
+  );
   assert.ok(
     Math.abs(root.translation[1] * ARENA_LAYOUT.arenaScale + ARENA_LAYOUT.arenaBaseOffset) < 1e-6
   );
   assert.ok(Math.abs(ARENA_LAYOUT.fighterScale * 1.59857170559 - 0.12) < 1e-6);
   assert.ok(ARENA_LAYOUT.floorHeight > 0 && ARENA_LAYOUT.floorHeight < 0.15);
+  assert.ok(
+    Math.abs(ARENA_LAYOUT.floorHeight - (0.14273847315734003 - 0.027) * originalScale) < 1e-6
+  );
   assert.equal(json.accessors[json.meshes[0].primitives[0].indices].count / 3, 200000);
 });

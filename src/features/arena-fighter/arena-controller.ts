@@ -10,11 +10,11 @@ import {
   facing,
   forward,
   inCone,
-  boundPoint,
   pathTravel,
   type ArenaPoint,
 } from './arena-combat-motion.ts';
 import { sweptContact, type ContactPose } from './arena-contact.ts';
+import { arenaMovement } from './arena-movement.ts';
 
 // The manifest is the exported motion contract, not executable Unreal montage logic.
 interface AnimationManifest {
@@ -48,6 +48,8 @@ export type FighterMode =
   | 'hop'
   | 'settling';
 export type ArenaAsset = 'arena' | 'blue' | 'red';
+
+const arenaHorizontalScale = 1.25;
 
 export const ARENA_RULES = {
   health: 100,
@@ -92,7 +94,7 @@ export const ARENA_RULES = {
   settleDuration: 0.1,
   cpuGuardReaction: 0.15,
   spawn: 0.095,
-  boundary: 0.14,
+  boundary: 0.14 * arenaHorizontalScale,
   separation: 0.055,
   reach: 0.085,
   speed: 0.08,
@@ -112,8 +114,10 @@ export const ARENA_RULES = {
 
 // GLB already rotates its source mesh into Y-up. Its base is at Y=-0.14273847.
 // Largest horizontal span=1.139190018m; the fighting floor is at about Y=-0.027.
+// Enlarge only X/Z from 60cm to 75cm, preserving the base and fighting floor height.
 export const ARENA_LAYOUT = {
   arenaScale: 0.6 / 1.1391900181770325,
+  arenaHorizontalScale,
   arenaBaseOffset: 0.14273847315734003 * (0.6 / 1.1391900181770325),
   floorHeight: (0.14273847315734003 - 0.027) * (0.6 / 1.1391900181770325),
   fighterScale: 0.12 / 1.59857170559,
@@ -1118,9 +1122,6 @@ export class ArenaController {
     const blue = this.fighters.blue;
     const red = this.fighters.red;
     const before = { blue: { x: blue.x, z: blue.z }, red: { x: red.x, z: red.z } };
-    const d = distance(blue, red);
-    const u = { x: (blue.x - red.x) / d, z: (blue.z - red.z) / d };
-    const tangent = { x: -u.z, z: u.x };
     const velocity = {} as Record<FighterId, { advance: number; strafe: number }>;
     for (const id of ids) {
       const f = this.fighters[id];
@@ -1141,53 +1142,8 @@ export class ArenaController {
         Math.max(1, Math.hypot(advance, strafe));
       velocity[id] = { advance: advance * scale, strafe: strafe * scale };
     }
-    const vb = velocity.blue,
-      vr = velocity.red;
-    const radial = vb.advance + vr.advance;
-    const available = Math.max(0, d - this.rules.separation);
-    const fraction = radial > 0 ? Math.min(1, available / (radial * dt)) : 1;
-    const nextDistance = d - radial * dt * fraction;
-    const angular = vb.strafe + vr.strafe;
-    const angle = (angular * dt) / Math.max(this.rules.separation, (d + nextDistance) / 2);
-    const chord = {
-      x: nextDistance * (u.x * Math.cos(angle) - u.z * Math.sin(angle) - u.x),
-      z: nextDistance * (u.x * Math.sin(angle) + u.z * Math.cos(angle) - u.z),
-    };
-    const candidates = {} as Record<FighterId, ArenaPoint>;
-    for (const id of ids) {
-      const v = velocity[id],
-        sign = id === 'blue' ? 1 : -1;
-      const share = Math.abs(angular) > epsilon ? v.strafe / angular : 0;
-      const orbit =
-        Math.abs(angular) > epsilon
-          ? { x: chord.x * share, z: chord.z * share }
-          : { x: tangent.x * v.strafe * dt, z: tangent.z * v.strafe * dt };
-      candidates[id] = boundPoint(
-        {
-          x: before[id].x - sign * u.x * v.advance * dt * fraction + sign * orbit.x,
-          z: before[id].z - sign * u.z * v.advance * dt * fraction + sign * orbit.z,
-        },
-        this.rules.boundary
-      );
-    }
-    // Boundary constraints can shorten an orbit. Roll both proposed paths back together;
-    // a stationary fighter never changes position and neither path can cross the other.
-    let alpha = 1;
-    const at = (id: FighterId, t: number) => ({
-      x: before[id].x + (candidates[id].x - before[id].x) * t,
-      z: before[id].z + (candidates[id].z - before[id].z) * t,
-    });
-    if (distance(candidates.blue, candidates.red) < this.rules.separation - epsilon) {
-      let lo = 0,
-        hi = 1;
-      for (let i = 0; i < 24; i++) {
-        const mid = (lo + hi) / 2;
-        if (distance(at('blue', mid), at('red', mid)) >= this.rules.separation) lo = mid;
-        else hi = mid;
-      }
-      alpha = lo;
-    }
-    for (const id of ids) Object.assign(this.fighters[id], at(id, alpha));
+    const positions = arenaMovement(before, velocity, dt, this.rules);
+    for (const id of ids) Object.assign(this.fighters[id], positions[id]);
     for (const id of ids) {
       const f = this.fighters[id],
         v = velocity[id];

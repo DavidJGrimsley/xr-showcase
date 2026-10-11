@@ -101,8 +101,10 @@ test('Ready waits for all assets, placement, landscape and half a second of norm
 test('advance uses arena coordinates, 8cm/s, bounds and minimum separation', () => {
   const h = harness();
   h.controller.command('jump-back');
+  h.tick(0.65);
+  h.controller.command('jump-back');
   h.tick(0.4);
-  close(h.controller.getTransform('blue').x, -0.14);
+  close(h.controller.getTransform('blue').x, -ARENA_RULES.boundary);
   h.controller.setMovement('advance', true);
   h.tick(4);
   close(h.controller.getTransform('red').x - h.controller.getTransform('blue').x, 0.055);
@@ -116,8 +118,10 @@ test('swapped sides reverse Advance and Jump Back while arena rotation keeps mov
   h.controller.ready();
   assert.equal(h.controller.getTransform('blue').yaw, -90);
   h.controller.command('jump-back');
+  h.tick(0.65);
+  h.controller.command('jump-back');
   h.tick(0.4);
-  close(h.controller.getTransform('blue').x, 0.14);
+  close(h.controller.getTransform('blue').x, ARENA_RULES.boundary);
   h.controller.setMovement('advance', true);
   h.tick(4);
   close(h.controller.getTransform('blue').x - h.controller.getTransform('red').x, 0.055);

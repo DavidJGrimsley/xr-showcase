@@ -2,8 +2,16 @@ import { useState, type ReactNode } from 'react';
 import { BottomSheet, Button, Column, Host, RNHostView, ScrollView } from '@expo/ui';
 import { fillMaxWidth, onSizeChanged } from '@expo/ui/jetpack-compose/modifiers';
 import { frame, onGeometryChange } from '@expo/ui/swift-ui/modifiers';
-import { Link } from 'expo-router';
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Linking,
+  Platform,
+  StyleSheet,
+  Text as DiagramText,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
+import { GameButton } from '@/ui/game-button';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { useAppTheme } from '@/theme/provider';
 
@@ -13,34 +21,38 @@ const IBM_QUANTUM_LEARNING_URL = 'https://quantum.cloud.ibm.com/learning/en';
 export function QubitInfoButton({ onPress }: { onPress: () => void }) {
   const { activeColors } = useAppTheme();
   return (
-    <Pressable
+    <GameButton
       testID="qubit-info"
-      accessibilityRole="button"
-      accessibilityLabel="About Guess the Qubit"
-      accessibilityHint="Explains qubits, the Bloch vector, and the circuit"
+      label="About Guess the Qubit"
+      hint="Explains qubits, the Bloch vector, and the circuit"
+      color={activeColors.primary}
+      textColor={activeColors.primary}
+      variant="text"
+      iconOnly
       onPress={onPress}
-      style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.5 : 1 }]}>
-      <Svg width={26} height={26} viewBox="0 0 26 26" accessible={false}>
-        <Circle
-          cx={13}
-          cy={13}
-          r={11}
-          stroke={activeColors.primary}
-          strokeWidth={1.8}
-          fill="none"
-        />
-        <Circle cx={13} cy={8} r={1.2} fill={activeColors.primary} />
-        <Line
-          x1={13}
-          y1={12}
-          x2={13}
-          y2={18}
-          stroke={activeColors.primary}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      </Svg>
-    </Pressable>
+      icon={
+        <Svg width={26} height={26} viewBox="0 0 26 26" accessible={false}>
+          <Circle
+            cx={13}
+            cy={13}
+            r={11}
+            stroke={activeColors.primary}
+            strokeWidth={1.8}
+            fill="none"
+          />
+          <Circle cx={13} cy={8} r={1.2} fill={activeColors.primary} />
+          <Line
+            x1={13}
+            y1={12}
+            x2={13}
+            y2={18}
+            stroke={activeColors.primary}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+        </Svg>
+      }
+    />
   );
 }
 
@@ -73,18 +85,18 @@ function CircuitDiagram({ width }: { width: number }) {
       accessibilityLabel="Circuit: start in zero, rotate the Bloch vector around Y by pi over two, then measure along Z. One qubit, one shot."
       style={[styles.circuit, { flexDirection: stacked ? 'column' : 'row' }]}>
       <View style={styles.gate}>
-        <Text style={styles.gateTitle}>|0⟩</Text>
-        <Text style={styles.gateCaption}>Start</Text>
+        <DiagramText style={styles.gateTitle}>|0⟩</DiagramText>
+        <DiagramText style={styles.gateCaption}>Start</DiagramText>
       </View>
-      <Text style={styles.arrow}>{stacked ? '↓' : '→'}</Text>
+      <DiagramText style={styles.arrow}>{stacked ? '↓' : '→'}</DiagramText>
       <View style={[styles.gate, styles.rotationGate]}>
-        <Text style={styles.gateTitle}>Ry(π/2)</Text>
-        <Text style={styles.gateCaption}>Rotate 90°</Text>
+        <DiagramText style={styles.gateTitle}>Ry(π/2)</DiagramText>
+        <DiagramText style={styles.gateCaption}>Rotate 90°</DiagramText>
       </View>
-      <Text style={styles.arrow}>{stacked ? '↓' : '→'}</Text>
+      <DiagramText style={styles.arrow}>{stacked ? '↓' : '→'}</DiagramText>
       <View style={styles.gate}>
-        <Text style={styles.gateTitle}>M</Text>
-        <Text style={styles.gateCaption}>Measure Z</Text>
+        <DiagramText style={styles.gateTitle}>M</DiagramText>
+        <DiagramText style={styles.gateCaption}>Measure Z</DiagramText>
       </View>
     </View>
   );
@@ -215,26 +227,28 @@ export function QubitInfoModal({
                     </Text>
                   </View>
                 </InfoSection>
-                <Link href={QUANTUM_API_URL} asChild>
-                  <Pressable
-                    testID="qubit-info-api-link"
-                    accessibilityRole="link"
-                    accessibilityLabel="Visit the Quantum API website"
-                    style={({ pressed }) => [styles.apiLink, { opacity: pressed ? 0.55 : 1 }]}>
-                    <Text style={styles.linkTitle}>Explore the Quantum API ↗</Text>
-                    <Text style={styles.linkCaption}>davidjgrimsley.com</Text>
-                  </Pressable>
-                </Link>
-                <Link href={IBM_QUANTUM_LEARNING_URL} asChild>
-                  <Pressable
-                    testID="qubit-info-ibm-link"
-                    accessibilityRole="link"
-                    accessibilityLabel="Learn quantum computing with IBM Quantum and Qiskit"
-                    style={({ pressed }) => [styles.apiLink, { opacity: pressed ? 0.55 : 1 }]}>
-                    <Text style={styles.linkTitle}>Learn with IBM Quantum &amp; Qiskit ↗</Text>
-                    <Text style={styles.linkCaption}>quantum.cloud.ibm.com</Text>
-                  </Pressable>
-                </Link>
+                <GameButton
+                  testID="qubit-info-api-link"
+                  label="Explore the Quantum API ↗"
+                  hint="Visit davidjgrimsley.com"
+                  color="#18372f"
+                  textColor="#93f5c5"
+                  width={contentWidth - 48}
+                  onPress={() => {
+                    void Linking.openURL(QUANTUM_API_URL).catch(() => {});
+                  }}
+                />
+                <GameButton
+                  testID="qubit-info-ibm-link"
+                  label="Learn with IBM Quantum & Qiskit ↗"
+                  hint="Visit quantum.cloud.ibm.com"
+                  color="#18372f"
+                  textColor="#93f5c5"
+                  width={contentWidth - 48}
+                  onPress={() => {
+                    void Linking.openURL(IBM_QUANTUM_LEARNING_URL).catch(() => {});
+                  }}
+                />
               </View>
             </RNHostView>
           </ScrollView>
@@ -245,7 +259,6 @@ export function QubitInfoModal({
 }
 
 const styles = StyleSheet.create({
-  iconButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   sheetHost: { position: 'absolute' },
   header: {
     flexDirection: 'row',
@@ -283,7 +296,4 @@ const styles = StyleSheet.create({
   arrow: { color: '#64748b', fontSize: 20 },
   modes: { backgroundColor: '#1b2932', borderRadius: 16, padding: 16, gap: 8 },
   modeTitle: { color: '#f8fafc', fontSize: 16, fontWeight: '600' },
-  apiLink: { minHeight: 48, borderRadius: 16, backgroundColor: '#18372f', padding: 16, gap: 4 },
-  linkTitle: { color: '#93f5c5', fontSize: 16, fontWeight: '600' },
-  linkCaption: { color: '#a5beb5', fontSize: 14 },
 });

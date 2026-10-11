@@ -62,6 +62,7 @@ export interface RoomView {
   repositioning: boolean;
 }
 export class ArenaRoom {
+  readonly space = 'same-space' as const;
   private match: ArenaMatch;
   private config: ArenaConfiguration;
   private code: string;

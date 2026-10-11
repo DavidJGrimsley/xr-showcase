@@ -4,12 +4,12 @@ import { ViroARSceneNavigator } from '@reactvision/react-viro';
 import type { ARSceneContext } from '@/features/ar/ar-session-types';
 
 import { ArenaMatch } from './arena-match';
-import type { ArenaRoom } from './arena-room.native';
+import type { ArenaRoomSession } from './arena-room-session';
 import ArenaScene from './arena-scene.native';
 
 export interface ArenaSceneBinding {
   controller: ArenaMatch;
-  room?: ArenaRoom;
+  room?: ArenaRoomSession;
   context: ARSceneContext;
   token: number;
 }
@@ -23,7 +23,7 @@ export default function ArenaNavigator({
 }: {
   controller: ArenaMatch;
   context: ARSceneContext;
-  room?: ArenaRoom;
+  room?: ArenaRoomSession;
 }) {
   const token = useSyncExternalStore(controller.subscribe, controller.getSessionToken);
   useLayoutEffect(() => {
@@ -45,7 +45,7 @@ export default function ArenaNavigator({
       style={{ flex: 1 }}
       initialScene={initialScene}
       viroAppProps={binding}
-      provider={room ? 'reactvision' : 'none'}
+      provider={room?.space === 'same-space' ? 'reactvision' : 'none'}
       autofocus
       hdrEnabled
       bloomEnabled={false}

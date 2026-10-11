@@ -39,13 +39,16 @@ function component(file, mocks) {
   });
   return module.exports;
 }
-const jsx = (type, props) => ({ type, props });
+const jsx = (type, props, key) => ({ type, props, key });
 const jsxRuntime = { jsx, jsxs: jsx, Fragment: 'Fragment' };
 
 function menuHarness({
   fontsLoaded = true,
   configuration = null,
   checkConnection = async () => {},
+  replicationClient = class {},
+  viewport = { width: 568, height: 320, fontScale: 1 },
+  safeArea = { top: 0, bottom: 0, left: 0, right: 0 },
 } = {}) {
   const states = [];
   const refs = [];
@@ -66,20 +69,25 @@ function menuHarness({
         if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
         return [states[index], (value) => (states[index] = value)];
       },
+      useSyncExternalStore: (_, get) => get(),
     },
     'react/jsx-runtime': jsxRuntime,
     'expo-router': { router: { dismissTo: () => exits++ }, useLocalSearchParams: () => ({}) },
     'react-native': {
+      StyleSheet: { create: (styles) => styles },
       ActivityIndicator: 'ActivityIndicator',
       ScrollView: 'ScrollView',
       Text: 'Text',
       TextInput: 'TextInput',
       View: 'View',
-      useWindowDimensions: () => ({ width: 568, height: 320, fontScale: 1 }),
+      useWindowDimensions: () => viewport,
     },
     'react-native-safe-area-context': {
-      useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+      useSafeAreaInsets: () => safeArea,
     },
+    'react-native-keyboard-controller': { KeyboardAvoidingView: 'KeyboardAvoidingView' },
+    '@/ui/game-invite-field': { GameInviteField: 'InviteField' },
+    '@/ui/game-text': { GameCopy: 'Text' },
     './arena-ui': {
       ARENA_FONTS: {},
       ArenaButton: 'Button',
@@ -89,12 +97,20 @@ function menuHarness({
       useArenaFonts: () => [fontsLoaded, null],
     },
     './arena-match': { ArenaMatch },
+    './arena-remote-room': require('../src/features/arena-fighter/arena-remote-room.ts'),
+    './arena-room-panel.native': {
+      __esModule: true,
+      default: 'RoomPanel',
+      ArenaGuidance: 'Guidance',
+    },
     './use-arena-audio.native': { useArenaAudio: () => {} },
     './arena-audio-picker.native': { __esModule: true, default: 'AudioPicker' },
     './arena-configuration': { arenaConfiguration: () => configuration },
     './arena-connection': { checkArenaConnection: checkConnection },
-    '@reactvision/react-viro': { ViroReplicationClient: class {} },
+    '@reactvision/react-viro': { ViroReplicationClient: replicationClient },
+    'expo-modules-core': { uuid: { v4: () => '550e8400-e29b-41d4-a716-446655440000' } },
     './arena-protocol': require('../src/features/arena-fighter/arena-protocol.ts'),
+    './arena-invite': require('../src/features/arena-fighter/arena-invite.ts'),
     './arena-orientation-gate.native': {
       __esModule: true,
       default: 'OrientationGate',
@@ -115,6 +131,7 @@ function menuHarness({
       if (!node || typeof node !== 'object') return;
       if (Array.isArray(node)) return node.forEach(visit);
       nodes.push(node);
+      if (typeof node.type === 'function') return visit(node.type(node.props));
       visit(node.props?.children);
     }
     visit(menu.type(menu.props));
@@ -154,6 +171,169 @@ test('title help and info actions open their pages and both Back paths return to
   assert.equal(exits(), 1);
 });
 
+test('all arena menu paths keep a bounded card, start each page at the top, and retain round, audio and invitation controls', () => {
+  for (const viewport of [
+    { width: 568, height: 320, fontScale: 1 },
+    { width: 844, height: 390, fontScale: 1.8 },
+    { width: 1194, height: 834, fontScale: 1 },
+  ]) {
+    const safeArea = { top: 0, bottom: 21, left: 47, right: 12 };
+    const h = menuHarness({ viewport, safeArea });
+    const press = (label) =>
+      h
+        .render()
+        .find((node) => node.props?.label === label)
+        .props.onPress();
+    const expectedWidth = Math.min(520, viewport.width - 47 - 24);
+    const checkPage = (page, space = 'same-space') => {
+      const rendered = h.render();
+      const card = rendered.find((node) => node.props?.testID === 'arena-menu-panel');
+      const scroll = rendered.find((node) => node.props?.testID === 'arena-menu-scroll');
+      assert.equal(card.props.style.width, expectedWidth);
+      assert.equal(card.props.style.height, undefined);
+      assert.equal(scroll.key, `${page}:${space}`);
+      assert.equal(scroll.props.style.flex, 1);
+      return rendered;
+    };
+    checkPage('title');
+    press('1 Player');
+    checkPage('solo');
+    press('Best of 5');
+    assert.equal(h.render().find((node) => node.props?.label === 'Best of 5').props.selected, true);
+    press('Back');
+    press('2 Players');
+    checkPage('two');
+    for (const [mode, space] of [
+      ['Same table', 'same-space'],
+      ['Long distance', 'remote'],
+    ]) {
+      press(mode);
+      checkPage('mode', space);
+      press('Host');
+      const host = checkPage('host', space);
+      assert.equal(
+        host.some((node) => node.type === 'AudioPicker'),
+        space === 'same-space'
+      );
+      assert.equal(
+        host.some((node) => node.type === 'DisplayText'),
+        space === 'remote'
+      );
+      assert.ok(
+        host.some(
+          (node) => node.props?.label === (space === 'remote' ? 'Create room' : 'Host match')
+        )
+      );
+      press('1 round');
+      assert.equal(h.render().find((node) => node.props?.label === '1 round').props.selected, true);
+      press('Back');
+      press('Join');
+      let join = checkPage('join', space);
+      assert.equal(
+        join.some((node) => node.type === 'DisplayText'),
+        false
+      );
+      const input = join.find((node) => node.type === 'InviteField');
+      assert.equal(input.props.width, expectedWidth - 16);
+      assert.equal(input.props.maxLength, space === 'remote' ? 16 : 12);
+      input.props.onChange('ABC234');
+      press('Scan QR');
+      const scanner = h.render().find((node) => node.type === 'Suspense');
+      scanner.props.children.props.onClose();
+      join = checkPage('join', space);
+      assert.equal(join.find((node) => node.type === 'InviteField').props.value, 'ABC234');
+      press('Back');
+      checkPage('mode', space);
+      press('Back');
+      checkPage('two', space);
+    }
+    press('Back');
+    checkPage('title', 'remote');
+  }
+});
+
+test('long-distance hosting publishes a lobby invite before entering AR and retains the room on Place arena', async () => {
+  const entities = new Map(),
+    listeners = new Set();
+  let connections = 0,
+    disconnects = 0;
+  const h = menuHarness({
+    configuration: { projectId: 'test' },
+    replicationClient: class {
+      state = 'idle';
+      localPeerId = 'host';
+      subscribe(fn) {
+        listeners.add(fn);
+        return () => listeners.delete(fn);
+      }
+      emit() {
+        for (const fn of [...listeners]) fn();
+      }
+      connect() {
+        connections++;
+        this.state = 'synced';
+        this.emit();
+      }
+      disconnect() {
+        disconnects++;
+        this.state = 'idle';
+        this.emit();
+      }
+      get(id) {
+        return entities.get(id);
+      }
+      claim(id) {
+        entities.set(id, { owner: 'host', fields: {} });
+        this.emit();
+      }
+      set(id, fields) {
+        entities.set(id, { ...entities.get(id), fields });
+        this.emit();
+      }
+      release() {}
+    },
+  });
+  const press = (label) =>
+    h
+      .render()
+      .find((node) => node.props?.label === label)
+      .props.onPress();
+  press('2 Players');
+  press('Long distance');
+  press('Host');
+  assert.equal(
+    h.render().some((node) => node.type === 'AudioPicker'),
+    false
+  );
+  press('Create room');
+  await new Promise((resolve) => setImmediate(resolve));
+  try {
+    const lobby = h.render();
+    assert.ok(lobby.some((node) => node.type === 'RoomPanel'));
+    assert.equal(
+      lobby.some((node) => node.type === 'Suspense'),
+      false
+    );
+    assert.ok(entities.get('host').fields.packet);
+    const panel = lobby.find((node) => node.type === 'RoomPanel');
+    assert.equal(panel.props.match.space, 'remote');
+    assert.match(panel.props.match.displayCode, /^[A-Z2-9]{4} [A-Z2-9]{4} [A-Z2-9]{4}$/);
+    press('Place arena');
+    const experience = h.render().find((node) => node.type === 'Suspense').props.children;
+    assert.ok(experience.props.remoteRoom);
+    assert.equal(experience.props.controller.space, 'remote');
+    assert.equal(connections, 1);
+    assert.equal(disconnects, 0);
+    experience.props.onBack();
+    assert.equal(disconnects, 1);
+  } finally {
+    const lobby = h.render().find((node) => node.type?.name === 'RemoteLobby');
+    lobby?.props.onBack();
+    const experience = h.render().find((node) => node.type === 'Suspense')?.props.children;
+    experience?.props.onBack();
+  }
+});
+
 test('deferred game and QR startup show named loading screens whose Back actions cancel startup', async () => {
   const h = menuHarness();
   h.render()
@@ -181,6 +361,9 @@ test('deferred game and QR startup show named loading screens whose Back actions
   );
   nodes.find((node) => node.props?.label === '2 Players').props.onPress();
   h.render()
+    .find((node) => node.props?.label === 'Same table')
+    .props.onPress();
+  h.render()
     .find((node) => node.props?.label === 'Join')
     .props.onPress();
   h.render()
@@ -204,6 +387,9 @@ test('multiplayer connection loading can be cancelled without a late result reop
   });
   h.render()
     .find((node) => node.props?.label === '2 Players')
+    .props.onPress();
+  h.render()
+    .find((node) => node.props?.label === 'Same table')
     .props.onPress();
   h.render()
     .find((node) => node.props?.label === 'Host')
@@ -367,8 +553,12 @@ test('fixed invite reserves a complete white QR quiet zone and fits small landsc
   const RoomPanel = component('arena-fighter/arena-room-panel.native.tsx', {
     'react/jsx-runtime': jsxRuntime,
     'react-native': { View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator' },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ left: 0, right: 0 }) },
+    '@/ui/game-text': { GameText: 'Text' },
+    '@/ui/game-progress': { GameProgress: 'Progress' },
     'react-native-qrcode-svg': { __esModule: true, default: 'QRCode' },
     './arena-protocol': require('../src/features/arena-fighter/arena-protocol.ts'),
+    './arena-invite': require('../src/features/arena-fighter/arena-invite.ts'),
     './arena-hud-state': { arenaInviteLayout },
     './arena-ui': { useArenaColors: () => ({}), ARENA_FONTS: {}, ArenaButton: 'Button' },
   }).default;
@@ -401,9 +591,49 @@ test('fixed invite reserves a complete white QR quiet zone and fits small landsc
       assert.ok(
         qr.props.children.props.size + 24 + panel.props.style.padding * 2 + 20 < availableWidth
       );
-      assert.ok(details.props.children.every((t) => t.props.maxFontSizeMultiplier <= 1.35));
+      assert.ok(
+        details.props.children.filter(Boolean).every((t) => t.props.maxFontSizeMultiplier <= 1.35)
+      );
     }
   }
+});
+
+test('scan guidance reserves text space with and without a spinner, lets surface taps through, and keeps recovery actions active', () => {
+  const { ArenaGuidance } = component('arena-fighter/arena-room-panel.native.tsx', {
+    'react/jsx-runtime': jsxRuntime,
+    'react-native': { View: 'View', Text: 'Text', useWindowDimensions: () => ({ width: 844 }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ left: 47, right: 12 }) },
+    '@/ui/game-text': { GameText: 'GuidanceText' },
+    '@/ui/game-progress': { GameProgress: 'Progress' },
+    'react-native-qrcode-svg': { __esModule: true, default: 'QRCode' },
+    './arena-invite': require('../src/features/arena-fighter/arena-invite.ts'),
+    './arena-hud-state': { arenaInviteLayout },
+    './arena-ui': { useArenaColors: () => ({}), ARENA_FONTS: {}, ArenaButton: 'Button' },
+  });
+  const calls = [];
+  for (const width of [200, 420, 785, undefined]) {
+    for (const loading of [false, true]) {
+      const root = ArenaGuidance({
+        message: 'Tap a highlighted surface to place the arena.',
+        width,
+        loading,
+        onRetry: () => calls.push('retry'),
+        onRestart: () => calls.push('restart'),
+      });
+      const panelWidth = Math.min(420, width ?? 785);
+      assert.equal(root.props.style.width, panelWidth);
+      assert.equal(root.props.pointerEvents, 'box-none');
+      const [pill, actions] = root.props.children;
+      assert.equal(pill.props.pointerEvents, 'none');
+      const text = pill.props.children.find((node) => node?.type === 'GuidanceText');
+      assert.ok(text.props.style.width >= 130);
+      assert.equal(text.props.style.width + 36 + (loading ? 34 : 0), panelWidth);
+      assert.equal(text.props.children, 'Tap a highlighted surface to place the arena.');
+      assert.equal(actions.props.pointerEvents, 'box-none');
+      actions.props.children.forEach((node) => node.props.onPress());
+    }
+  }
+  assert.equal(calls.length, 16);
 });
 
 test('Arena exit releases the live camera before its callback and other experiences keep Home defaults', async () => {
@@ -436,6 +666,7 @@ test('Arena exit releases the live camera before its callback and other experien
       View: 'View',
       ScrollView: 'ScrollView',
       AppState: { currentState: 'active' },
+      StyleSheet: { create: (styles) => styles },
     },
     'react-native-safe-area-context': {
       useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),

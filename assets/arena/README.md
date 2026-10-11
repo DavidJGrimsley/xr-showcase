@@ -41,7 +41,7 @@ All three are PCM16, stereo, 48 kHz WAVs, about 0.676 seconds each. Static Metro
 
 ## Placement measurements
 
-The arena already includes a +90° X axis conversion and a `RecenterOffset` node. Do not apply another axis conversion. Its longest horizontal span is 1.139190018 m before normalization. Scale it uniformly by `0.6 / 1.139190018`; offset its base by `0.142738473 * scale` to rest on the selected plane. The measured central fighting floor is approximately source Y=-0.027 m, giving a placed floor about 6.10 cm above the surface. This measurement still needs visual confirmation on the phone.
+The arena already includes a +90° X axis conversion and a `RecenterOffset` node. Do not apply another axis conversion. Its longest horizontal span is 1.139190018 m before normalization. The base scale is `0.6 / 1.139190018`; world X and Z receive an additional 1.25 multiplier, giving a 75 cm longest horizontal span while world Y retains the original scale. Offset its base by `0.142738473 * baseScale` to rest on the selected plane. The measured central fighting floor is approximately source Y=-0.027 m, giving a placed floor about 6.10 cm above the surface. The playable radius also increases from 14 cm to 17.5 cm for authoritative movement and remote prediction. This measurement still needs visual confirmation on the phone.
 
 The fighter bind-pose bounds run from Y=-0.001067926 to 1.597503780 m. Uniform positive scale `0.12 / 1.598571706` gives a 12 cm full-height model; the small negative minimum is compensated at its feet. The lens geometry faces +Z, so Y rotations of +90°/-90° face along the fighting line. Animated poses naturally vary in height. Arena and fighters share the selected plane's transform and the same optional 90° yaw adjustment.
 

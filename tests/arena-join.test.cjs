@@ -25,8 +25,8 @@ test('a failed invitation can be rescanned, while Back cancels a pending portrai
   assert.ok(intent.offer('ABC234'));
   assert.equal(intent.take(true, false), 'ABC234');
 });
-test('version eleven invites contain only a code and protocol; older invites are rejected', () => {
-  assert.equal(ARENA_PROTOCOL, 11);
+test('version twelve invites contain only a code and protocol; older invites are rejected', () => {
+  assert.equal(ARENA_PROTOCOL, 12);
   assert.equal(parseJoinLink(joinLink('ABC234')), 'ABC234');
   const url = new URL(joinLink('ABC234'));
   assert.deepEqual([...url.searchParams.keys()], ['join', 'v']);
@@ -36,6 +36,6 @@ test('version eleven invites contain only a code and protocol; older invites are
 });
 
 test('older invitations cannot bypass the three-hit Uppercut rules', () => {
-  for (const version of [4, 5, 6, 7, 8, 9, 10])
+  for (const version of [4, 5, 6, 7, 8, 9, 10, 11])
     assert.equal(parseJoinLink(`xr-showcase://arena-fighter?join=ABC234&v=${version}`), null);
 });

@@ -40,6 +40,8 @@ export class ArenaNetwork {
   private rejected = false;
   private config: ViroReplicationConfig;
   private connectionState = '';
+  private firstHostSerial = -1;
+  private lastInput = '';
   private observe?: (state: ViroReplicationClient['state']) => void;
 
   constructor(
@@ -64,7 +66,8 @@ export class ArenaNetwork {
         (match.getSnapshot().stage === this.lastStage &&
           match.getSnapshot().orientationPaused === this.lastOrientation &&
           this.impactKey() === this.lastImpact &&
-          match.audioStateKey() === this.lastAudio) ||
+          match.audioStateKey() === this.lastAudio &&
+          match.inputStateKey() === this.lastInput) ||
         this.phaseWriteQueued
       )
         return;
@@ -81,6 +84,19 @@ export class ArenaNetwork {
     const snapshot = this.match.getSnapshot();
     return `${snapshot.blue.impact?.id ?? 0}:${snapshot.red.impact?.id ?? 0}`;
   }
+  get failure() {
+    return this.rejected;
+  }
+  get established() {
+    const own = this.client.get(this.seat);
+    return (
+      this.claimed &&
+      this.client.state === 'synced' &&
+      own?.owner === this.client.localPeerId &&
+      own.fields.clientId === this.match.clientId &&
+      this.match.getSnapshot().connected
+    );
+  }
   private fail(message: string) {
     this.rejected = true;
     this.match.setNetwork(false, message, this.code);
@@ -91,6 +107,7 @@ export class ArenaNetwork {
     this.claimed = false;
     this.claiming = false;
     this.opened = this.now();
+    this.firstHostSerial = -1;
     this.match.setNetwork(false, 'Reconnecting…', this.code);
     this.client.connect(this.config);
   }
@@ -106,6 +123,33 @@ export class ArenaNetwork {
       this.claiming = false;
       this.match.setNetwork(false, connectionMessage(client.state, client.error), this.code);
       return;
+    }
+    if (this.match.space === 'remote' && this.seat === 'guest' && !this.match.session) {
+      const host = client.get('host');
+      const packet = host?.fields.packet;
+      if (
+        packet &&
+        typeof packet === 'object' &&
+        'protocol' in packet &&
+        packet.protocol !== ARENA_PROTOCOL
+      ) {
+        this.fail('This room uses a different app version. Update both phones.');
+        return;
+      }
+      if (validPacket(packet) && packet.space !== 'remote') {
+        this.fail('This invite is for a same-table match.');
+        return;
+      }
+      if (!host?.owner || !validPacket(packet)) {
+        this.match.setNetwork(false, 'Waiting for a live host…', this.code);
+        return;
+      }
+      if (packet.stage !== 'lobby') {
+        this.fail('This long-distance invite is inactive. Ask your opponent to host a new match.');
+        return;
+      }
+      if (this.firstHostSerial < 0) this.firstHostSerial = packet.serial;
+      if (packet.serial <= this.firstHostSerial) return;
     }
     const own = client.get(this.seat);
     if (own?.fields.clientId && own.fields.clientId !== this.match.clientId) {
@@ -140,6 +184,10 @@ export class ArenaNetwork {
         return;
       }
       if (validPacket(packet) && packet.serial > this.lastPeer) {
+        if (packet.space !== this.match.space) {
+          this.fail('This invite uses a different play mode.');
+          return;
+        }
         this.lastPeer = packet.serial;
         this.opened = this.now();
         this.match.receivePacket(packet);
@@ -160,6 +208,10 @@ export class ArenaNetwork {
         return;
       }
       if (validInput(input) && input.serial > this.lastPeer) {
+        if (input.space !== this.match.space) {
+          this.fail('This invite uses a different play mode.');
+          return;
+        }
         this.lastPeer = input.serial;
         this.match.receiveInput(input);
       }
@@ -187,11 +239,13 @@ export class ArenaNetwork {
       stage === this.lastStage &&
       orientation === this.lastOrientation &&
       this.impactKey() === this.lastImpact &&
-      this.match.audioStateKey() === this.lastAudio
+      this.match.audioStateKey() === this.lastAudio &&
+      this.match.inputStateKey() === this.lastInput
     )
       return;
     this.lastWrite = this.now();
     this.lastAudio = this.match.audioStateKey();
+    this.lastInput = this.match.inputStateKey();
     this.lastStage = stage;
     this.lastOrientation = orientation;
     this.lastImpact = this.impactKey();

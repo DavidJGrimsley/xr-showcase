@@ -47,8 +47,7 @@ export function ARTransformSlider({
         alignItems: stacked ? 'stretch' : 'center',
       }}>
       <Text
-        className="text-base text-slate-200"
-        style={{ fontFamily, ...(stacked ? {} : { width: 64 }) }}>
+        style={{ fontFamily, fontSize: 16, color: '#e2e8f0', ...(stacked ? {} : { width: 64 }) }}>
         {label}
       </Text>
       <Host
@@ -187,8 +186,13 @@ export function ARTransformControls({
       )}
       {!compact && (
         <View
-          className="items-center justify-center gap-2"
-          style={{ flexDirection: stacked ? 'column' : 'row', flexWrap: 'wrap' }}>
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            flexDirection: stacked ? 'column' : 'row',
+            flexWrap: 'wrap',
+          }}>
           {onReposition && (
             <ARControl
               label="Reposition"

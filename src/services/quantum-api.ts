@@ -35,21 +35,35 @@ export type QuantumErrorCode =
   | 'credentials'
   | 'rate_limit'
   | 'unavailable'
+  | 'backend_unavailable'
   | 'network'
   | 'timeout'
   | 'aborted'
   | 'invalid_result'
   | 'request_failed';
 const messages: Record<QuantumErrorCode, string> = {
-  credentials: 'The demo service denied access. Reset or try again later.',
+  credentials: 'The quantum service denied access. Reload the updated app.',
   rate_limit: 'The service is limiting requests. Wait before trying again.',
   unavailable: 'The quantum service or selected backend is unavailable.',
+  backend_unavailable: 'The selected quantum hardware is unavailable.',
   network: 'Connection lost. Check the network before trying again.',
   timeout: 'The request timed out.',
   aborted: 'The request was stopped.',
   invalid_result: 'The service returned an invalid result. No measurement was accepted.',
   request_failed: 'The request could not be completed. Check the configuration and try again.',
 };
+export type QuantumOperation =
+  'health' | 'hardware' | 'measure' | 'submit' | 'status' | 'result' | 'cancel';
+export interface QuantumDiagnostic {
+  request: number;
+  operation: QuantumOperation;
+  event: 'started' | 'completed' | 'failed';
+  durationMs?: number;
+  errorCode?: QuantumErrorCode;
+  status?: number;
+  retryInMs?: number;
+}
+export type QuantumDiagnostics = (event: QuantumDiagnostic) => void;
 export class QuantumError extends Error {
   code: QuantumErrorCode;
   status: number;
@@ -118,16 +132,32 @@ export class QuantumApiClient implements QuantumRuntime {
   private sdk: QuantumSDK;
   private credentials: QuantumCredentials;
   private clock: QuantumClock;
-  constructor(transport: QuantumTransport, credentials: QuantumCredentials, clock = quantumClock) {
+  private diagnostics?: QuantumDiagnostics;
+  private sequence = 0;
+  constructor(
+    transport: QuantumTransport,
+    credentials: QuantumCredentials,
+    clock = quantumClock,
+    diagnostics?: QuantumDiagnostics
+  ) {
     this.credentials = { ...credentials };
     this.clock = clock;
+    this.diagnostics = diagnostics;
     this.sdk = new QuantumSDK({
       baseUrl: credentials.baseUrl ?? QUANTUM_API_BASE,
       apiKey: credentials.apiKey,
       fetchImpl: transport,
     });
   }
+  private report(event: QuantumDiagnostic) {
+    // Observers receive only fixed operation names and sanitized numeric/error fields.
+    // Diagnostic failures must never change a request's outcome.
+    try {
+      this.diagnostics?.(event);
+    } catch {}
+  }
   private async request<T>(
+    name: QuantumOperation,
     signal: AbortSignal | undefined,
     execute: (signal: AbortSignal) => Promise<unknown>,
     parse: (data: unknown) => T,
@@ -135,6 +165,9 @@ export class QuantumApiClient implements QuantumRuntime {
     timeout = 12000
   ): Promise<T> {
     if (signal?.aborted) throw new QuantumError('aborted');
+    const request = ++this.sequence;
+    const started = this.clock.now();
+    this.report({ request, operation: name, event: 'started' });
     const controller = new AbortController();
     let abandoned = false;
     let rejectStop: (error: QuantumError) => void = () => {};
@@ -186,7 +219,26 @@ export class QuantumApiClient implements QuantumRuntime {
       }
     };
     try {
-      return await Promise.race([operation(), stopped]);
+      const value = await Promise.race([operation(), stopped]);
+      this.report({
+        request,
+        operation: name,
+        event: 'completed',
+        durationMs: Math.max(0, this.clock.now() - started),
+      });
+      return value;
+    } catch (error) {
+      const failure = error instanceof QuantumError ? error : new QuantumError('network');
+      this.report({
+        request,
+        operation: name,
+        event: 'failed',
+        durationMs: Math.max(0, this.clock.now() - started),
+        errorCode: failure.code,
+        status: failure.status,
+        retryInMs: Math.max(0, failure.retryAt - this.clock.now()),
+      });
+      throw failure;
     } finally {
       this.clock.cancel(timer);
       signal?.removeEventListener('abort', abort);
@@ -194,6 +246,7 @@ export class QuantumApiClient implements QuantumRuntime {
   }
   health(signal: AbortSignal) {
     return this.request(
+      'health',
       signal,
       (signal) => this.sdk.health({ signal }),
       (value) => {
@@ -209,6 +262,7 @@ export class QuantumApiClient implements QuantumRuntime {
   }
   async checkHardware(signal: AbortSignal): Promise<void> {
     await this.request(
+      'hardware',
       signal,
       (signal) =>
         this.sdk.listBackends(
@@ -221,8 +275,8 @@ export class QuantumApiClient implements QuantumRuntime {
         ),
       (value) => {
         const backends = record(value).backends;
+        if (!Array.isArray(backends)) throw new QuantumError('invalid_result');
         if (
-          !Array.isArray(backends) ||
           !backends.some((item) => {
             const backend = record(item);
             return (
@@ -234,12 +288,13 @@ export class QuantumApiClient implements QuantumRuntime {
             );
           })
         )
-          throw new QuantumError('unavailable');
+          throw new QuantumError('backend_unavailable');
       }
     );
   }
   measure(signal: AbortSignal) {
     return this.request(
+      'measure',
       signal,
       (signal) =>
         this.sdk.runGate(
@@ -254,6 +309,7 @@ export class QuantumApiClient implements QuantumRuntime {
   }
   submit(signal: AbortSignal, onLateJob: (job: QuantumJob) => void) {
     return this.request(
+      'submit',
       signal,
       (signal) =>
         this.sdk.submitCircuitJob(
@@ -273,6 +329,7 @@ export class QuantumApiClient implements QuantumRuntime {
   }
   status(jobId: string, signal: AbortSignal) {
     return this.request(
+      'status',
       signal,
       (signal) => this.sdk.getCircuitJob(jobId, { signal }),
       (data) => parseJob(data, jobId)
@@ -280,6 +337,7 @@ export class QuantumApiClient implements QuantumRuntime {
   }
   result(jobId: string, signal: AbortSignal) {
     return this.request(
+      'result',
       signal,
       (signal) => this.sdk.getCircuitJobResult(jobId, { signal }),
       (data) => parseHardwareResult(data, jobId)
@@ -287,6 +345,7 @@ export class QuantumApiClient implements QuantumRuntime {
   }
   cancel(jobId: string) {
     return this.request(
+      'cancel',
       undefined,
       (signal) => this.sdk.cancelCircuitJob(jobId, { signal }),
       (data) => parseJob(data, jobId),

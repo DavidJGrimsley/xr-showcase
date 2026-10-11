@@ -1,9 +1,10 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Linking, Text, View } from 'react-native';
+import { AppState, Linking, View } from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
 import { useIsFocused } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { parseJoinLink } from './arena-protocol';
+import { parseArenaInvite, type ArenaInvite } from './arena-invite';
 import { useArenaLandscape } from './arena-orientation-gate.native';
 import { ARENA_FONTS, ArenaButton } from './arena-ui';
 
@@ -16,7 +17,7 @@ export default function ArenaQRScanner({
   onCode,
   onClose,
 }: {
-  onCode: (code: string) => void;
+  onCode: (code: ArenaInvite) => void;
   onClose: () => void;
 }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -28,8 +29,9 @@ export default function ArenaQRScanner({
   const landscape = useArenaLandscape();
   return (
     <View
-      className="flex-1 bg-black"
       style={{
+        flex: 1,
+        backgroundColor: '#000',
         paddingTop: Math.max(16, insets.top),
         paddingBottom: Math.max(16, insets.bottom),
         paddingLeft: Math.max(16, insets.left),
@@ -51,7 +53,7 @@ export default function ArenaQRScanner({
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onBarcodeScanned={({ data }) => {
             if (handled.current) return;
-            const code = parseJoinLink(data);
+            const code = parseArenaInvite(data);
             if (!code) {
               setError("Scan a Neo Rock 'Em Sock 'Em Robots room QR code.");
               return;
@@ -62,7 +64,7 @@ export default function ArenaQRScanner({
         />
       ) : !permission?.granted ? (
         <>
-          <Text className="text-white" style={{ fontFamily: ARENA_FONTS.body, marginTop: 64 }}>
+          <Text style={{ color: '#fff', fontFamily: ARENA_FONTS.body, marginTop: 64 }}>
             Allow camera access to scan a room code, or go back to enter it.
           </Text>
           <ArenaButton
@@ -74,13 +76,12 @@ export default function ArenaQRScanner({
           />
         </>
       ) : (
-        <View className="flex-1" />
+        <View style={{ flex: 1 }} />
       )}
       {!!error && (
         <Text
           accessibilityLiveRegion="polite"
-          className="text-white"
-          style={{ fontFamily: ARENA_FONTS.body }}>
+          style={{ color: '#fff', fontFamily: ARENA_FONTS.body }}>
           {error}
         </Text>
       )}

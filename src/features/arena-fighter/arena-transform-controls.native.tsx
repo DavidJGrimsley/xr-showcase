@@ -22,7 +22,7 @@ export default function ArenaTransformControls({
 }) {
   const colors = useArenaColors();
   return (
-    <View className="gap-3">
+    <View style={{ gap: 12 }}>
       {positioning ? (
         <ARPositionControls
           compact

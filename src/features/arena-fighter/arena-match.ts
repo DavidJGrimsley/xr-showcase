@@ -1,5 +1,6 @@
 import {
   ArenaController,
+  ARENA_RULES,
   type ArenaSnapshot,
   type FighterId,
   type Movement,
@@ -10,6 +11,7 @@ import {
 } from './arena-controller.ts';
 import { ArenaPresentation, type Knockout } from './arena-presentation.ts';
 import { interpolateYaw } from './arena-combat-motion.ts';
+import { ArenaPrediction } from './arena-prediction.ts';
 import {
   AUDIO_BUFFER,
   AUDIO_WATCHDOG,
@@ -28,6 +30,8 @@ import {
 import {
   ARENA_PROTOCOL,
   type ArenaMode,
+  type ArenaSpace,
+  type MovementStamp,
   type MatchLength,
   type MatchPhase,
   type ArenaPacket,
@@ -43,6 +47,7 @@ export interface MatchSnapshot extends ArenaSnapshot {
   battleMusicStarted: boolean;
   sharedPlacement: ArenaPlacement | null;
   mode: ArenaMode;
+  space: ArenaSpace;
   localFighter: FighterId;
   stage: MatchPhase;
   rounds: MatchLength;
@@ -71,6 +76,11 @@ export interface MatchSnapshot extends ArenaSnapshot {
 export class ArenaMatch {
   readonly round: ArenaController;
   readonly mode: ArenaMode;
+  readonly space: ArenaSpace;
+  private prediction: ArenaPrediction;
+  private movementAck: MovementStamp = { seq: 0, time: 0 };
+  private simulationTime = 0;
+  private roundTripMs: number | null = null;
   readonly localFighter: FighterId;
   readonly clientId: string;
   session: string;
@@ -131,12 +141,15 @@ export class ArenaMatch {
     rounds: MatchLength = 3,
     now = () => Date.now(),
     rules: ConstructorParameters<typeof ArenaController>[0] = {},
-    mainAudioSource: MainAudioSource = 'host'
+    mainAudioSource: MainAudioSource = 'host',
+    space: ArenaSpace = 'same-space'
   ) {
     this.mode = mode;
+    this.space = space;
+    this.prediction = new ArenaPrediction({ ...ARENA_RULES, ...rules });
     this.localFighter = mode === 'guest' ? 'red' : 'blue';
     this.rounds = rounds;
-    this.mainAudioSource = mainAudioSource;
+    this.mainAudioSource = space === 'remote' ? 'both' : mainAudioSource;
     this.now = now;
     this.clientId = now().toString(36) + '-' + Math.random().toString(36).slice(2);
     this.session = mode === 'guest' ? '' : this.clientId;
@@ -154,6 +167,8 @@ export class ArenaMatch {
   getSnapshot = () => this.snapshot;
   audioStateKey = () =>
     `${this.announcement?.id ?? ''}:${this.announcementDone ?? ''}:${this.audioAvailable}`;
+  inputStateKey = () =>
+    JSON.stringify([this.held, this.pending.map((c) => c.seq), this.localReady, this.capable()]);
   setAudioAvailable = (available: boolean) => {
     if (this.disposed || this.audioAvailable === available) return;
     this.audioAvailable = available;
@@ -233,6 +248,7 @@ export class ArenaMatch {
     this.held = { advance: false, strafeLeft: false, strafeRight: false };
     this.round.clearHeldMovement();
     this.clearGestures();
+    this.prediction.clear();
     this.round.setLandscape(value);
     if (value && this.getSessionToken() !== null && !this.round.hasNormalTracking())
       this.interrupt();
@@ -305,6 +321,11 @@ export class ArenaMatch {
     this.mode === 'solo' && this.stage === 'lobby' && this.round.previewClip(...args);
   stopPreview = () => this.round.stopPreview();
   swapSides = () => {
+    if (this.space === 'remote') {
+      if (this.canTransform())
+        this.changeTransform({ ...this.arenaTransform, yaw: this.arenaTransform.yaw + 180 });
+      return;
+    }
     if (this.stage === 'lobby' && this.canTransform()) {
       this.localReady = false;
       this.epoch++;
@@ -333,7 +354,7 @@ export class ArenaMatch {
   canTransform() {
     const round = this.round.getSnapshot();
     return (
-      this.mode !== 'guest' &&
+      (this.mode !== 'guest' || this.space === 'remote') &&
       ['lobby', 'finished'].includes(this.stage) &&
       !this.transformLocked &&
       !this.localOrientationPause() &&
@@ -350,9 +371,13 @@ export class ArenaMatch {
     );
   }
   invalidatePlacementReady = () => {
-    if (this.mode === 'guest' || !['lobby', 'finished'].includes(this.stage)) return;
+    if (
+      (this.mode === 'guest' && this.space !== 'remote') ||
+      !['lobby', 'finished'].includes(this.stage)
+    )
+      return;
     this.localReady = false;
-    this.epoch++;
+    if (this.space !== 'remote') this.epoch++;
     this.publish();
   };
   setTransformLocked = (locked: boolean) => {
@@ -361,7 +386,7 @@ export class ArenaMatch {
     this.publish();
   };
   resetSetupTransform = () => {
-    if (this.mode === 'guest' || this.stage !== 'lobby') return;
+    if ((this.mode === 'guest' && this.space !== 'remote') || this.stage !== 'lobby') return;
     this.clearGestures();
     this.changeTransform({ ...DEFAULT_ARENA_TRANSFORM });
   };
@@ -432,6 +457,7 @@ export class ArenaMatch {
   }
   setNetwork(connected: boolean, message = '', code = this.code) {
     this.connected = connected;
+    if (!connected) this.prediction.clear();
     if (this.stage !== 'abandoned') this.networkMessage = message;
     this.code = code;
     this.checkReadiness();
@@ -545,6 +571,8 @@ export class ArenaMatch {
     this.presentation?.applied(id, animationId);
   }
   private clearInput() {
+    this.prediction.clear(true);
+    this.movementAck = { seq: 0, time: 0 };
     this.held = { advance: false, strafeLeft: false, strafeRight: false };
     this.pending = [];
     this.localCommands = [];
@@ -654,10 +682,19 @@ export class ArenaMatch {
       }
     }
     let combatDt = this.round.tick(token, dt, simulate);
+    if (this.mode === 'host' && this.stage === 'fighting' && simulate && combatDt > 0) {
+      if (this.peer?.epoch === this.epoch) this.movementAck = { ...this.peer.movement };
+      this.simulationTime += combatDt;
+    }
     if (this.mode === 'guest' && simulate) {
       const pause = Math.min(dt, this.remoteImpactPauseRemaining);
       this.remoteImpactPauseRemaining = Math.max(0, this.remoteImpactPauseRemaining - pause);
       combatDt = dt - pause;
+    }
+    if (this.space === 'remote' && this.mode === 'guest') {
+      if (this.canPredict())
+        this.prediction.step(combatDt, this.held, this.snapshot.red.mode === 'guard');
+      else this.prediction.clear();
     }
     if (this.landscape && this.orientationRecovering && this.round.isReady())
       this.orientationRecovering = false;
@@ -775,6 +812,9 @@ export class ArenaMatch {
   }
   input(): PeerInput {
     return {
+      space: this.space,
+      movement: this.prediction.stamp(),
+      sentAt: this.now(),
       protocol: ARENA_PROTOCOL,
       clientId: this.clientId,
       session: this.session,
@@ -802,7 +842,10 @@ export class ArenaMatch {
     };
   }
   packet(): ArenaPacket {
-    return {
+    const packet = {
+      movementAck: { ...this.movementAck },
+      simulationTime: this.simulationTime,
+      echoSentAt: this.peer?.sentAt ?? null,
       mainAudioSource: this.mainAudioSource,
       announcement: this.announcement ? { ...this.announcement } : null,
       audioAvailable: this.audioAvailable,
@@ -822,14 +865,21 @@ export class ArenaMatch {
       ack: this.ack,
       hostCapable: this.capable(),
       hostReady: this.localReady,
-      placement: this.placement,
-      arenaTransform: { ...this.arenaTransform },
       orientationPaused: this.orientationPause(),
     };
+    return this.space === 'remote'
+      ? { ...packet, space: 'remote' }
+      : {
+          ...packet,
+          space: 'same-space',
+          placement: this.placement,
+          arenaTransform: { ...this.arenaTransform },
+        };
   }
   receiveInput(input: PeerInput) {
     if (
       this.mode !== 'host' ||
+      input.space !== this.space ||
       this.disposed ||
       this.stage === 'abandoned' ||
       input.session !== this.session ||
@@ -858,6 +908,7 @@ export class ArenaMatch {
   receivePacket(packet: ArenaPacket) {
     if (
       this.mode !== 'guest' ||
+      packet.space !== this.space ||
       this.stage === 'abandoned' ||
       (this.session && packet.session !== this.session) ||
       (this.remote && packet.serial <= this.remote.serial)
@@ -876,6 +927,7 @@ export class ArenaMatch {
     }
     const hostWasPaused = this.remote?.stage === 'paused';
     this.remote = packet;
+    if (packet.echoSentAt !== null) this.roundTripMs = Math.max(0, this.now() - packet.echoSentAt);
     this.remoteImpactPauseRemaining = packet.round.impactPauseRemaining;
     this.session = packet.session;
     this.epoch = packet.epoch;
@@ -890,8 +942,10 @@ export class ArenaMatch {
     this.announcement = packet.announcement ? { ...packet.announcement } : null;
     this.wins = packet.wins;
     this.countdown = packet.countdown;
-    this.placement = packet.placement;
-    this.arenaTransform = { ...packet.arenaTransform };
+    if (packet.space === 'same-space') {
+      this.placement = packet.placement;
+      this.arenaTransform = { ...packet.arenaTransform };
+    }
     if (packet.orientationPaused)
       this.held = { advance: false, strafeLeft: false, strafeRight: false };
     if (packet.stage === 'abandoned' && !this.networkMessage)
@@ -920,13 +974,45 @@ export class ArenaMatch {
       this.presentation = null;
     }
     this.checkReadiness();
+    if (this.space === 'remote')
+      this.prediction.reconcile(
+        packet.transforms,
+        packet.movementAck,
+        packet.simulationTime,
+        !this.canPredict() ||
+          packet.round.impactPauseRemaining > 0 ||
+          packet.round.blue.impact?.id !== this.snapshot.blue.impact?.id ||
+          packet.round.red.impact?.id !== this.snapshot.red.impact?.id
+      );
     this.publish();
   }
+  private canPredict() {
+    return (
+      this.space === 'remote' &&
+      this.mode === 'guest' &&
+      !!this.remote &&
+      this.stage === 'fighting' &&
+      this.capable() &&
+      this.peerCapable() &&
+      !this.orientationPause() &&
+      this.remoteImpactPauseRemaining === 0 &&
+      this.pending.length === 0 &&
+      ['idle', 'walk', 'guard', 'guard-exit'].includes(this.remote.round.red.mode)
+    );
+  }
+  predictionDiagnostics = () => ({
+    ...this.prediction.diagnostics(),
+    roundTripMs: this.roundTripMs,
+  });
   getTransform = (id: FighterId): FighterTransform => {
     const target =
       this.mode === 'guest' && this.remote
         ? this.remote.transforms[id]
         : this.round.getTransform(id);
+    if (id === 'red' && this.space === 'remote' && this.mode === 'guest') {
+      const predicted = this.canPredict() ? (this.prediction.get() ?? target) : target;
+      return this.presentation ? { ...predicted, lift: this.presentation.get(id).lift } : predicted;
+    }
     const previous = this.previousTransforms?.[id];
     const t = Math.min(1, (this.now() - this.transformAt) / 50);
     const transform =
@@ -993,7 +1079,9 @@ export class ArenaMatch {
               : 'Match paused. Both players must Resume.'
             : this.stage === 'lobby'
               ? this.mode !== 'solo' && !this.peerCapable()
-                ? 'Waiting for the other player to align the arena.'
+                ? this.space === 'remote'
+                  ? 'Waiting for your opponent to place their arena.'
+                  : 'Waiting for the other player to align the arena.'
                 : 'Press Ready when you can see the arena.'
               : this.stage === 'finished' && resultsVisible
                 ? 'Match complete'
@@ -1065,6 +1153,7 @@ export class ArenaMatch {
         !this.localReady,
       message,
       mode: this.mode,
+      space: this.space,
       localFighter: this.localFighter,
       stage: this.stage,
       rounds: this.rounds,
