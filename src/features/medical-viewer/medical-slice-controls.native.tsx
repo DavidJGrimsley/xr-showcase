@@ -16,7 +16,6 @@ export function MedicalSliceControls({
   controller,
   state,
   sessionId,
-  stacked,
   onTransform,
 }: {
   controller: MedicalController;
@@ -40,13 +39,9 @@ export function MedicalSliceControls({
     () => () => scheduler.clear(),
     [scheduler, sessionId, slices.modality, slices.orientation, state.placementRevision]
   );
-  const rowStyle = {
-    flexDirection: stacked ? ('column' as const) : ('row' as const),
-    flexWrap: 'wrap' as const,
-  };
   return (
     <View style={styles.group} testID="medical-slice-controls">
-      <View style={[styles.controlRow, rowStyle]}>
+      <View style={styles.controlRow}>
         {(['mri', 'ct'] as const).map((modality) => (
           <ARControl
             key={modality}
@@ -74,7 +69,7 @@ export function MedicalSliceControls({
             matchContents={{ vertical: true }}
             colorScheme="dark"
             seedColor={colors.primary}
-            style={{ minHeight: 48, width: '100%' }}>
+            style={{ minHeight: 44, width: '100%' }}>
             <Slider
               testID="medical-slice-slider"
               value={slices.index}
@@ -88,13 +83,13 @@ export function MedicalSliceControls({
               modifiers={
                 Platform.OS === 'ios'
                   ? [
-                      frame({ minHeight: 48, maxWidth: Infinity }),
+                      frame({ minHeight: 44, maxWidth: Infinity }),
                       accessibilityLabel('Scan slice'),
                       accessibilityValue(`${slices.index + 1} of ${series.imageCount}`),
                     ]
                   : [
                       fillMaxWidth(),
-                      height(48),
+                      height(44),
                       semantics({
                         contentDescription: `Scan slice ${slices.index + 1} of ${series.imageCount}`,
                       }),
@@ -102,7 +97,7 @@ export function MedicalSliceControls({
               }
             />
           </Host>
-          <View style={[styles.controlRow, rowStyle]}>
+          <View style={styles.controlRow}>
             <ARControl
               label="Previous"
               disabled={slices.index === 0}
@@ -122,7 +117,8 @@ export function MedicalSliceControls({
               }}
             />
             <ARControl
-              label="Reset Slice"
+              label="Reset"
+              accessibilityLabel="Reset Slice"
               testID="medical-slice-reset"
               onPress={() => {
                 scheduler.clear();
@@ -132,7 +128,7 @@ export function MedicalSliceControls({
           </View>
         </>
       ) : null}
-      <View style={[styles.controlRow, rowStyle]}>
+      <View style={styles.controlRow}>
         <ARControl
           label="Transform"
           disabled={!canManipulateSlices(state)}
@@ -174,6 +170,7 @@ export function MedicalPanelTransformControls({
   };
   return (
     <ARTransformControls
+      dense
       seedColor={colors.primary}
       controlComponent={ARControl}
       testIDPrefix="medical-panel"
@@ -196,12 +193,14 @@ export function MedicalPanelTransformControls({
 
 const styles = StyleSheet.create({
   group: {
-    gap: 12,
+    gap: 6,
   },
   controlRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 4,
   },
   centeredBody: {
     textAlign: 'center',

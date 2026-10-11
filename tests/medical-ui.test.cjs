@@ -199,6 +199,57 @@ function nodes(root) {
   return result;
 }
 const byID = (root, id) => nodes(root).find((node) => node.props.testID === id);
+
+test('dense transforms retain all three sliders and completion actions, including large-text layouts', () => {
+  const h = load('features/ar/ar-transform-controls.native.tsx', {
+    overrides: {
+      './ar-transform': require('../src/features/ar/ar-transform.ts'),
+      './ar-control.native': { ARControl: 'Control' },
+    },
+  });
+  for (const stacked of [false, true]) {
+    const changes = [];
+    let repositioned = 0;
+    let done = 0;
+    const root = h.render('ARTransformControls', {
+      testIDPrefix: 'medical',
+      scale: 1,
+      yaw: 90,
+      height: 0,
+      dense: true,
+      stacked,
+      disabled: false,
+      pinching: false,
+      rotating: false,
+      repositionDisabled: false,
+      onScaleChange: (value) => changes.push(['scale', value]),
+      onYawChange: (value) => changes.push(['yaw', value]),
+      onHeightChange: (value) => changes.push(['height', value]),
+      onReposition: () => repositioned++,
+      onDone: () => done++,
+    });
+    const fields = nodes(root).filter((n) => n.type?.name === 'ARTransformSlider');
+    assert.deepEqual(
+      fields.map((n) => n.props.label),
+      ['Scale', 'Rotate', 'Height']
+    );
+    for (const field of fields) {
+      const slider = nodes(h.render('ARTransformSlider', field.props)).find(
+        (n) => n.type === 'Slider'
+      );
+      slider.props.onValueChange(0.5);
+    }
+    assert.deepEqual(changes, [
+      ['scale', 0.5],
+      ['yaw', 0.5],
+      ['height', 0.5],
+    ]);
+    byID(root, 'medical-reposition').props.onPress();
+    byID(root, 'medical-transform-done').props.onPress();
+    assert.equal(repositioned, 1);
+    assert.equal(done, 2);
+  }
+});
 function viewer() {
   const c = new MedicalController(
     undefined,
@@ -258,7 +309,9 @@ test('medical actions use app colors, retain labels/state and fit narrow widths 
         assert.equal(button.props.variant, variant);
         assert.equal(button.props.selected, selected);
         assert.equal(button.props.accessibilityLabel, 'Spoken ' + label);
-        assert.ok(button.props.width >= 48 && button.props.width <= Math.min(width - 72, 520));
+        assert.ok(button.props.width >= 44 && button.props.width <= Math.min(width - 64, 520));
+        assert.equal(button.props.compact, true);
+        assert.equal(button.props.fontSize, 15);
         button.props.onPress();
       }
       assert.equal(calls, 5);

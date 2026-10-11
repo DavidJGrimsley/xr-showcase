@@ -59,7 +59,7 @@ function ScanSlider({
         matchContents={{ vertical: true }}
         colorScheme="dark"
         seedColor={colors.primary}
-        style={{ width: '100%', minHeight: 48 }}>
+        style={{ width: '100%', minHeight: 44 }}>
         <Slider
           value={value}
           min={min}
@@ -71,13 +71,13 @@ function ScanSlider({
           modifiers={
             Platform.OS === 'ios'
               ? [
-                  frame({ minHeight: 48, maxWidth: Infinity }),
+                  frame({ minHeight: 44, maxWidth: Infinity }),
                   accessibilityLabel(label),
                   accessibilityValue(spokenValue),
                 ]
               : [
                   fillMaxWidth(),
-                  height(48),
+                  height(44),
                   semantics({ contentDescription: `${label}, ${spokenValue}` }),
                 ]
           }
@@ -101,7 +101,7 @@ function ScanToggle({
       matchContents={{ vertical: true }}
       colorScheme="dark"
       seedColor={colors.primary}
-      style={{ minHeight: 48, width: '100%' }}>
+      style={{ minHeight: 44, width: '100%' }}>
       <Switch
         label={label}
         value={value}
@@ -366,7 +366,8 @@ export function MedicalVolumeControls({
       </View>
       <View style={styles.centeredActions}>
         <ARControl
-          label="Scan Controls"
+          label="Controls"
+          accessibilityLabel="Scan Controls"
           testID="medical-volume-scan-controls"
           disabled={!controller.getVolumeSeries()}
           onPress={() => controller.openVolumeControls(sessionId, true)}
@@ -378,7 +379,8 @@ export function MedicalVolumeControls({
           onPress={onTransform}
         />
         <ARControl
-          label="Reset Transform"
+          label="Reset"
+          accessibilityLabel="Reset Transform"
           testID="medical-volume-reset-transform"
           disabled={!state.anchorId}
           onPress={() => controller.resetVolumeTransform(sessionId)}
@@ -460,6 +462,7 @@ export function MedicalVolumeTransformControls({
   };
   return (
     <ARTransformControls
+      dense
       seedColor={colors.primary}
       controlComponent={ARControl}
       {...state.volume}
@@ -478,17 +481,17 @@ export function MedicalVolumeTransformControls({
 
 const styles = StyleSheet.create({
   field: {
-    gap: 4,
+    gap: 2,
   },
   readout: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#e2e8f0',
   },
   section: {
-    gap: 12,
+    gap: 8,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
+    padding: 12,
   },
   sectionTitle: {
     fontSize: 18,
@@ -502,7 +505,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 4,
   },
   hint: {
     fontSize: 14,
@@ -524,7 +527,7 @@ const styles = StyleSheet.create({
     color: '#cbd5e1',
   },
   group: {
-    gap: 12,
+    gap: 6,
   },
   centeredBody: {
     textAlign: 'center',
@@ -540,6 +543,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 8,
+    gap: 4,
   },
 });

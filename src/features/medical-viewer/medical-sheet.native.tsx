@@ -27,7 +27,7 @@ export function MedicalSheet({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [sheetSize, setSheetSize] = useState({ width: 0, height: 0 });
-  const [headerHeight, setHeaderHeight] = useState(80);
+  const [headerHeight, setHeaderHeight] = useState(64);
   const contentWidth = Math.max(1, Math.min(width, sheetSize.width || width, 560));
   const bodyHeight = Math.max(
     64,
@@ -129,8 +129,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 8,
   },
   headerCopy: { flex: 1, minWidth: 0, gap: 4 },
-  content: { gap: 16, paddingHorizontal: 20, paddingTop: 12 },
+  content: { gap: 12, paddingHorizontal: 20, paddingTop: 8 },
 });

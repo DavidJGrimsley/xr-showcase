@@ -23,6 +23,7 @@ export function MedicalTransformControls({
   const colors = useMedicalColors();
   return (
     <ARTransformControls
+      dense
       seedColor={colors.primary}
       controlComponent={MedicalControl}
       testIDPrefix="medical"

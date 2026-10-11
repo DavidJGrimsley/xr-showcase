@@ -15,6 +15,7 @@ export interface GameButtonProps {
   hint?: string;
   icon?: ReactElement;
   iconOnly?: boolean;
+  compact?: boolean;
   testID?: string;
   width?: number;
   variant?: 'filled' | 'outlined' | 'text';
@@ -34,20 +35,33 @@ export function GameButton({
   hint,
   icon,
   iconOnly = false,
+  compact = false,
   testID,
   width,
   variant = 'filled',
 }: GameButtonProps) {
   const { fontScale } = useWindowDimensions();
   const borderWidth = variant === 'outlined' ? 1 : 0;
-  const buttonWidth = iconOnly ? 48 : width;
+  const minimumSize = compact ? 44 : 48;
+  const horizontalPadding = compact ? (Platform.OS === 'android' ? 12 : 8) : 16;
+  const minimumOuterSize = minimumSize + (compact ? 2 * borderWidth : 0);
+  const buttonWidth = iconOnly
+    ? minimumOuterSize
+    : compact && width !== undefined
+      ? Math.max(minimumOuterSize, width)
+      : width;
   const labelWidth =
-    width !== undefined ? Math.max(1, width - 32 - 2 * borderWidth - (icon ? 30 : 0)) : undefined;
+    buttonWidth !== undefined
+      ? Math.max(1, buttonWidth - 2 * horizontalPadding - 2 * borderWidth - (icon ? 30 : 0))
+      : undefined;
   const lines =
     labelWidth && !iconOnly
       ? Math.max(1, Math.ceil((label.length * fontSize * fontScale * 0.6) / labelWidth))
       : 1;
-  const height = Math.max(48, Math.ceil(fontSize * fontScale * lines * 1.2) + 24);
+  const height = Math.max(
+    minimumOuterSize,
+    Math.ceil(fontSize * fontScale * lines * 1.2) + (compact ? 16 : 24)
+  );
   const activate = disabled ? undefined : onPress;
   const nativeAccessibility = Platform.OS !== 'web';
   // SDK 57's universal Button has no accessibility label/state props. Group the
@@ -75,7 +89,7 @@ export function GameButton({
           : undefined
       }
       style={{
-        minWidth: 48,
+        minWidth: minimumOuterSize,
         minHeight: height,
         borderWidth,
         borderColor: color,
@@ -98,7 +112,11 @@ export function GameButton({
             height: height - 2 * borderWidth,
             width: buttonWidth !== undefined ? buttonWidth - 2 * borderWidth : undefined,
             // Compose TextButton adds its own 12dp horizontal content padding.
-            paddingHorizontal: iconOnly ? 0 : Platform.OS === 'android' ? 4 : 16,
+            paddingHorizontal: iconOnly
+              ? 0
+              : Platform.OS === 'android'
+                ? Math.max(0, horizontalPadding - 12)
+                : horizontalPadding,
             borderRadius: 12,
             backgroundColor: variant === 'filled' ? color : 'transparent',
             opacity: disabled ? 0.45 : 1,

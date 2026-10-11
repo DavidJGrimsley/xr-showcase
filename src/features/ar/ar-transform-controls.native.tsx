@@ -23,6 +23,7 @@ export function ARTransformSlider({
   onValueChange,
   testID,
   compact = false,
+  dense = false,
   fontFamily,
   seedColor = '#93f5c5',
 }: {
@@ -36,18 +37,24 @@ export function ARTransformSlider({
   onValueChange: (value: number) => void;
   testID: string;
   compact?: boolean;
+  dense?: boolean;
   fontFamily?: string;
   seedColor?: string;
 }) {
   return (
     <View
       style={{
-        gap: compact ? 2 : 12,
+        gap: dense ? 4 : compact ? 2 : 12,
         flexDirection: stacked ? 'column' : 'row',
         alignItems: stacked ? 'stretch' : 'center',
       }}>
       <Text
-        style={{ fontFamily, fontSize: 16, color: '#e2e8f0', ...(stacked ? {} : { width: 64 }) }}>
+        style={{
+          fontFamily,
+          fontSize: dense ? 14 : 16,
+          color: '#e2e8f0',
+          ...(stacked ? {} : { width: dense ? 56 : 64 }),
+        }}>
         {label}
       </Text>
       <Host
@@ -56,7 +63,7 @@ export function ARTransformSlider({
         matchContents={{ vertical: true }}
         style={{
           ...(stacked ? {} : { flex: 1 }),
-          minHeight: 48,
+          minHeight: dense ? 44 : 48,
           width: stacked ? '100%' : undefined,
         }}>
         <Slider
@@ -69,13 +76,13 @@ export function ARTransformSlider({
           modifiers={
             Platform.OS === 'ios'
               ? [
-                  frame({ minHeight: 48, maxWidth: Infinity }),
+                  frame({ minHeight: dense ? 44 : 48, maxWidth: Infinity }),
                   accessibilityLabel(label),
                   accessibilityValue(spokenValue),
                 ]
               : [
                   fillMaxWidth(),
-                  height(48),
+                  height(dense ? 44 : 48),
                   semantics({ contentDescription: `${label}, ${spokenValue}` }),
                 ]
           }
@@ -103,6 +110,7 @@ export function ARTransformControls({
   stacked,
   onDone,
   compact = false,
+  dense = false,
   fontFamily,
   seedColor,
   controlComponent: Control = ARControl,
@@ -124,16 +132,19 @@ export function ARTransformControls({
   stacked: boolean;
   onDone: () => void;
   compact?: boolean;
+  /** Tightens spacing without hiding transform fields or completion actions. */
+  dense?: boolean;
   fontFamily?: string;
   seedColor?: string;
   controlComponent?: ComponentType<ARControlProps>;
 }) {
   const sliderYaw = ((yaw % 360) + 360) % 360;
   return (
-    <View testID={`${testIDPrefix}-transform-controls`} style={{ gap: compact ? 6 : 12 }}>
+    <View testID={`${testIDPrefix}-transform-controls`} style={{ gap: dense || compact ? 6 : 12 }}>
       <ARTransformSlider
         label="Scale"
         compact={compact}
+        dense={dense}
         fontFamily={fontFamily}
         seedColor={seedColor}
         testID={`${testIDPrefix}-transform-scale`}
@@ -148,6 +159,7 @@ export function ARTransformControls({
       <ARTransformSlider
         label="Rotate"
         compact={compact}
+        dense={dense}
         fontFamily={fontFamily}
         seedColor={seedColor}
         testID={`${testIDPrefix}-transform-rotate`}
@@ -174,6 +186,7 @@ export function ARTransformControls({
         <ARTransformSlider
           label="Height"
           compact={compact}
+          dense={dense}
           fontFamily={fontFamily}
           seedColor={seedColor}
           testID={`${testIDPrefix}-transform-height`}
@@ -191,8 +204,8 @@ export function ARTransformControls({
           style={{
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
-            flexDirection: stacked ? 'column' : 'row',
+            gap: dense ? 4 : 8,
+            flexDirection: stacked && !dense ? 'column' : 'row',
             flexWrap: 'wrap',
           }}>
           {onReposition && (

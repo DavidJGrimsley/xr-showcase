@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { GameButton } from '@/ui/game-button';
 import { useGameWindowDimensions } from '@/ui/use-game-window-dimensions';
 import { useAppTheme } from '@/theme/provider';
@@ -29,18 +30,24 @@ export function MedicalControl({
   testID,
   width,
   fontFamily,
+  fontSize = 15,
   icon,
   iconOnly = false,
-}: ARControlProps & { icon?: ReactElement; iconOnly?: boolean }) {
+}: ARControlProps & { icon?: ReactElement; iconOnly?: boolean; fontSize?: number }) {
   const colors = useMedicalColors();
   const { width: viewportWidth, fontScale } = useGameWindowDimensions();
   const measuredWidth = useContext(MedicalWidthContext);
-  const availableWidth = measuredWidth ?? Math.max(48, Math.min(viewportWidth - 72, 520));
+  const availableWidth = measuredWidth ?? Math.max(44, Math.min(viewportWidth - 64, 520));
   const choice = selected !== undefined;
   const secondaryAction = label === 'Home' || /^(Reset|Restart|Reposition)/.test(label);
   const filled = choice ? !!selected : !secondaryAction;
   const color = choice ? (selected ? colors.secondary : colors.surface) : colors.primary;
-  const naturalWidth = Math.ceil(label.length * 16 * fontScale * 0.6) + 32 + (filled ? 0 : 2);
+  // Short labels need room for wide glyphs (for example the "m" in Home).
+  const glyphWidth = label.length <= 4 ? 0.7 : 0.6;
+  const naturalWidth =
+    Math.ceil((label.length * fontSize * glyphWidth + 4) * fontScale) +
+    (Platform.OS === 'android' ? 24 : 16) +
+    (filled ? 0 : 2);
   return (
     <GameButton
       label={label}
@@ -50,8 +57,10 @@ export function MedicalControl({
       disabled={disabled}
       onPress={onPress}
       testID={testID}
-      width={iconOnly ? 48 : Math.max(48, Math.min(width ?? naturalWidth, availableWidth))}
+      width={iconOnly ? 44 : Math.max(44, Math.min(width ?? naturalWidth, availableWidth))}
       fontFamily={fontFamily}
+      fontSize={fontSize}
+      compact
       color={color}
       textColor={filled ? colors.background : colors.text}
       variant={filled ? 'filled' : 'outlined'}

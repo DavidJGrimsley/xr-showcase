@@ -64,7 +64,6 @@ function MedicalMainControls({
   context,
   controller,
   state,
-  stacked,
   onTransform,
   onRestart,
 }: {
@@ -75,13 +74,9 @@ function MedicalMainControls({
   onTransform: () => void;
   onRestart: () => void;
 }) {
-  const rowStyle = {
-    flexDirection: stacked ? ('column' as const) : ('row' as const),
-    flexWrap: 'wrap' as const,
-  };
   return (
     <>
-      <View style={[styles.controlRow, rowStyle]}>
+      <View style={styles.controlRow}>
         <MedicalModelPicker
           selectedValue={state.modelId}
           onValueChange={(model) => controller.selectModel(context.sessionId, model)}
@@ -93,7 +88,7 @@ function MedicalMainControls({
           onPress={onTransform}
         />
       </View>
-      <View style={[styles.controlRow, rowStyle]}>
+      <View style={styles.controlRow}>
         <ARControl
           label="Labels"
           selected={state.labelsVisible}
@@ -202,9 +197,9 @@ export function MedicalControls({
   const [transformRevision, setTransformRevision] = useState<number | null>(null);
   const availableWidth = Math.max(
     1,
-    measuredWidth ? measuredWidth - 32 : Math.min(width - 40, 560) - 32
+    measuredWidth ? measuredWidth - 24 : Math.min(width - 40, 560) - 24
   );
-  const stacked = fontScale > 1.3 || availableWidth < 290;
+  const stacked = fontScale > 1.3 || availableWidth < 230;
   const restart = () => {
     if (controller.getSessionId() !== context.sessionId) return;
     controller.restart(context.sessionId);
@@ -219,7 +214,9 @@ export function MedicalControls({
         <MedicalStatus state={state} />
         <View style={styles.modeActions}>
           <ARControl
-            label="3D Anatomy"
+            label="Anatomy"
+            fontSize={14}
+            accessibilityLabel="3D Anatomy"
             selected={state.mode === 'anatomy'}
             testID="medical-mode-anatomy"
             onPress={() => {
@@ -228,7 +225,9 @@ export function MedicalControls({
             }}
           />
           <ARControl
-            label="Scan Slices"
+            label="Slices"
+            fontSize={14}
+            accessibilityLabel="Scan Slices"
             selected={state.mode === 'slices'}
             testID="medical-mode-slices"
             onPress={() => {
@@ -238,6 +237,7 @@ export function MedicalControls({
           />
           <ARControl
             label="3D Scan"
+            fontSize={14}
             selected={state.mode === 'volume'}
             testID="medical-mode-volume"
             onPress={() => {
@@ -336,24 +336,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   controlRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 4,
   },
   panel: {
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
-    gap: 12,
+    gap: 8,
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
   },
   modeActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 2,
   },
   centered: {
     alignItems: 'center',
