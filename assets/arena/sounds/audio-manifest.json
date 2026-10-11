@@ -1,0 +1,100 @@
+{
+  "assets": {
+    "menu": {
+      "source": "temp/Sound/BackgroundMusic/MenuMusic.wav",
+      "sourceSha256": "5a9f95c8562c4e662de185b4a09d20e17771e9a23496726ae6e5531bc3302237",
+      "file": "menu.m4a",
+      "sha256": "b3763a61a10471cf9656f464b746c73008d8314dff50f6fd74fc142069d917ce",
+      "bytes": 9274222,
+      "durationSeconds": 361.875
+    },
+    "battle": {
+      "source": "temp/Sound/BackgroundMusic/BattleMusic.wav",
+      "sourceSha256": "54aaaf8f9413996bcd76f2570d3168e7c7550e5cfaef538ac8d9e1bfc416af2b",
+      "file": "battle.m4a",
+      "sha256": "68d2b283e47f095759e4f159d79e8d07b55472cc42a73ecb5a9e19d984e5a299",
+      "bytes": 9333731,
+      "durationSeconds": 356.25
+    },
+    "title": {
+      "source": "temp/Sound/SoundRecordings/SR_NeoRockEmSockemRobots.wav",
+      "sourceSha256": "9fa67aca5699775dfc49f80dae2a7e4c8da7949211e1e2a25b8382b641e3f857",
+      "file": "title.wav",
+      "sha256": "43240fb8902a80d47afe9dd7df0f3b385d8ba7f855e6aa946897503b97c4c342",
+      "bytes": 572878,
+      "durationSeconds": 2.983333
+    },
+    "ready": {
+      "source": "temp/Sound/SoundRecordings/SR_Ready.wav",
+      "sourceSha256": "7c23fac4579efb39f7d57959c649aeb01657e2868a8697daa40e990ab1527852",
+      "file": "ready.wav",
+      "sha256": "0a485048035a0acb73682851c0388fb5cf08617370fabb60a4b932af7560a504",
+      "bytes": 169678,
+      "durationSeconds": 0.883333
+    },
+    "fight": {
+      "source": "temp/Sound/SoundRecordings/SR_Fight.wav",
+      "sourceSha256": "21845d9d922a7522aec92419d5470c0aab85d9457a3151dd6ecce5febfd032d1",
+      "file": "fight.wav",
+      "sha256": "8eadca9a391ef1208655cd102ca65fbd8d767b77fb7da3e5ef5da0d5001b277c",
+      "bytes": 144078,
+      "durationSeconds": 0.75
+    },
+    "win": {
+      "source": "temp/Sound/SoundRecordings/SR_YouWIn.wav",
+      "sourceSha256": "d5d6887623ce626bc3142a242a40990e8b6bbb0f81b5bb1c72d7ce3e04def01e",
+      "file": "win.wav",
+      "sha256": "34d696267ac99290d267eb0b0c1877bf8c97eba6fdb97f85c08c52c52827ceaf",
+      "bytes": 208078,
+      "durationSeconds": 1.083333
+    },
+    "lose": {
+      "source": "temp/Sound/SoundRecordings/SR_YouLose.wav",
+      "sourceSha256": "de1f3af3a791564180d9c10cb28107958d2c9e279ac0aa3decdebd3874db6627",
+      "file": "lose.wav",
+      "sha256": "ef72bc56d2d301c017e1f413178e730c13823dd72526aa9ffae1a85ad5982eb3",
+      "bytes": 291278,
+      "durationSeconds": 1.516667
+    },
+    "round1": {
+      "source": "temp/Sound/SoundRecordings/SR_Round1.wav",
+      "sourceSha256": "4ee04857c03e7734161f7c2e95c648181a284d205c7f7089f2a34cb9558a3cd4",
+      "file": "round1.wav",
+      "sha256": "7bb8afa398d9444b4a355b4d9e4ae653d6a132ef646f29f3896740817f288e14",
+      "bytes": 233678,
+      "durationSeconds": 1.216667
+    },
+    "round2": {
+      "source": "temp/Sound/SoundRecordings/SR_Round2.wav",
+      "sourceSha256": "e2ee2d513c1f6727e0152c5c622c4eb5b33dc518d3be9fe73a30c718cffb48bb",
+      "file": "round2.wav",
+      "sha256": "78ff26f21e190159d79d3519c1450d1fe1dee46b3589770b3038819094c28d6d",
+      "bytes": 265678,
+      "durationSeconds": 1.383333
+    },
+    "round3": {
+      "source": "temp/Sound/SoundRecordings/SR_Round3.wav",
+      "sourceSha256": "f6fdad53e935e4caa64e0e1f236faac9385ba3fab473d5e2707ca830cadc9a4d",
+      "file": "round3.wav",
+      "sha256": "57a113ce64fa15f972f9433217da1b0ae37bb6bced5b64ccb080179ecfe0443f",
+      "bytes": 249678,
+      "durationSeconds": 1.3
+    },
+    "round4": {
+      "source": "temp/Sound/SoundRecordings/SR_Round4.wav",
+      "sourceSha256": "6bddb6c36059a100d1b3ca88b38ec60edbb6c345aea4b1f7037284fd0417c760",
+      "file": "round4.wav",
+      "sha256": "264b8c9480d3240c6bfe4160c6993e7c26f91cf645cd038ab118c747f3e9132f",
+      "bytes": 230478,
+      "durationSeconds": 1.2
+    },
+    "round5": {
+      "source": "temp/Sound/SoundRecordings/SR_Round5.wav",
+      "sourceSha256": "0a85cd00101b1edf0663c5dbbd5183b87065113b98697d8ab2f7b6722e7b84fa",
+      "file": "round5.wav",
+      "sha256": "1b4336d0928b341b74e77d42f57639d535298284c15271a205c0cabd9f623d87",
+      "bytes": 275278,
+      "durationSeconds": 1.433333
+    }
+  }
+}

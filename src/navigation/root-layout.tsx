@@ -14,6 +14,7 @@ import { experiences } from '@/features/experiences/experience-catalog';
 import { arSessionCoordinator } from '@/features/ar/ar-session-controller';
 import themeFontAssets from '../theme/font-assets';
 import { AppThemeProvider, useAppTheme } from '../theme/provider';
+import { GameButton } from '@/ui/game-button';
 
 function HeaderAction({ label, onPress }: { label: string; onPress: () => void }) {
   const { activeColors: colors } = useAppTheme();
@@ -79,13 +80,21 @@ function LayoutInner() {
               screenOptions={{
                 contentStyle: { backgroundColor: shellColor },
                 headerShown: true,
+                orientation: 'portrait',
               }}>
               <Stack.Screen
                 name="index"
                 options={{
                   title: 'Home',
+                  orientation: 'default',
                   headerRight: () => (
-                    <HeaderAction label="Settings" onPress={() => router.navigate('/settings')} />
+                    <GameButton
+                      label="Settings"
+                      color={theme.activeColors.primary}
+                      textColor={theme.activeColors.primary}
+                      variant="text"
+                      onPress={() => router.navigate('/settings')}
+                    />
                   ),
                 }}
               />
@@ -95,15 +104,30 @@ function LayoutInner() {
                   name={experience.route}
                   options={{
                     title: experience.title,
-                    headerRight: () => (
-                      <HeaderAction
-                        label="Home"
-                        onPress={() => {
-                          arSessionCoordinator.endCurrent();
-                          router.dismissTo('/');
-                        }}
-                      />
-                    ),
+                    ...(experience.route === 'arena-fighter'
+                      ? { orientation: 'default' as const, headerShown: false }
+                      : {}),
+                    headerRight: () =>
+                      experience.route === 'medical-viewer' ? (
+                        <HeaderAction
+                          label="Home"
+                          onPress={() => {
+                            arSessionCoordinator.endCurrent();
+                            router.dismissTo('/');
+                          }}
+                        />
+                      ) : (
+                        <GameButton
+                          label="Home"
+                          color={theme.activeColors.primary}
+                          textColor={theme.activeColors.primary}
+                          variant="text"
+                          onPress={() => {
+                            arSessionCoordinator.endCurrent();
+                            router.dismissTo('/');
+                          }}
+                        />
+                      ),
                   }}
                 />
               ))}

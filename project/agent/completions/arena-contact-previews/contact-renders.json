@@ -1,0 +1,242 @@
+[
+  {
+    "case": "frontal",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 0,
+    "view": "front",
+    "file": "frontal-L-front.png"
+  },
+  {
+    "case": "frontal",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 0,
+    "view": "overhead",
+    "file": "frontal-L-overhead.png"
+  },
+  {
+    "case": "frontal",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 0,
+    "view": "three-quarter",
+    "file": "frontal-L-three-quarter.png"
+  },
+  {
+    "case": "side-contact",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.055,
+    "angleDegrees": 25,
+    "view": "front",
+    "file": "side-contact-L-front.png"
+  },
+  {
+    "case": "side-contact",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.055,
+    "angleDegrees": 25,
+    "view": "overhead",
+    "file": "side-contact-L-overhead.png"
+  },
+  {
+    "case": "side-contact",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.055,
+    "angleDegrees": 25,
+    "view": "three-quarter",
+    "file": "side-contact-L-three-quarter.png"
+  },
+  {
+    "case": "off-path",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 80,
+    "view": "front",
+    "file": "off-path-L-front.png"
+  },
+  {
+    "case": "off-path",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 80,
+    "view": "overhead",
+    "file": "off-path-L-overhead.png"
+  },
+  {
+    "case": "off-path",
+    "hand": "L",
+    "clip": "Combo_PunchL",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 80,
+    "view": "three-quarter",
+    "file": "off-path-L-three-quarter.png"
+  },
+  {
+    "case": "uppercut",
+    "hand": "L",
+    "clip": "Combo_UppercutL",
+    "seconds": 0.48,
+    "distanceMeters": 0.055,
+    "angleDegrees": 0,
+    "view": "front",
+    "file": "uppercut-L-front.png"
+  },
+  {
+    "case": "uppercut",
+    "hand": "L",
+    "clip": "Combo_UppercutL",
+    "seconds": 0.48,
+    "distanceMeters": 0.055,
+    "angleDegrees": 0,
+    "view": "overhead",
+    "file": "uppercut-L-overhead.png"
+  },
+  {
+    "case": "uppercut",
+    "hand": "L",
+    "clip": "Combo_UppercutL",
+    "seconds": 0.48,
+    "distanceMeters": 0.055,
+    "angleDegrees": 0,
+    "view": "three-quarter",
+    "file": "uppercut-L-three-quarter.png"
+  },
+  {
+    "case": "frontal",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 0,
+    "view": "front",
+    "file": "frontal-R-front.png"
+  },
+  {
+    "case": "frontal",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 0,
+    "view": "overhead",
+    "file": "frontal-R-overhead.png"
+  },
+  {
+    "case": "frontal",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": 0,
+    "view": "three-quarter",
+    "file": "frontal-R-three-quarter.png"
+  },
+  {
+    "case": "side-contact",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.055,
+    "angleDegrees": -25,
+    "view": "front",
+    "file": "side-contact-R-front.png"
+  },
+  {
+    "case": "side-contact",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.055,
+    "angleDegrees": -25,
+    "view": "overhead",
+    "file": "side-contact-R-overhead.png"
+  },
+  {
+    "case": "side-contact",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.055,
+    "angleDegrees": -25,
+    "view": "three-quarter",
+    "file": "side-contact-R-three-quarter.png"
+  },
+  {
+    "case": "off-path",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": -80,
+    "view": "front",
+    "file": "off-path-R-front.png"
+  },
+  {
+    "case": "off-path",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": -80,
+    "view": "overhead",
+    "file": "off-path-R-overhead.png"
+  },
+  {
+    "case": "off-path",
+    "hand": "R",
+    "clip": "Combo_PunchR",
+    "seconds": 0.3,
+    "distanceMeters": 0.08,
+    "angleDegrees": -80,
+    "view": "three-quarter",
+    "file": "off-path-R-three-quarter.png"
+  },
+  {
+    "case": "uppercut",
+    "hand": "R",
+    "clip": "Combo_UppercutR",
+    "seconds": 0.48,
+    "distanceMeters": 0.055,
+    "angleDegrees": 0,
+    "view": "front",
+    "file": "uppercut-R-front.png"
+  },
+  {
+    "case": "uppercut",
+    "hand": "R",
+    "clip": "Combo_UppercutR",
+    "seconds": 0.48,
+    "distanceMeters": 0.055,
+    "angleDegrees": 0,
+    "view": "overhead",
+    "file": "uppercut-R-overhead.png"
+  },
+  {
+    "case": "uppercut",
+    "hand": "R",
+    "clip": "Combo_UppercutR",
+    "seconds": 0.48,
+    "distanceMeters": 0.055,
+    "angleDegrees": 0,
+    "view": "three-quarter",
+    "file": "uppercut-R-three-quarter.png"
+  }
+]

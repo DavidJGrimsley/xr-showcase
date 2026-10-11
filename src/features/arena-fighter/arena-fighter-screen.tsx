@@ -1,4 +1,4 @@
-import ARSessionBoundary from '@/features/ar/ar-session-boundary';
+import ARSessionBoundary from '@/ui/game-ar-boundary';
 
 export default function ArenaFighterScreen() {
   return <ARSessionBoundary />;
