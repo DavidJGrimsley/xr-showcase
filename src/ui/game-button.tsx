@@ -16,6 +16,7 @@ export interface GameButtonProps {
   icon?: ReactElement;
   iconOnly?: boolean;
   compact?: boolean;
+  singleLine?: boolean;
   testID?: string;
   width?: number;
   variant?: 'filled' | 'outlined' | 'text';
@@ -36,6 +37,7 @@ export function GameButton({
   icon,
   iconOnly = false,
   compact = false,
+  singleLine = false,
   testID,
   width,
   variant = 'filled',
@@ -55,7 +57,7 @@ export function GameButton({
       ? Math.max(1, buttonWidth - 2 * horizontalPadding - 2 * borderWidth - (icon ? 30 : 0))
       : undefined;
   const lines =
-    labelWidth && !iconOnly
+    labelWidth && !iconOnly && !singleLine
       ? Math.max(1, Math.ceil((label.length * fontSize * fontScale * 0.6) / labelWidth))
       : 1;
   const height = Math.max(
@@ -124,6 +126,7 @@ export function GameButton({
           <Row spacing={iconOnly ? 0 : 6} alignment="center">
             {icon ? <RNHostView matchContents>{icon}</RNHostView> : null}
             <Text
+              numberOfLines={singleLine ? 1 : undefined}
               // Keep an accessible name for icon-only buttons on web.
               style={
                 iconOnly

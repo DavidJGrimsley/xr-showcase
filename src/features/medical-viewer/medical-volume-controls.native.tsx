@@ -8,7 +8,7 @@ import { version as viroJSVersion } from '@reactvision/react-viro/package.json';
 import stackMetadata from '../../../assets/medical/stack/metadata.json';
 import { volumeUniforms } from './medical-volume-uniforms';
 import { stackPlaneGeometry } from './medical-volume-stack';
-import { MedicalControl as ARControl, useMedicalColors } from './medical-ui';
+import { MedicalControl as ARControl, MedicalChoiceGroup, useMedicalColors } from './medical-ui';
 import { MedicalSheet } from './medical-sheet.native';
 import { GameCopy } from '@/ui/game-text';
 import { ARTransformEditor } from '@/features/ar/ar-transform-editor.native';
@@ -352,18 +352,19 @@ export function MedicalVolumeControls({
           {state.volume.diagnostics.at(-1)}
         </Text>
       ) : null}
-      <View style={styles.centeredActions}>
+      <MedicalChoiceGroup testID="medical-volume-modality-group">
         {(['mri', 'ct'] as const).map((modality) => (
           <ARControl
             key={modality}
             label={modality.toUpperCase()}
+            singleLine
             selected={state.volume.modality === modality}
             disabled={!controller.getVolumeSeries(modality)}
             testID={`medical-volume-modality-${modality}`}
             onPress={() => controller.selectVolumeModality(sessionId, modality)}
           />
         ))}
-      </View>
+      </MedicalChoiceGroup>
       <View style={styles.centeredActions}>
         <ARControl
           label="Controls"

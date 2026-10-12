@@ -3,7 +3,7 @@ import { Host, Slider } from '@expo/ui';
 import { accessibilityLabel, accessibilityValue, frame } from '@expo/ui/swift-ui/modifiers';
 import { fillMaxWidth, height, semantics } from '@expo/ui/jetpack-compose/modifiers';
 import { StyleSheet, Platform, Text, View } from 'react-native';
-import { MedicalControl as ARControl, useMedicalColors } from './medical-ui';
+import { MedicalControl as ARControl, MedicalChoiceGroup, useMedicalColors } from './medical-ui';
 import { ARTransformEditor } from '@/features/ar/ar-transform-editor.native';
 import {
   canManipulateSlices,
@@ -41,11 +41,12 @@ export function MedicalSliceControls({
   );
   return (
     <View style={styles.group} testID="medical-slice-controls">
-      <View style={styles.controlRow}>
+      <MedicalChoiceGroup testID="medical-slice-modality-group">
         {(['mri', 'ct'] as const).map((modality) => (
           <ARControl
             key={modality}
             label={modality.toUpperCase()}
+            singleLine
             selected={slices.modality === modality}
             disabled={!controller.getSliceSeries(modality)}
             testID={`medical-modality-${modality}`}
@@ -55,7 +56,7 @@ export function MedicalSliceControls({
             }}
           />
         ))}
-      </View>
+      </MedicalChoiceGroup>
       {series ? (
         <>
           <Text

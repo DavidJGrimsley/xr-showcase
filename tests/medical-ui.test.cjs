@@ -112,6 +112,7 @@ function load(
     '@/ui/game-progress': { GameProgress: 'Progress' },
     './medical-ui': {
       MedicalControl: 'Control',
+      MedicalChoiceGroup: 'ChoiceGroup',
       MedicalWidthProvider: 'WidthProvider',
       useMedicalColors: () => colors,
     },
@@ -495,27 +496,38 @@ test('medical actions use app colors, retain labels/state and fit narrow widths 
       for (const [label, selected, expected, variant] of [
         ['Scan Controls', undefined, colors.primary, 'filled'],
         ['MRI', true, colors.secondary, 'filled'],
-        ['CT', false, colors.surface, 'outlined'],
+        ['CT', false, colors.background, 'filled'],
+        ['Anatomy', false, colors.background, 'filled'],
         ['Home', undefined, colors.primary, 'outlined'],
         ['Reset Scan', undefined, colors.primary, 'outlined'],
       ]) {
         const button = h.render('MedicalControl', {
           label,
           selected,
+          singleLine: selected !== undefined,
           testID: 'action',
           accessibilityLabel: 'Spoken ' + label,
           onPress: () => calls++,
         });
         assert.equal(button.props.color, expected);
         assert.equal(button.props.variant, variant);
+        assert.equal(
+          button.props.textColor,
+          selected === false || variant === 'outlined' ? colors.text : colors.background
+        );
         assert.equal(button.props.selected, selected);
         assert.equal(button.props.accessibilityLabel, 'Spoken ' + label);
         assert.ok(button.props.width >= 44 && button.props.width <= Math.min(width - 64, 520));
         assert.equal(button.props.compact, true);
         assert.equal(button.props.fontSize, 15);
+        assert.equal(button.props.singleLine, selected !== undefined);
+        if (label === 'Anatomy') {
+          // Reserve enough native label width for its wide glyphs at both text sizes.
+          assert.ok(button.props.width - 16 >= label.length * 15 * 0.7 * fontScale);
+        }
         button.props.onPress();
       }
-      assert.equal(calls, 5);
+      assert.equal(calls, 6);
     }
 });
 
@@ -567,7 +579,7 @@ test('medical sheet bounds scrolling separately from the pinned Done header thro
     }
 });
 
-test('medical HUD retains mode, transform, retry and Home actions through measurement and mode changes', () => {
+test('medical HUD retains mode, transform and retry actions without duplicate Home through mode changes', () => {
   for (const width of [320, 390, 844, 1024])
     for (const fontScale of [1, 1.8]) {
       const c = viewer();
@@ -584,6 +596,10 @@ test('medical HUD retains mode, transform, retry and Home actions through measur
         instruction: '',
       };
       let root = h.render('MedicalControls', { controller: c, context });
+      for (const id of ['anatomy', 'slices', 'volume']) {
+        const button = byID(root, `medical-mode-${id}`);
+        assert.equal(button.props.singleLine, true);
+      }
       const panel = byID(root, 'medical-controls');
       assert.ok(flatten(panel.props.style).maxWidth <= 560);
       panel.props.onLayout({ nativeEvent: { layout: { width: Math.min(width - 40, 560) } } });
@@ -628,8 +644,8 @@ test('medical HUD retains mode, transform, retry and Home actions through measur
       root = h.render('MedicalControls', { controller: c, context });
       byID(root, 'medical-load-retry').props.onPress();
       assert.equal(c.getSnapshot().volume.loadStatus, 'loading');
-      byID(root, 'medical-home').props.onPress();
-      assert.equal(home, 1);
+      assert.equal(byID(root, 'medical-home'), undefined);
+      assert.equal(home, 0);
     }
 });
 

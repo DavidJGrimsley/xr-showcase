@@ -11,7 +11,12 @@ import {
   medicalStatus,
   type MedicalSnapshot,
 } from './medical-controller';
-import { MedicalControl as ARControl, MedicalWidthProvider, useMedicalColors } from './medical-ui';
+import {
+  MedicalControl as ARControl,
+  MedicalChoiceGroup,
+  MedicalWidthProvider,
+  useMedicalColors,
+} from './medical-ui';
 import { MedicalInfoButton, MedicalInfoModal } from './medical-info.native';
 import { MedicalModelPicker } from './medical-model-picker.native';
 import { MedicalTransformControls } from './medical-transform-controls.native';
@@ -212,10 +217,11 @@ export function MedicalControls({
         onLayout={(event) => setMeasuredWidth(event.nativeEvent.layout.width)}
         style={[styles.panel, { backgroundColor: colors.surface }]}>
         <MedicalStatus state={state} />
-        <View style={styles.modeActions}>
+        <MedicalChoiceGroup testID="medical-mode-group">
           <ARControl
             label="Anatomy"
             fontSize={14}
+            singleLine
             accessibilityLabel="3D Anatomy"
             selected={state.mode === 'anatomy'}
             testID="medical-mode-anatomy"
@@ -227,6 +233,7 @@ export function MedicalControls({
           <ARControl
             label="Slices"
             fontSize={14}
+            singleLine
             accessibilityLabel="Scan Slices"
             selected={state.mode === 'slices'}
             testID="medical-mode-slices"
@@ -238,6 +245,7 @@ export function MedicalControls({
           <ARControl
             label="3D Scan"
             fontSize={14}
+            singleLine
             selected={state.mode === 'volume'}
             testID="medical-mode-volume"
             onPress={() => {
@@ -245,7 +253,7 @@ export function MedicalControls({
               controller.selectViewerMode(context.sessionId, 'volume');
             }}
           />
-        </View>
+        </MedicalChoiceGroup>
         {(state.mode === 'volume'
           ? state.volume.loadStatus
           : state.mode === 'anatomy'
@@ -275,9 +283,6 @@ export function MedicalControls({
           onDone={() => setTransformRevision(null)}
           onRestart={restart}
         />
-        <View style={styles.centered}>
-          <ARControl label="Home" testID="medical-home" onPress={context.home} />
-        </View>
         <MedicalVolumeSheet controller={controller} state={state} sessionId={context.sessionId} />
       </View>
     </MedicalWidthProvider>
@@ -349,13 +354,6 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 16,
     padding: 12,
-  },
-  modeActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
   },
   centered: {
     alignItems: 'center',

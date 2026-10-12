@@ -198,7 +198,22 @@ test('compact buttons retain 44-point touch targets and grow for large or wrappe
     assert.ok(nativeButton.props.style.height >= 44);
     assert.ok(nativeButton.props.style.width >= 44);
     assert.equal(GameButton(props).props.style.minWidth, 48);
+    assert.equal(
+      nodes(GameButton(props)).find((node) => node.type === 'Text').props.numberOfLines,
+      undefined
+    );
     fontScale = 1.8;
+    const choice = GameButton({
+      ...props,
+      label: 'Anatomy',
+      width: 160,
+      compact: true,
+      singleLine: true,
+    });
+    const choiceText = nodes(choice).find((node) => node.type === 'Text');
+    assert.equal(choiceText.props.children, 'Anatomy');
+    assert.equal(choiceText.props.numberOfLines, 1);
+    assert.ok(choice.props.style.minHeight >= 49 && choice.props.style.minHeight < 80);
     const wrapped = GameButton({ ...props, width: 56, label: 'Reset Panel', compact: true });
     assert.ok(wrapped.props.style.minHeight >= 80);
     assert.equal(wrapped.props.style.width, 56);
