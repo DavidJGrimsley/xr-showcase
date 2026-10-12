@@ -661,6 +661,8 @@ test('stale transforms and surface callbacks cannot affect a reselected plane or
     c.setSphereScale(token, 3);
     c.setSphereYaw(token, 90);
     c.setSphereHeight(token, 1);
+    c.setSpherePosition(token, 'x', 1);
+    c.setSpherePosition(token, 'z', 1);
     c.pinchSphere(token, 1, 1);
     c.pinchSphere(token, 3, 2);
     c.rotateSphere(token, 1, 0);
@@ -769,6 +771,8 @@ test('transforming a queued hardware round does not submit, cancel or restart po
   c.setSphereScale(token, 0.75);
   c.setSphereHeight(token, 1);
   c.setSphereYaw(token, 90);
+  c.setSpherePosition(token, 'x', 0.4);
+  c.setSpherePosition(token, 'z', -0.2);
   c.pinchSphere(token, 1, 1);
   c.pinchSphere(token, 3, 1.5);
   c.guess(0);
@@ -777,11 +781,43 @@ test('transforming a queued hardware round does not submit, cancel or restart po
   assert.equal(c.getSnapshot().roundId, token.roundId);
   assert.equal(h.calls.submit.length, 1);
   assert.equal(h.calls.cancel.length, 0);
+  assert.equal(c.getSnapshot().sphereX, 0.4);
+  assert.equal(c.getSnapshot().sphereZ, -0.2);
   h.advance(5000);
   await flush();
   assert.equal(h.calls.status.length, 1);
   assert.equal(c.getSnapshot().jobStatus, 'running');
   c.detach(1);
+});
+
+test('qubit XYZ position clamps and survives reposition, keeps sphere ground clearance, and resets on Restart AR', () => {
+  const c = harness().controller,
+    token = transformScope(c);
+  c.setSpherePosition(token, 'x', 99);
+  c.setSpherePosition(token, 'z', -99);
+  c.setSpherePosition(token, 'y', 0.8);
+  c.setSphereScale(token, 2);
+  c.setSphereYaw(token, 90);
+  assert.equal(c.getSnapshot().sphereX, 1.524);
+  assert.equal(c.getSnapshot().sphereZ, -1.524);
+  assert.deepEqual(blochSpherePosition(2, 0.8, 1.524, -1.524), [1.524, 1.05, -1.524]);
+  const before = c.getSnapshot();
+  c.setSpherePosition(token, 'x', NaN);
+  c.setSpherePosition(token, 'invalid', 1);
+  assert.equal(c.getSnapshot(), before);
+  c.setTracking(1, false);
+  const limited = c.getSnapshot();
+  c.setSpherePosition(token, 'z', 0);
+  assert.equal(c.getSnapshot(), limited);
+  c.setTracking(1, true);
+  c.reposition(token);
+  c.setPlaced(1, true);
+  assert.equal(c.getSnapshot().sphereX, 1.524);
+  assert.equal(c.getSnapshot().sphereZ, -1.524);
+  c.restart(1);
+  assert.equal(c.getSnapshot().sphereX, 0);
+  assert.equal(c.getSnapshot().sphereZ, 0);
+  assert.equal(c.getSnapshot().sphereHeight, DEFAULT_SPHERE_HEIGHT);
 });
 
 test('Reposition cancels a queued hardware round once while preserving the display pose', async () => {

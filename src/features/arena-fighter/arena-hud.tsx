@@ -386,7 +386,12 @@ export default function ArenaHUD({
               state={snapshot}
               scope={transformScope}
               positioning={positioning}
-              onPosition={() => setPositioning(true)}
+              onPositioningChange={setPositioning}
+              onReposition={() => {
+                if (!transformScope) return;
+                if (room) room.reposition();
+                else controller.repositionSolo(transformScope);
+              }}
               onDone={closeEditor}
             />
           </ScrollView>

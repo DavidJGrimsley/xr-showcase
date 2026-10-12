@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router/react-navigation';
 import { Stack } from 'expo-router/stack';
 import { useFonts } from 'expo-font';
-import { Platform, Pressable, StatusBar, Text } from 'react-native';
+import { Platform, StatusBar } from 'react-native';
 import { NavigationBar } from 'expo-navigation-bar';
 import * as SystemUI from 'expo-system-ui';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -20,15 +20,13 @@ function HeaderAction({ label, onPress }: { label: string; onPress: () => void }
   const { activeColors: colors } = useAppTheme();
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className="min-h-[44px] min-w-[44px] items-center justify-center px-2 active:opacity-70"
-      onPress={onPress}>
-      <Text className="text-base font-semibold" style={{ color: colors.primary }}>
-        {label}
-      </Text>
-    </Pressable>
+    <GameButton
+      label={label}
+      onPress={onPress}
+      color={colors.primary}
+      textColor={colors.primary}
+      variant="text"
+    />
   );
 }
 
@@ -87,15 +85,6 @@ function LayoutInner() {
                 options={{
                   title: 'Home',
                   orientation: 'default',
-                  headerRight: () => (
-                    <GameButton
-                      label="Settings"
-                      color={theme.activeColors.primary}
-                      textColor={theme.activeColors.primary}
-                      variant="text"
-                      onPress={() => router.navigate('/settings')}
-                    />
-                  ),
                 }}
               />
               {experiences.map((experience) => (
@@ -131,10 +120,6 @@ function LayoutInner() {
                   }}
                 />
               ))}
-              <Stack.Screen
-                name="settings"
-                options={{ presentation: 'modal', title: 'Settings' }}
-              />
             </Stack>
           </RouterThemeBridge>
         </SafeAreaProvider>

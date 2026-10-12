@@ -449,6 +449,61 @@ test('remote placement survives relay retry; AR recreation clears only local pla
   }
 });
 
+test('remote Reposition keeps socket ownership, match state and the peer pose while clearing only local Ready', async () => {
+  const p = pair(),
+    client = port();
+  const room = new ArenaRemoteRoom(
+    p.host,
+    { apiKey: 'test', projectId: 'test' },
+    'ABCDEFGHJKMN',
+    client
+  );
+  try {
+    await room.open(new AbortController().signal);
+    room.attach({});
+    room.tracking(true);
+    assert.ok(room.place([1, 0, 2]));
+    const hostState = p.host.getSnapshot();
+    p.host.setPosition(
+      { sessionToken: p.tokens[0], placementVersion: hostState.placementVersion },
+      'x',
+      0.4
+    );
+    p.guest.setPosition(
+      { sessionToken: p.tokens[1], placementVersion: p.guest.getSnapshot().placementVersion },
+      'z',
+      -0.2
+    );
+    assert.ok(p.host.ready());
+    const peerPose = { ...p.guest.getSnapshot().arenaTransform };
+    const claims = client.claims.length;
+    const round = p.host.getSnapshot().roundId;
+    room.reposition();
+    assert.equal(client.state, 'synced');
+    assert.equal(client.claims.length, claims);
+    assert.equal(room.getSnapshot().repositioning, true);
+    assert.equal(room.getSnapshot().preview, null);
+    assert.equal(p.host.getSnapshot().localReady, false);
+    assert.equal(p.host.getSnapshot().roundId, round);
+    assert.equal(p.host.getSnapshot().canTransform, false);
+    assert.ok(room.place([3, 0, 4]));
+    assert.equal(p.host.getSnapshot().canTransform, true);
+    assert.equal(p.host.getSnapshot().arenaTransform.x, 0.4);
+    assert.deepEqual(p.guest.getSnapshot().arenaTransform, peerPose);
+    assert.deepEqual(room.getSnapshot().preview.position, [3, 0, 4]);
+    assert.equal(client.state, 'synced');
+  } finally {
+    room.dispose();
+  }
+  const fighting = fightingPair();
+  const locked = new ArenaRemoteRoom(fighting.host, { projectId: 'test' }, 'ABCDEFGHJKMN', port());
+  locked.attach({});
+  const before = locked.getSnapshot();
+  locked.reposition();
+  assert.equal(locked.getSnapshot(), before, 'combat placement stays locked');
+  locked.dispose();
+});
+
 test('remote AR recreation preserves the fight and the other placement, and both players Resume', () => {
   const p = fightingPair();
   const health = { blue: p.host.getSnapshot().blue.health, red: p.host.getSnapshot().red.health };

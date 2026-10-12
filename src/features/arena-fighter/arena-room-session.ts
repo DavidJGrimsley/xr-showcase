@@ -16,6 +16,7 @@ export interface ArenaRoomSession {
   fail(message: string): void;
   retry(): void;
   prepareRestart(): boolean;
+  reposition(): void;
   finishScan(): Promise<void>;
   cancelHosting(): void;
   dispose(): void;

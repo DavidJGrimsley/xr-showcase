@@ -44,6 +44,9 @@ function load(file, overrides = {}, expose = '') {
       useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
     },
     '@/theme/provider': { useAppTheme: () => ({ activeColors: colors }) },
+    './use-game-window-dimensions': {
+      useGameWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
+    },
     'react-native-safe-area-context': {
       useSafeAreaInsets: () => ({ top: 0, bottom: 20, left: 0, right: 0 }),
     },
@@ -171,6 +174,54 @@ test('home actions retain all three routes and follow the measured viewport thro
   assert.equal(routes.length, 15);
 });
 
+test('compact buttons retain 44-point touch targets and grow for large or wrapped text without shrinking default game buttons', () => {
+  for (const platform of ['ios', 'android', 'web']) {
+    let fontScale = 1;
+    const { GameButton } = load('ui/game-button.tsx', {
+      'react-native': {
+        Platform: { OS: platform },
+        View: 'View',
+        useWindowDimensions: () => ({ fontScale }),
+      },
+    });
+    const props = {
+      label: 'Done',
+      fontSize: 15,
+      width: 64,
+      onPress: () => {},
+      color: colors.primary,
+      textColor: colors.background,
+    };
+    assert.equal(GameButton({ ...props, compact: true }).props.style.minHeight, 44);
+    const outlined = GameButton({ ...props, compact: true, variant: 'outlined', width: 44 });
+    const nativeButton = nodes(outlined).find((node) => node.type === 'Button');
+    assert.ok(nativeButton.props.style.height >= 44);
+    assert.ok(nativeButton.props.style.width >= 44);
+    assert.equal(GameButton(props).props.style.minWidth, 48);
+    assert.equal(
+      nodes(GameButton(props)).find((node) => node.type === 'Text').props.numberOfLines,
+      undefined
+    );
+    fontScale = 1.8;
+    const choice = GameButton({
+      ...props,
+      label: 'Anatomy',
+      width: 160,
+      compact: true,
+      singleLine: true,
+    });
+    const choiceText = nodes(choice).find((node) => node.type === 'Text');
+    assert.equal(choiceText.props.children, 'Anatomy');
+    assert.equal(choiceText.props.numberOfLines, 1);
+    assert.ok(choice.props.style.minHeight >= 49 && choice.props.style.minHeight < 80);
+    const wrapped = GameButton({ ...props, width: 56, label: 'Reset Panel', compact: true });
+    assert.ok(wrapped.props.style.minHeight >= 80);
+    assert.equal(wrapped.props.style.width, 56);
+    const iconOnly = GameButton({ ...props, iconOnly: true, compact: true });
+    assert.equal(iconOnly.props.style.width, 44);
+  }
+});
+
 test('game AR status actions stay centered in a row and preserve Retry and Home callbacks', () => {
   const calls = [];
   const { GameStatusPanel } = load('ui/game-status-panel.tsx', {
@@ -194,6 +245,31 @@ test('game AR status actions stay centered in a row and preserve Retry and Home 
     rendered.filter((node) => node.type === 'GameButton').forEach((node) => node.props.onPress());
   }
   assert.deepEqual(calls, ['Home', 'Retry', 'Home']);
+});
+
+test('medical permission/retry actions keep compact primary actions and outlined Home without changing game defaults', () => {
+  const { GameStatusPanel } = load('ui/game-status-panel.tsx', {
+    './game-button': { GameButton: 'GameButton' },
+    './game-text': { GameText: 'GameText' },
+    './game-progress': { GameProgress: 'Progress' },
+  });
+  const props = {
+    title: 'AR needs another try',
+    message: 'Try again.',
+    actions: [
+      { label: 'Retry', onPress: () => {} },
+      { label: 'Home', onPress: () => {} },
+    ],
+  };
+  const medical = nodes(
+    GameStatusPanel({ ...props, compact: true, outlinedActions: ['Home'] })
+  ).filter((n) => n.type === 'GameButton');
+  assert.equal(medical[0].props.variant, 'filled');
+  assert.equal(medical[1].props.variant, 'outlined');
+  assert.equal(medical[1].props.textColor, colors.text);
+  assert.ok(medical.every((n) => n.props.compact));
+  const game = nodes(GameStatusPanel(props)).filter((n) => n.type === 'GameButton');
+  assert.ok(game.every((n) => !n.props.compact && n.props.variant === 'filled'));
 });
 
 test('web viewport sizing matches static markup through hydration, then follows real dimensions; native sizing is immediate', () => {

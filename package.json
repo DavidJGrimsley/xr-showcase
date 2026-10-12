@@ -27,7 +27,8 @@
     "test:ar": "node --experimental-strip-types --test tests/ar-session.test.cjs",
     "test:arena": "node --experimental-strip-types --test tests/arena-*.test.cjs",
     "test:qubit": "node --experimental-strip-types --test tests/qubit-*.test.cjs",
-    "test:medical": "node --experimental-strip-types --test tests/medical-controller.test.cjs tests/medical-assets.test.cjs",
+    "test:medical": "node --experimental-strip-types --test tests/medical-controller.test.cjs tests/medical-assets.test.cjs tests/medical-slices.test.cjs tests/medical-volumes.test.cjs tests/medical-ui.test.cjs",
+    "test:medical:shader": "node --experimental-strip-types tools/medical/test_volume_shader.cjs",
     "build:ios": "expo export --platform ios --max-workers 2",
     "react:check": "react-doctor -y --no-telemetry",
     "build": "npm run build:ios"
@@ -68,7 +69,6 @@
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
-    "uniwind": "^1.12.2",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -81,7 +81,6 @@
     "eslint-config-prettier": "^10.1.2",
     "prettier": "^3.2.5",
     "react-doctor": "^0.9.12",
-    "tailwindcss": "^4.2.4",
     "typescript": "~6.0.3"
   },
   "private": true

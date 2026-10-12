@@ -245,7 +245,7 @@ function QubitControls({
             placementRevision: state.placementRevision,
             roundId: state.roundId,
           }}
-          stacked={fontScale > 1.3 || controlsWidth < 290}
+          stacked={fontScale > 1.3 || controlsWidth < 230}
           onDone={() => setTransformRevision(null)}
         />
       ) : (

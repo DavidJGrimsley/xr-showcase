@@ -169,6 +169,15 @@ export function QubitInfoModal({
                     it should serve as a starting point and reference material for beginners.
                   </Text>
                 </InfoSection>
+                <InfoSection title="AR controls">
+                  <Text style={styles.body}>
+                    Transform offers Scale, Rotate, and Position. Position moves the sphere
+                    left/right, up/down, and forward/back relative to its placed surface. Its Done
+                    returns to Transform. Reposition lets you select another surface and keeps your
+                    display pose; an active round is reset using the existing cancellation flow.
+                    Position, scale, and rotation edits leave the quantum job and result unchanged.
+                  </Text>
+                </InfoSection>
                 <InfoSection title="What is a Qubit?">
                   <Text style={styles.body}>
                     Quantum mechanics is the framework of quantum physics that describes matter and

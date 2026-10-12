@@ -525,6 +525,8 @@ test('transform callbacks ignore earlier load attempts, placements and sessions 
     c.setScale(token, 3);
     c.setYaw(token, 123);
     c.setHeight(token, 1.4);
+    c.setPosition(token, 'x', 1);
+    c.setPosition(token, 'z', 1);
   };
   const oldLoad = scope(c);
   c.finishLoad(oldLoad, 'skull', false);
@@ -552,6 +554,37 @@ test('transform callbacks ignore earlier load attempts, placements and sessions 
   const resumed = c.getSnapshot();
   mutate(oldSession);
   assert.equal(c.getSnapshot(), resumed);
+});
+
+test('anatomy XYZ position is bounded, independent of size/yaw, and preserved through reposition but reset by Restart AR', () => {
+  const c = placed(),
+    token = scope(c);
+  c.setPosition(token, 'x', 99);
+  c.setPosition(token, 'z', -99);
+  c.setPosition(token, 'y', 0.8);
+  c.setScale(token, 2);
+  c.setYaw(token, 90);
+  assert.equal(c.getSnapshot().x, MAX_MODEL_HEIGHT);
+  assert.equal(c.getSnapshot().z, -MAX_MODEL_HEIGHT);
+  assert.equal(c.getSnapshot().height, 0.8);
+  const before = c.getSnapshot();
+  for (const value of [NaN, Infinity, -Infinity]) c.setPosition(token, 'x', value);
+  c.setPosition(token, 'invalid', 1);
+  assert.equal(c.getSnapshot(), before);
+  c.setTracking(1, false);
+  const limited = c.getSnapshot();
+  c.setPosition(token, 'z', 0);
+  assert.equal(c.getSnapshot(), limited);
+  c.setTracking(1, true);
+  c.reposition(1);
+  c.selectPlane(1, scope(c).placementRevision, 'floor');
+  c.finishLoad(scope(c), 'skull', true);
+  assert.equal(c.getSnapshot().x, MAX_MODEL_HEIGHT);
+  assert.equal(c.getSnapshot().z, -MAX_MODEL_HEIGHT);
+  c.restart(1);
+  assert.equal(c.getSnapshot().x, 0);
+  assert.equal(c.getSnapshot().z, 0);
+  assert.equal(c.getSnapshot().height, DEFAULT_MODEL_HEIGHT);
 });
 test('subscription emits changed snapshots and unsubscribes cleanly', () => {
   const c = new MedicalController();

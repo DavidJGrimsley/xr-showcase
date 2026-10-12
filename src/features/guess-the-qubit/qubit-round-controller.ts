@@ -8,6 +8,7 @@ import type {
 import type { QubitCleanup } from './qubit-job-cleanup';
 import { qubitFailure, qubitRoundMessage } from './qubit-errors.ts';
 import {
+  clampAROffset,
   clampARHeight,
   clampARScale,
   DEFAULT_AR_HEIGHT,
@@ -35,6 +36,8 @@ export interface QubitSnapshot {
   sphereScale: number;
   sphereYaw: number;
   sphereHeight: number;
+  sphereX: number;
+  sphereZ: number;
   pinching: boolean;
   rotating: boolean;
   tracking: boolean;
@@ -93,6 +96,8 @@ export class QubitRoundController {
     sphereScale: 1,
     sphereYaw: 0,
     sphereHeight: DEFAULT_AR_HEIGHT,
+    sphereX: 0,
+    sphereZ: 0,
     pinching: false,
     rotating: false,
     tracking: false,
@@ -186,7 +191,13 @@ export class QubitRoundController {
   }
   restart(sessionId: number) {
     if (this.snapshot.sessionId !== sessionId) return;
-    this.update({ sphereScale: 1, sphereYaw: 0, sphereHeight: DEFAULT_AR_HEIGHT });
+    this.update({
+      sphereScale: 1,
+      sphereYaw: 0,
+      sphereHeight: DEFAULT_AR_HEIGHT,
+      sphereX: 0,
+      sphereZ: 0,
+    });
     this.detach(sessionId);
   }
   setTracking(sessionId: number, tracking: boolean) {
@@ -236,6 +247,12 @@ export class QubitRoundController {
     if (!this.currentTransform(scope) || !Number.isFinite(value)) return;
     const sphereHeight = clampARHeight(value);
     if (sphereHeight !== this.snapshot.sphereHeight) this.update({ sphereHeight });
+  }
+  setSpherePosition(scope: QubitTransformScope, axis: 'x' | 'y' | 'z', value: number) {
+    if (!this.currentTransform(scope) || !Number.isFinite(value) || !['x', 'y', 'z'].includes(axis))
+      return;
+    if (axis === 'y') this.setSphereHeight(scope, value);
+    else this.update({ [axis === 'x' ? 'sphereX' : 'sphereZ']: clampAROffset(value) });
   }
   pinchSphere(scope: QubitTransformScope, gesture: number, factor: number) {
     if (!this.currentTransform(scope) || ![1, 2, 3].includes(gesture)) return;

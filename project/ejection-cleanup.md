@@ -4,8 +4,8 @@ Generated after `mds eject` on 2026-10-08T01:41:55.716Z.
 
 Complete this checklist after the app shell and core flows are stable, before polish and release.
 
-Retained: Settings Page, Data Adapter
-Ejected: Stylist, Exposition Pages, Expo SDK 56 Exposition, create-expo-stack Starter Components, Auth Flow, Software Mansion Demos
+Retained: Data Adapter
+Ejected: Settings Page (owner's October 11 follow-up), Stylist, Exposition Pages, Expo SDK 56 Exposition, create-expo-stack Starter Components, Auth Flow, Software Mansion Demos
 
 ## Tasks
 
@@ -31,3 +31,7 @@ Ejected: Stylist, Exposition Pages, Expo SDK 56 Exposition, create-expo-stack St
 ## Completed October 7, 2026
 
 Removed every exposition route, reference screen and demo component; cleaned Home links and the navigation stack. Preserved the current theme, Settings and local data adapter. The Settings auth adapter type is retained as a shared dependency; no auth flow remains. Removed the color-picker dependency and refreshed the lockfile. Validated with MDS Doctor, TypeScript, Expo Doctor and iOS JavaScript export.
+
+## Completed October 11, 2026
+
+At the owner's request, removed the Home header Settings action, Settings stack registration, route, screen and helper logic. Its placeholder auth types and contrast helper had no remaining consumers and were removed too. The app theme and camera-permission links to the phone's system Settings remain available.

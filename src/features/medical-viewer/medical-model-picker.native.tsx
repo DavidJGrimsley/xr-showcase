@@ -1,19 +1,8 @@
-import { useState } from 'react';
-import { Button, Host, Text as NativeText } from '@expo/ui';
-import { Picker, Text as SwiftUIText } from '@expo/ui/swift-ui';
-import {
-  accessibilityLabel,
-  disabled,
-  fixedSize,
-  frame,
-  pickerStyle,
-  tag,
-} from '@expo/ui/swift-ui/modifiers';
-import { DropdownMenu, DropdownMenuItem } from '@expo/ui/jetpack-compose';
-import { semantics } from '@expo/ui/jetpack-compose/modifiers';
-import { Platform, useWindowDimensions } from 'react-native';
+import { Host, Picker as UniversalPicker } from '@expo/ui';
+import { useWindowDimensions, View } from 'react-native';
+import { useMedicalColors } from './medical-ui';
 import { MEDICAL_MODELS, type MedicalModelId } from './medical-models';
-
+import AvailabilityPicker from './medical-model-availability';
 export function MedicalModelPicker({
   selectedValue,
   onValueChange,
@@ -21,66 +10,27 @@ export function MedicalModelPicker({
   selectedValue: MedicalModelId;
   onValueChange: (value: MedicalModelId) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const colors = useMedicalColors();
   const { fontScale } = useWindowDimensions();
-  const selected = MEDICAL_MODELS.find((model) => model.id === selectedValue)!;
+  if (MEDICAL_MODELS.some((model) => !model.available))
+    return <AvailabilityPicker selectedValue={selectedValue} onValueChange={onValueChange} />;
   return (
-    <Host matchContents colorScheme="dark" seedColor="#93f5c5">
-      {/* Universal Picker lacks disabled items; native menus preserve asset availability. */}
-      {Platform.OS === 'ios' ? (
-        <Picker
-          testID="medical-model-picker"
-          selection={selectedValue}
-          onSelectionChange={onValueChange}
-          modifiers={[
-            pickerStyle('menu'),
-            fixedSize({ horizontal: true, vertical: false }),
-            frame({ minHeight: Math.max(48, 17 * fontScale + 20) }),
-            accessibilityLabel('Model'),
-          ]}>
+    <View style={{ width: 140 * fontScale, maxWidth: '100%', minHeight: 44 }}>
+      <Host
+        matchContents={{ vertical: true }}
+        ignoreSafeArea="all"
+        colorScheme="dark"
+        seedColor={colors.secondary}
+        style={{ width: '100%', minHeight: 44 }}>
+        <UniversalPicker
+          selectedValue={selectedValue}
+          onValueChange={onValueChange}
+          testID="medical-model-picker">
           {MEDICAL_MODELS.map((model) => (
-            <SwiftUIText key={model.id} modifiers={[tag(model.id), disabled(!model.available)]}>
-              {model.available ? model.label : `${model.label} (unavailable)`}
-            </SwiftUIText>
+            <UniversalPicker.Item key={model.id} label={model.label} value={model.id} />
           ))}
-        </Picker>
-      ) : (
-        <DropdownMenu expanded={expanded} onDismissRequest={() => setExpanded(false)}>
-          <DropdownMenu.Trigger>
-            <Button
-              testID="medical-model-picker"
-              variant="text"
-              onPress={() => setExpanded(true)}
-              style={{ height: Math.max(48, 17 * fontScale + 20) }}
-              modifiers={[semantics({ contentDescription: `Model, ${selected.label}` })]}>
-              <NativeText textStyle={{ fontSize: 17, color: '#93f5c5' }}>
-                {`${selected.label} ▾`}
-              </NativeText>
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Items>
-            {MEDICAL_MODELS.map((model) => (
-              <DropdownMenuItem
-                key={model.id}
-                enabled={model.available}
-                onClick={
-                  model.available
-                    ? () => {
-                        onValueChange(model.id);
-                        setExpanded(false);
-                      }
-                    : undefined
-                }>
-                <DropdownMenuItem.Text>
-                  <NativeText>
-                    {model.available ? model.label : `${model.label} (unavailable)`}
-                  </NativeText>
-                </DropdownMenuItem.Text>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenu.Items>
-        </DropdownMenu>
-      )}
-    </Host>
+        </UniversalPicker>
+      </Host>
+    </View>
   );
 }

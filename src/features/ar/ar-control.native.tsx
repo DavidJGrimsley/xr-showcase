@@ -1,6 +1,19 @@
 import { Button, Host, Text as NativeText } from '@expo/ui';
 import { Platform, useWindowDimensions, View } from 'react-native';
 
+export interface ARControlProps {
+  label: string;
+  accessibilityLabel?: string;
+  hint?: string;
+  disabled?: boolean;
+  selected?: boolean;
+  onPress: () => void;
+  testID: string;
+  width?: number;
+  fontFamily?: string;
+  seedColor?: string;
+}
+
 export function ARControl({
   label,
   accessibilityLabel = label,
@@ -12,18 +25,7 @@ export function ARControl({
   width,
   fontFamily,
   seedColor = '#93f5c5',
-}: {
-  label: string;
-  accessibilityLabel?: string;
-  hint?: string;
-  disabled?: boolean;
-  selected?: boolean;
-  onPress: () => void;
-  testID: string;
-  width?: number;
-  fontFamily?: string;
-  seedColor?: string;
-}) {
+}: ARControlProps) {
   const { fontScale } = useWindowDimensions();
   // Universal Button does not expose accessibility props. The RN parent is its
   // accessibility element; the native button remains the visual/touch control.

@@ -13,12 +13,17 @@ export default function ARSessionBoundary(_props: ARSessionBoundaryProps) {
 
   return (
     <ScrollView
-      className="flex-1"
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerClassName="grow items-center justify-center px-5 py-8"
-      contentContainerStyle={{ paddingBottom: Math.max(32, insets.bottom) }}
-      style={{ backgroundColor: colors.background }}>
-      <View className="w-full max-w-[720px]">
+      contentContainerStyle={{
+        flexGrow: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 20,
+        paddingTop: 32,
+        paddingBottom: Math.max(32, insets.bottom),
+      }}
+      style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ width: '100%', maxWidth: 720 }}>
         <ARStatusPanel
           title="Camera AR needs a phone"
           message="Open XR Showcase in its development build on a supported physical iPhone or Android phone."

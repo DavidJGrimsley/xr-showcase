@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { BottomSheet, Button, Column, Host, RNHostView, ScrollView } from '@expo/ui';
-import { frame, onGeometryChange } from '@expo/ui/swift-ui/modifiers';
-import { fillMaxWidth, onSizeChanged } from '@expo/ui/jetpack-compose/modifiers';
 import { Link } from 'expo-router';
-import { Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, Pressable, Text as SelectableText } from 'react-native';
+import { GameCopy as Text } from '@/ui/game-text';
+import { GameButton } from '@/ui/game-button';
+import { MedicalSheet } from './medical-sheet.native';
+import { useMedicalColors } from './medical-ui';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { useAppTheme } from '@/theme/provider';
 import provenance from '../../../assets/medical/skull-provenance.json';
@@ -11,26 +11,31 @@ import provenance from '../../../assets/medical/skull-provenance.json';
 export function MedicalInfoButton({ onPress }: { onPress: () => void }) {
   const { activeColors: colors } = useAppTheme();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="About the Medical Viewer"
+    <GameButton
+      label="About the Medical Viewer"
       testID="medical-info"
       onPress={onPress}
-      className="min-h-[48px] min-w-[48px] items-center justify-center active:opacity-50">
-      <Svg width={26} height={26} viewBox="0 0 26 26" accessible={false}>
-        <Circle cx={13} cy={13} r={11} fill="none" stroke={colors.primary} strokeWidth={1.8} />
-        <Circle cx={13} cy={8} r={1.2} fill={colors.primary} />
-        <Line
-          x1={13}
-          y1={12}
-          x2={13}
-          y2={18}
-          stroke={colors.primary}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      </Svg>
-    </Pressable>
+      color={colors.primary}
+      textColor={colors.primary}
+      variant="text"
+      iconOnly
+      compact
+      icon={
+        <Svg width={26} height={26} viewBox="0 0 26 26" accessible={false}>
+          <Circle cx={13} cy={13} r={11} fill="none" stroke={colors.primary} strokeWidth={1.8} />
+          <Circle cx={13} cy={8} r={1.2} fill={colors.primary} />
+          <Line
+            x1={13}
+            y1={12}
+            x2={13}
+            y2={18}
+            stroke={colors.primary}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+        </Svg>
+      }
+    />
   );
 }
 
@@ -41,95 +46,91 @@ export function MedicalInfoModal({
   isPresented: boolean;
   onDismiss: () => void;
 }) {
-  const { width, fontScale } = useWindowDimensions();
-  const [sheetWidth, setSheetWidth] = useState(0);
-  const contentWidth = Math.min(width, sheetWidth || width, 560);
-  const measure = ({ width }: { width: number }) => {
-    if (width > 0) setSheetWidth(width);
-  };
-  const modifiers =
-    Platform.OS === 'ios'
-      ? [frame({ maxWidth: Infinity, alignment: 'top' }), onGeometryChange(measure)]
-      : [fillMaxWidth(), onSizeChanged(measure)];
+  const colors = useMedicalColors();
   return (
-    <Host colorScheme="dark" seedColor="#93f5c5" style={{ position: 'absolute' }}>
-      <BottomSheet
-        testID="medical-info-modal"
-        isPresented={isPresented}
-        onDismiss={onDismiss}
-        snapPoints={['full']}
-        contentPadding={0}
-        containerColor="#10191f">
-        <Column alignment="center" modifiers={modifiers}>
-          <RNHostView matchContents>
-            <View
-              className="flex-row items-center gap-3 px-6 py-2"
-              style={{ width: contentWidth }}
-              onAccessibilityEscape={onDismiss}>
-              <Text accessibilityRole="header" className="flex-1 text-xl font-bold text-slate-50">
-                Medical Viewer
-              </Text>
-              <Host matchContents colorScheme="dark" seedColor="#93f5c5">
-                <Button
-                  label="Done"
-                  variant="text"
-                  onPress={onDismiss}
-                  style={{ height: Math.max(48, 17 * fontScale + 20) }}
-                />
-              </Host>
-            </View>
-          </RNHostView>
-          <ScrollView direction="vertical" style={{ width: contentWidth }}>
-            <RNHostView matchContents>
-              <View
-                className="gap-6 p-6 pb-8"
-                style={{ width: contentWidth }}
-                onAccessibilityEscape={onDismiss}>
-                <Text className="text-base leading-6 text-slate-200">
-                  Move your phone slowly, then tap a highlighted table or floor. The model starts
-                  floating two feet above that surface. Pinch to resize it and twist two fingers to
-                  rotate it. Labels reveals the anatomy markers in Skull mode.
-                </Text>
-                <Text className="text-base leading-6 text-slate-200">
-                  Transform opens sliders for Scale, Rotate, and Height. Scale ranges from half to
-                  three times the original size; Height moves the model from surface level to five
-                  feet above it. Done returns to the main controls.
-                </Text>
-                <Text className="text-base leading-6 text-slate-200">
-                  Reposition, inside Transform, lets you choose another surface while keeping your
-                  size, rotation, height, and labels. Restart AR starts fresh tracking with the
-                  original size and orientation, floating two feet above the surface.
-                </Text>
-                <Text className="text-base leading-6 text-slate-200">
-                  Choose Skull, Brain, Half Skull, or Both from the dropdown. Both is the default.
-                  Changing modes keeps your surface, size, rotation, and height. Both moves both
-                  models together. Its controls become ready only after both models finish loading.
-                </Text>
-                <Text className="text-base leading-6 text-slate-200">
-                  The skull and half-skull come from CT segmentation, and the brain from an MRI mask
-                  exported in 3D Slicer. The models were simplified for mobile viewing while
-                  preserving their shared coordinates. Both displays the half-skull and brain
-                  together. Labels are available only in Skull mode.
-                </Text>
-                <Text selectable className="text-base leading-6 text-slate-200">
-                  {provenance.attribution}
-                </Text>
-                <Link href={provenance.collectionReadme as `https://${string}`} asChild>
-                  <Pressable
-                    accessibilityRole="link"
-                    className="min-h-[48px] justify-center active:opacity-50">
-                    <Text className="text-base text-emerald-200">NLM Additional Head Images ↗</Text>
-                  </Pressable>
-                </Link>
-                <Text className="text-base leading-6 text-slate-200">
-                  Educational visualization only. The segmentation and labels are not clinically
-                  validated and must not be used for diagnosis or treatment.
-                </Text>
-              </View>
-            </RNHostView>
-          </ScrollView>
-        </Column>
-      </BottomSheet>
-    </Host>
+    <MedicalSheet
+      title="Medical Viewer"
+      testID="medical-info-modal"
+      isPresented={isPresented}
+      onDismiss={onDismiss}>
+      <Text style={styles.body}>
+        Move your phone slowly, then tap a highlighted table or floor. The model starts floating two
+        feet above that surface. Pinch to resize it and twist two fingers to rotate it. Labels
+        reveals the anatomy markers in Skull mode.
+      </Text>
+      <Text style={styles.body}>
+        Transform opens Scale, Rotate, and Position. Scale ranges from half to three times the
+        original size. Position moves left/right and forward/back up to five feet from the placed
+        surface, and up/down from surface level to five feet above it. Its Done returns to
+        Transform; Transform’s Done returns to the main controls.
+      </Text>
+      <Text style={styles.body}>
+        Reposition, inside Transform, lets you choose another surface while keeping your size,
+        rotation, height, and labels. Restart AR starts fresh tracking with the original size and
+        orientation, floating two feet above the surface.
+      </Text>
+      <Text style={styles.body}>
+        Choose Skull, Brain, Half Skull, or Both from the dropdown. Both is the default. Changing
+        modes keeps your surface, size, rotation, and height. Both moves both models together. Its
+        controls become ready only after both models finish loading.
+      </Text>
+      <Text style={styles.body}>
+        Scan Slices shows real axial MRI and CT images on an upright panel. Drag the slice slider or
+        use Previous and Next. Switching MRI and CT keeps the nearest physical slice position. Reset
+        Slice returns to the middle; Reset Panel restores its size, rotation, and two-foot height.
+        The panel and 3D Anatomy keep separate transforms.
+      </Text>
+      <Text style={styles.body}>
+        Images use radiological orientation: patient right is at image left, and anterior is at the
+        top. Slice positions are millimetres in the scan RAS coordinate frame. The floating panel is
+        a separate view and does not intersect or align with the meshes.
+      </Text>
+      <Text style={styles.body}>
+        3D Scan starts with a preview of the full MRI, made from 48 transparent scan images stacked
+        into a head shape. Fine layers can be visible, especially from the side. This is a temporary
+        way to show the scan while full volume rendering is being tested. Scan Controls offers
+        appearance presets, transparency, and crop boundaries. Lower transparency makes tissue more
+        visible. Full Scan restores all crop boundaries; Reset Scan restores the selected scan’s
+        appearance and full extent. All three views keep their own size, rotation, and height.
+      </Text>
+      <Text style={styles.body}>
+        The skull and half-skull come from CT segmentation, and the brain from an MRI mask exported
+        in 3D Slicer. The models were simplified for mobile viewing while preserving their shared
+        coordinates. Both displays the half-skull and brain together. Labels are available only in
+        Skull mode.
+      </Text>
+      <SelectableText selectable style={styles.body}>
+        {provenance.attribution}
+      </SelectableText>
+      <Link href={provenance.collectionReadme as `https://${string}`} asChild>
+        <Pressable
+          accessibilityRole="link"
+          style={({ pressed }) => [styles.link, { opacity: pressed ? 0.5 : 1 }]}>
+          <Text style={[styles.linkLabel, { color: colors.primary }]}>
+            NLM Additional Head Images ↗
+          </Text>
+        </Pressable>
+      </Link>
+      <Text style={styles.body}>
+        Educational visualization only. The segmentation and labels are not clinically validated and
+        must not be used for diagnosis or treatment.
+      </Text>
+    </MedicalSheet>
   );
 }
+
+const styles = StyleSheet.create({
+  body: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#e2e8f0',
+  },
+  link: {
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  linkLabel: {
+    fontSize: 16,
+    color: '#a7f3d0',
+  },
+});

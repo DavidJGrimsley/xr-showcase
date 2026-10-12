@@ -162,7 +162,12 @@ function BlochSphere({ context, controller }: QubitSceneProps) {
   const interactive = canManipulateQubit(state);
   return (
     <ViroNode
-      position={blochSpherePosition(state.sphereScale, state.sphereHeight)}
+      position={blochSpherePosition(
+        state.sphereScale,
+        state.sphereHeight,
+        state.sphereX,
+        state.sphereZ
+      )}
       rotation={[0, state.sphereYaw, 0]}
       scale={[state.sphereScale, state.sphereScale, state.sphereScale]}
       onPinch={
