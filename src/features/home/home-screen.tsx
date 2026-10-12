@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { router } from 'expo-router';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { appSnapshot } from '@/data/mock-app';
-import { experiences } from '@/features/experiences/experience-catalog';
+import { experiences, showcase } from '@/features/experiences/experience-catalog';
 import { useAppTheme } from '@/theme/provider';
 import { GameButton } from '@/ui/game-button';
 import { GameText } from '@/ui/game-text';
@@ -45,10 +44,10 @@ export default function HomeScreen() {
         }}>
         <View style={{ gap: 12 }}>
           <GameText accessibilityRole="header" color={colors.text} fontSize={30} bold>
-            {appSnapshot.name}
+            {showcase.name}
           </GameText>
           <GameText color={colors.text} fontSize={16} lineHeight={24}>
-            {appSnapshot.audience}
+            {showcase.description}
           </GameText>
         </View>
         <View style={{ gap: 16 }}>
