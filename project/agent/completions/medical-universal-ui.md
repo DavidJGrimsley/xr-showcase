@@ -11,6 +11,7 @@ October 11, 2026. The owner chose to merge Arena first, then review Medical styl
 
 ## UI changes
 
+- At the owner's request, Home's Settings header action and the generated Settings page were removed, together with their unused placeholder auth/contrast helpers. Project inventory now records that decision.
 - Medical uses the app's dark theme palette: primary actions, secondary selected choices, and outlined Home/reset/reposition actions. Shared GameButton sizing and measured GameText copy replace the former utility styling. Scientific values and selectable diagnostics remain React Native text.
 - Anatomy, all four model choices, slices, 3D Scan, transforms, status/retry, scan controls, diagnostics, and information retain their callbacks, scopes, test IDs, and accessibility state. The universal picker handles available models; native availability menus remain for disabled entries.
 - Medical Information and Scan Controls share a measured Expo UI BottomSheet with a pinned title/Done header, explicit content width, and an independently bounded scrolling body. Native content waits for the sheet's actual measured width before embedding text; zero-width measurements do not mount it. Dark sheet styling is explicit. Buttons wrap within their measured area; slider scheduling and dismissal cancellation are preserved.

@@ -85,15 +85,6 @@ function LayoutInner() {
                 options={{
                   title: 'Home',
                   orientation: 'default',
-                  headerRight: () => (
-                    <GameButton
-                      label="Settings"
-                      color={theme.activeColors.primary}
-                      textColor={theme.activeColors.primary}
-                      variant="text"
-                      onPress={() => router.navigate('/settings')}
-                    />
-                  ),
                 }}
               />
               {experiences.map((experience) => (
@@ -129,10 +120,6 @@ function LayoutInner() {
                   }}
                 />
               ))}
-              <Stack.Screen
-                name="settings"
-                options={{ presentation: 'modal', title: 'Settings' }}
-              />
             </Stack>
           </RouterThemeBridge>
         </SafeAreaProvider>

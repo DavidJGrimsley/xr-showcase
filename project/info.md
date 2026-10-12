@@ -81,11 +81,11 @@ User choices and the canonical Super Stack architecture take precedence over att
 
 ## Ejection Inventory
 
-This record is the Phase 0 retain/eject decision for generated starter and template components. Confirmed by the user and applied; all exposition pages are removed.
+This record tracks the retain/eject decisions for generated starter and template components. Confirmed by the user and applied; all exposition pages are removed. The owner revised the Settings decision on October 11, 2026.
 
 - Decision: confirmed
 - Items:
-  - settings: retain (present)
+  - settings: eject (removed, including Home header action)
   - stylist: eject (removed)
   - exposition: eject (removed)
   - data: retain (adapter only; demo route removed)
