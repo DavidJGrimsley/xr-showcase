@@ -73,6 +73,7 @@ export default function ArenaOrientationGate({
               <ArenaButton
                 label="Back"
                 icon="arrow-left"
+                navigation
                 onPress={() => {
                   arSessionCoordinator.endCurrent();
                   if (onBack) onBack();

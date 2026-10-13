@@ -33,23 +33,23 @@ export default function ArenaExperience({
     controller.setLandscape(landscape);
   }, [controller, landscape]);
   useEffect(() => {
+    if (!__DEV__ || controller.space !== 'remote') return;
+    const diagnostics = setInterval(
+      () => console.log('[Arena remote timing]', controller.predictionDiagnostics()),
+      5000
+    );
+    return () => clearInterval(diagnostics);
+  }, [controller]);
+  useEffect(() => {
     clearTimeout(disposal.current);
     room?.start();
     controller.setAppActive(AppState.currentState !== 'background');
     const timer = setInterval(controller.poll, 100);
-    const diagnostics =
-      __DEV__ && controller.space === 'remote'
-        ? setInterval(
-            () => console.log('[Arena remote timing]', controller.predictionDiagnostics()),
-            5000
-          )
-        : undefined;
     const appState = AppState.addEventListener('change', (state) => {
       controller.setAppActive(state !== 'background');
     });
     return () => {
       clearInterval(timer);
-      if (diagnostics) clearInterval(diagnostics);
       appState.remove();
       // A Strict Mode effect replay must not destroy the controller being reattached.
       disposal.current = setTimeout(() => {

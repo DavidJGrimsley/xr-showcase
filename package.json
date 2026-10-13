@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
+    "postinstall": "node tools/compat/prepare-uri-decoder.cjs",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "start": "expo start --dev-client",
@@ -22,7 +23,8 @@
     "expo-doctor": "npx expo-doctor",
     "post-create-check": "npx expo install --fix && npx expo-doctor",
     "ci:verify": "npx mds doctor --ci",
-    "test": "npm run lint && npm run typecheck && npm run test:ar && npm run test:qubit && npm run test:medical && npm run test:arena && npm run test:ui",
+    "test": "npm run lint && npm run typecheck && npm run test:ar && npm run test:qubit && npm run test:medical && npm run test:arena && npm run test:ui && npm run test:dependencies",
+    "test:dependencies": "node --test tests/dependency-compat.test.cjs",
     "test:ui": "node --experimental-strip-types --test tests/game-ui.test.cjs",
     "test:ar": "node --experimental-strip-types --test tests/ar-session.test.cjs",
     "test:arena": "node --experimental-strip-types --test tests/arena-*.test.cjs",
@@ -35,25 +37,25 @@
   },
   "dependencies": {
     "@expo/log-box": "^57.0.4",
-    "@expo/ui": "~57.0.22",
+    "@expo/ui": "~57.0.23",
     "@expo/vector-icons": "^15.0.2",
     "@mr.dj2u/quantum-api": "0.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@reactvision/react-viro": "^3.0.3",
-    "expo": "^57.0.27",
+    "decode-uri-component": "0.5.0",
+    "expo": "~57.0.28",
     "expo-asset": "~57.0.19",
     "expo-audio": "~57.0.5",
     "expo-blur": "~57.0.3",
     "expo-camera": "~57.0.6",
     "expo-constants": "~57.0.21",
-    "expo-dev-client": "~57.0.19",
+    "expo-dev-client": "~57.0.20",
     "expo-font": "~57.0.4",
     "expo-linking": "~57.0.12",
     "expo-navigation-bar": "~57.0.3",
-    "expo-router": "^57.0.25",
+    "expo-router": "~57.0.26",
     "expo-secure-store": "~57.0.4",
-    "expo-splash-screen": "~57.0.9",
-    "expo-sqlite": "~57.0.4",
+    "expo-splash-screen": "~57.0.10",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
@@ -82,6 +84,14 @@
     "prettier": "^3.2.5",
     "react-doctor": "^0.9.12",
     "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "query-string@7.1.3": {
+      "decode-uri-component": "$decode-uri-component"
+    },
+    "xcode@3.0.1": {
+      "uuid": "11.1.1"
+    }
   },
   "private": true
 }

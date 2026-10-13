@@ -1,19 +1,31 @@
 # XR Showcase
 
-An iOS-first MDS Super Stack scaffold for Arena Fighter, Medical Viewer and Guess the Qubit. Android follows. The AR experiences are required implementation tasks, not completed features.
+An iOS-first tabletop AR app with Neo Rock 'Em Sock 'Em Robots, Medical Viewer and Guess the Qubit. Medical Viewer includes scan-derived anatomy models, registered CT/MRI slices and a 48-layer scan preview. Its experimental GPU volume renderer remains unverified on iPhone; the [investigation kit](https://github.com/DavidJGrimsley/xr-showcase-project/tree/docs/3d-scan-limitations/3D_Scan_Limitations) records the limitation and evidence.
 
 ## Development
-- Install with npm install.
-- Start the development client with npm start.
-- Check with npm run typecheck and npm run lint.
-- Bundle iOS JavaScript with npm run build:ios.
 
-Use a native development client; Expo Go cannot run Viro. From Windows, sign into EAS, verify the bundle identifier, register the physical iPhone and build the development profile. The simulator profile can test the native shell but cannot prove camera AR acceptance. No EAS project or build was created by this setup.
+Use Node 22.13 or newer and the pinned npm lockfile. Expo SDK 57 requires React Native 0.86 and a native Viro development client; Expo Go cannot run this app.
 
-## Continue implementation
-Open a fresh agent session in F:\ReactNativeApps\xr-showcase and run mds continue. Read project/info.md, project/todo.md, project/style.md and project/guidelines.md first. The inspected Unreal game is documented in project/references/guess-the-qubit-unreal.md.
+```sh
+npm ci
+npm start
+```
 
-## Pending inputs and validation
-Studio credentials/scene readiness, licensed fighter/skull assets, existing Quantum API development-key configuration and physical iPhone testing remain pending. Keep Quantum credentials in device SecureStore when the runtime configuration UI is implemented; keep secrets out of source control, EXPO_PUBLIC variables, logs and project docs. Public distribution requires a backend proxy.
+Use your own private development configuration and signing when building a client with the EAS `development` profile. A simulator can check the shell but cannot verify camera AR. Credentials remain outside committed files.
 
-The base MDS generator failed a Windows argument-parsing invocation and then a post-create dependency check. This project preserves its scaffold and repairs those issues locally; see the TODO defect queue and setup validation report for final status.
+```sh
+npm test
+npm run build:ios
+mds report . --kind content
+mds doctor . --ci
+```
+
+`build:ios` exports JavaScript and assets; it is not a native device build. Canonical project memory and TODOs are in the separate [project repository](https://github.com/DavidJGrimsley/xr-showcase-project); this checkout's legacy `project/` files are historical migration inputs.
+
+## Dependency compatibility
+
+SDK 57's `query-string@7.1.3` expects a synchronous CommonJS URI decoder. The security-fixed `decode-uri-component@0.5.0` is ESM-only, so `npm ci` runs `tools/compat/prepare-uri-decoder.cjs` to generate a CommonJS export of the unchanged, checksum-verified upstream algorithm. The original ESM entry remains available. Keep install scripts enabled. Changing the decoder version requires reviewing the bridge and updating its checksum.
+
+The `xcode@3.0.1` dependency uses `uuid@11.1.1` through a scoped override; compatibility tests cover Xcode identifiers, UUID buffer bounds, normal query round trips and malformed URI input.
+
+As of October 12, 2026, npm audit still reports 19 affected package entries inherited from two upstream advisories: [braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) and [node-forge](https://github.com/advisories/GHSA-86w9-cpqp-85rv). Neither has a published patched release. They are tracked in the project repository; unsupported SDK downgrades or major upgrades are not applied to silence audit results.

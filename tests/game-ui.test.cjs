@@ -10,6 +10,7 @@ const ui = Object.fromEntries(
   [
     'Host',
     'Button',
+    'Icon',
     'Column',
     'Row',
     'Spacer',
@@ -103,6 +104,7 @@ for (const platform of ['ios', 'android', 'web']) {
         textColor: colors.background,
         disabled,
         selected: true,
+        nativeIcon: platform === 'ios' ? 'arrow.left' : undefined,
       });
       const button = nodes(root).find((node) => node.type === 'Button');
       if (platform === 'web') {
@@ -140,8 +142,10 @@ test('home actions retain all three routes and follow the measured viewport thro
   const Home = load('features/home/home-screen.tsx', {
     react: { useState: () => [measuredWidth, (value) => (measuredWidth = value)] },
     'expo-router': { router: { navigate: (route) => routes.push(route) } },
-    '@/data/mock-app': { appSnapshot: { name: 'XR Showcase', audience: 'AR experiences' } },
-    '@/features/experiences/experience-catalog': { experiences: catalog },
+    '@/features/experiences/experience-catalog': {
+      experiences: catalog,
+      showcase: { name: 'XR Showcase', description: 'AR experiences' },
+    },
     '@/ui/game-button': { GameButton: 'GameButton' },
     '@/ui/game-text': { GameText: 'GameText' },
     '@/ui/use-game-window-dimensions': { useGameWindowDimensions: () => ({ width: 320 }) },

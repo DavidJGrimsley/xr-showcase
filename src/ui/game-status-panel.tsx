@@ -63,13 +63,18 @@ export function GameStatusPanel({
             textColor={outlinedActions.includes(action.label) ? colors.text : colors.background}
             variant={outlinedActions.includes(action.label) ? 'outlined' : 'filled'}
             compact={compact}
+            singleLine={action.label === 'Back'}
             fontSize={fontSize}
             onPress={action.onPress}
             width={Math.max(
               48,
               Math.min(
-                Math.ceil(action.label.length * fontSize * fontScale * (compact ? 0.7 : 0.6)) +
-                  (compact ? 24 : 32),
+                Math.ceil(
+                  action.label.length *
+                    fontSize *
+                    fontScale *
+                    (action.label === 'Back' ? 0.75 : compact ? 0.7 : 0.6)
+                ) + (compact ? 24 : 32),
                 width - 80,
                 520
               )

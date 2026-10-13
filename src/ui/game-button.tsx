@@ -1,5 +1,5 @@
-import { Button, Host, RNHostView, Row, Text } from '@expo/ui';
-import type { ReactElement } from 'react';
+import { Button, Host, Icon, RNHostView, Row, Text } from '@expo/ui';
+import type { ComponentProps, ReactElement } from 'react';
 import { Platform, useWindowDimensions, View } from 'react-native';
 
 export interface GameButtonProps {
@@ -14,6 +14,7 @@ export interface GameButtonProps {
   selected?: boolean;
   hint?: string;
   icon?: ReactElement;
+  nativeIcon?: ComponentProps<typeof Icon>['name'];
   iconOnly?: boolean;
   compact?: boolean;
   singleLine?: boolean;
@@ -35,6 +36,7 @@ export function GameButton({
   selected,
   hint,
   icon,
+  nativeIcon,
   iconOnly = false,
   compact = false,
   singleLine = false,
@@ -47,6 +49,8 @@ export function GameButton({
   const minimumSize = compact ? 44 : 48;
   const horizontalPadding = compact ? (Platform.OS === 'android' ? 12 : 8) : 16;
   const minimumOuterSize = minimumSize + (compact ? 2 * borderWidth : 0);
+  const hasIcon = !!(nativeIcon || icon);
+  const iconSize = iconOnly ? 24 : 20;
   const buttonWidth = iconOnly
     ? minimumOuterSize
     : compact && width !== undefined
@@ -54,7 +58,7 @@ export function GameButton({
       : width;
   const labelWidth =
     buttonWidth !== undefined
-      ? Math.max(1, buttonWidth - 2 * horizontalPadding - 2 * borderWidth - (icon ? 30 : 0))
+      ? Math.max(1, buttonWidth - 2 * horizontalPadding - 2 * borderWidth - (hasIcon ? 30 : 0))
       : undefined;
   const lines =
     labelWidth && !iconOnly && !singleLine
@@ -103,6 +107,8 @@ export function GameButton({
         ignoreSafeArea="all"
         colorScheme="dark"
         seedColor={color}
+        // Propose the button's width to native layout instead of squeezing its label.
+        style={buttonWidth !== undefined ? { width: buttonWidth - 2 * borderWidth } : undefined}
         accessibilityElementsHidden={Platform.OS !== 'web'}
         importantForAccessibility={Platform.OS === 'web' ? 'auto' : 'no-hide-descendants'}>
         <Button
@@ -123,28 +129,52 @@ export function GameButton({
             backgroundColor: variant === 'filled' ? color : 'transparent',
             opacity: disabled ? 0.45 : 1,
           }}>
-          <Row spacing={iconOnly ? 0 : 6} alignment="center">
-            {icon ? <RNHostView matchContents>{icon}</RNHostView> : null}
-            <Text
-              numberOfLines={singleLine ? 1 : undefined}
-              // Keep an accessible name for icon-only buttons on web.
-              style={
-                iconOnly
-                  ? { width: 0, height: 0, opacity: 0 }
-                  : labelWidth
-                    ? { width: labelWidth }
-                    : undefined
-              }
-              textStyle={{
-                fontFamily,
-                // SwiftUI custom fonts scale natively; explicit system sizes do not.
-                fontSize: Platform.OS === 'ios' && !fontFamily ? fontSize * fontScale : fontSize,
-                fontWeight: '600',
-                color: textColor,
-                textAlign: 'center',
-              }}>
-              {label}
-            </Text>
+          <Row
+            spacing={iconOnly ? 0 : 6}
+            alignment="center"
+            style={{ height: height - 2 * borderWidth }}>
+            {nativeIcon ? (
+              <Icon
+                name={nativeIcon}
+                size={iconSize}
+                color={textColor}
+                style={{ width: iconSize, height: iconSize }}
+              />
+            ) : icon ? (
+              <RNHostView matchContents>
+                <View
+                  style={{
+                    minWidth: iconSize,
+                    minHeight: iconSize,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                  {icon}
+                </View>
+              </RNHostView>
+            ) : null}
+            {(!iconOnly || Platform.OS === 'web') && (
+              <Text
+                numberOfLines={singleLine ? 1 : undefined}
+                // Keep an accessible name for icon-only buttons on web.
+                style={
+                  iconOnly
+                    ? { width: 0, height: 0, opacity: 0 }
+                    : labelWidth
+                      ? { width: labelWidth }
+                      : undefined
+                }
+                textStyle={{
+                  fontFamily,
+                  // SwiftUI custom fonts scale natively; explicit system sizes do not.
+                  fontSize: Platform.OS === 'ios' && !fontFamily ? fontSize * fontScale : fontSize,
+                  fontWeight: '600',
+                  color: textColor,
+                  textAlign: 'center',
+                }}>
+                {label}
+              </Text>
+            )}
           </Row>
         </Button>
       </Host>
