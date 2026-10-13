@@ -103,6 +103,8 @@ export function GameButton({
         ignoreSafeArea="all"
         colorScheme="dark"
         seedColor={color}
+        // Propose the button's width to native layout instead of squeezing its label.
+        style={buttonWidth !== undefined ? { width: buttonWidth - 2 * borderWidth } : undefined}
         accessibilityElementsHidden={Platform.OS !== 'web'}
         importantForAccessibility={Platform.OS === 'web' ? 'auto' : 'no-hide-descendants'}>
         <Button

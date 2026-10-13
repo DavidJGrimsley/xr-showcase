@@ -386,11 +386,11 @@ function ArenaMenu({
         <View
           pointerEvents="box-none"
           style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <ArenaButton label="Back" icon="arrow-left" primary={page === 'title'} onPress={back} />
+          <ArenaButton label="Back" icon="arrow-left" navigation onPress={back} />
           {page === 'title' && (
             <ArenaButton
               label="How to Play"
-              primary
+              navigation
               testID="arena-how-to-play"
               onPress={() => setPage('how')}
             />
@@ -399,7 +399,7 @@ function ArenaMenu({
         {page === 'title' && (
           <ArenaButton
             label="About the game"
-            primary
+            navigation
             icon="information-outline"
             iconOnly
             testID="arena-info"

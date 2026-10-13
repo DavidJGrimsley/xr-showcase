@@ -336,7 +336,7 @@ export default function ArenaHUD({
       <View
         pointerEvents="box-none"
         style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-        <ArenaButton label="Back" icon="arrow-left" testID="arena-back" onPress={back} />
+        <ArenaButton label="Back" icon="arrow-left" navigation testID="arena-back" onPress={back} />
         {ui.health && (
           <>
             <Health

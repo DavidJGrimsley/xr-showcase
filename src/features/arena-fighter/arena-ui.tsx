@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFonts } from 'expo-font';
 import { useMemo, type ReactNode } from 'react';
-import { ImageBackground, Text, View } from 'react-native';
+import { ImageBackground, Text, useWindowDimensions, View } from 'react-native';
 import { GameButton } from '@/ui/game-button';
 import Svg, { Defs, LinearGradient, Rect, Stop, SvgXml } from 'react-native-svg';
 import { useAppTheme } from '@/theme/provider';
@@ -36,6 +36,7 @@ export function ArenaButton({
   disabled = false,
   icon,
   iconOnly = false,
+  navigation = false,
   testID,
   selected,
 }: {
@@ -47,11 +48,15 @@ export function ArenaButton({
   disabled?: boolean;
   icon?: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
   iconOnly?: boolean;
+  navigation?: boolean;
   testID?: string;
   selected?: boolean;
 }) {
   const colors = useArenaColors();
+  const { fontScale } = useWindowDimensions();
+  const singleLine = navigation || label === 'Back';
   const filled = primary || secondary || danger;
+  const foreground = navigation ? '#ffffff' : filled ? colors.background : colors.text;
   return (
     <GameButton
       label={label}
@@ -60,23 +65,31 @@ export function ArenaButton({
       selected={selected}
       onPress={onPress}
       fontFamily={ARENA_FONTS.button}
-      color={
-        danger
-          ? '#d99a9a'
-          : secondary
-            ? colors.secondary
-            : primary
-              ? colors.primary
-              : colors.surface
+      singleLine={singleLine}
+      width={
+        singleLine && !iconOnly
+          ? Math.ceil(label.length * 16 * fontScale * 0.75) + 32 + (icon ? 30 : 0)
+          : undefined
       }
-      textColor={filled ? colors.background : colors.text}
+      color={
+        navigation
+          ? '#000000'
+          : danger
+            ? '#d99a9a'
+            : secondary
+              ? colors.secondary
+              : primary
+                ? colors.primary
+                : colors.surface
+      }
+      textColor={foreground}
       iconOnly={iconOnly}
       icon={
         icon ? (
           <MaterialCommunityIcons
             name={icon}
             size={iconOnly ? 24 : 20}
-            color={filled ? colors.background : colors.text}
+            color={foreground}
             style={{ width: iconOnly ? 24 : 20, height: iconOnly ? 24 : 20 }}
           />
         ) : undefined
