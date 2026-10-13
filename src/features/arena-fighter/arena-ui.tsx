@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFonts } from 'expo-font';
 import { useMemo, type ReactNode } from 'react';
-import { ImageBackground, Text, useWindowDimensions, View } from 'react-native';
+import { ImageBackground, Platform, Text, useWindowDimensions, View } from 'react-native';
 import { GameButton } from '@/ui/game-button';
 import Svg, { Defs, LinearGradient, Rect, Stop, SvgXml } from 'react-native-svg';
 import { useAppTheme } from '@/theme/provider';
@@ -57,6 +57,15 @@ export function ArenaButton({
   const singleLine = navigation || label === 'Back';
   const filled = primary || secondary || danger;
   const foreground = navigation ? '#ffffff' : filled ? colors.background : colors.text;
+  const nativeIcon =
+    Platform.OS === 'ios'
+      ? icon === 'arrow-left'
+        ? 'arrow.left'
+        : icon === 'information-outline'
+          ? 'info.circle'
+          : undefined
+      : undefined;
+  const iconSize = iconOnly ? 24 : 20;
   return (
     <GameButton
       label={label}
@@ -84,13 +93,21 @@ export function ArenaButton({
       }
       textColor={foreground}
       iconOnly={iconOnly}
+      nativeIcon={nativeIcon}
       icon={
-        icon ? (
+        icon && !nativeIcon ? (
           <MaterialCommunityIcons
             name={icon}
-            size={iconOnly ? 24 : 20}
+            size={iconSize}
             color={foreground}
-            style={{ width: iconOnly ? 24 : 20, height: iconOnly ? 24 : 20 }}
+            style={{
+              width: iconSize,
+              height: iconSize,
+              lineHeight: iconSize,
+              textAlign: 'center',
+              textAlignVertical: 'center',
+              includeFontPadding: false,
+            }}
           />
         ) : undefined
       }

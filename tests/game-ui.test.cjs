@@ -10,6 +10,7 @@ const ui = Object.fromEntries(
   [
     'Host',
     'Button',
+    'Icon',
     'Column',
     'Row',
     'Spacer',
@@ -103,6 +104,7 @@ for (const platform of ['ios', 'android', 'web']) {
         textColor: colors.background,
         disabled,
         selected: true,
+        nativeIcon: platform === 'ios' ? 'arrow.left' : undefined,
       });
       const button = nodes(root).find((node) => node.type === 'Button');
       if (platform === 'web') {
